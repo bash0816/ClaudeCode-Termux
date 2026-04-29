@@ -1,0 +1,22 @@
+{
+  "name": "@bash0816/claude-code",
+  "version": "2.1.122",
+  "description": "Termux-native Claude Code wrapper with audited native replay",
+  "license": "MIT",
+  "bin": {
+    "claude": "bin/claude"
+  },
+  "scripts": {
+    "preinstall": "node lib/preinstall.js",
+    "postinstall": "node lib/postinstall.js"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "config",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}
