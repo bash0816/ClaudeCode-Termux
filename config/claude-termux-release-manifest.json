@@ -4,5 +4,5 @@
   "latest_audited_version": "2.1.122",
   "latest_candidate_version": "2.1.122",
   "previous_stable_version": "2.1.121",
-  "manifest_url": "https://raw.githubusercontent.com/bash0816/ClaudeCode-Termux/dev/config/claude-termux-release-manifest.json"
+  "manifest_url": "https://raw.githubusercontent.com/bash0816/ClaudeCode-Termux/main/config/claude-termux-release-manifest.json"
 }
