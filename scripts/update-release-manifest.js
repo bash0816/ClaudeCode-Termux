@@ -12,7 +12,7 @@ const manifestFiles = [
   path.join(repoRoot, 'config', 'claude-termux-release-manifest.json'),
   path.join(repoRoot, 'packages', 'claude-code', 'config', 'claude-termux-release-manifest.json'),
 ];
-const manifestUrl = 'https://raw.githubusercontent.com/bash0816/ClaudeCode-Termux/main/config/claude-termux-release-manifest.json';
+const manifestUrl = 'https://raw.githubusercontent.com/bash0816/ClaudeCode-Termux/dev/config/claude-termux-release-manifest.json';
 
 function compareVersions(a, b) {
   const aParts = String(a).split('.').map(Number);
