@@ -4,6 +4,16 @@ Termux-native Claude Code wrapper package.
 
 Termux 向け Claude Code native wrapper package です。
 
+Canonical repository:
+
+正規 repository:
+
+- `https://github.com/bash0816/ClaudeCode-Termux`
+
+This package is part of the move from the legacy typo repository to `ClaudeCode-Termux`.
+
+この package は、旧 typo repository から `ClaudeCode-Termux` へ移行する正規導線です。
+
 ## Install / インストール
 
 ```sh

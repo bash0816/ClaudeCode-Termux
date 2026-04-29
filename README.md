@@ -16,6 +16,14 @@ Legacy compatibility repository:
 
 - `https://github.com/bash0816/CluadeCode-Termux`
 
+This project is moving from the legacy typo repository to `ClaudeCode-Termux`.
+
+この project は、旧 typo repository から `ClaudeCode-Termux` へ移行します。
+
+Use `ClaudeCode-Termux` for new links, new installs, and future release tracking.
+
+新しい link、install、今後の release 追跡は `ClaudeCode-Termux` を使ってください。
+
 Normal install and update paths are consolidated into npm.
 
 通常の導入・更新手順は npm package に一本化しています。
@@ -148,34 +156,6 @@ node ./scripts/termux-prepare-claude-native-version.js @latest --json
 - `.github/workflows/promote-verified-candidate.yml`
   - Creates a promotion PR after device verification of a candidate version.
   - candidate version を実機確認した後、昇格 PR を自動作成します。
-
-## Local Automation / 端末側自動化
-
-After the GitHub candidate watch runs, this Termux device can start Codex automatically and continue verification / promotion / publish follow-up.
-
-GitHub 側の candidate watch 実行後、この Termux 端末で Codex を自動起動し、verification / promotion / publish の後続処理を進められます。
-
-Key scripts:
-
-- `scripts/release-automation-status.js`
-- `scripts/run-local-release-automation.sh`
-- `scripts/install-local-release-cron.sh`
-
-Dry run:
-
-```sh
-sh ./scripts/run-local-release-automation.sh --dry-run
-```
-
-Cron install example:
-
-```sh
-sh ./scripts/install-local-release-cron.sh 30
-```
-
-The example above schedules the follow-up at `UTC 09:30`.
-
-上の例では `UTC 09:30` に follow-up を動かします。
 
 ## Do Not Use / 非推奨
 
