@@ -1,6 +1,6 @@
 {
   "name": "@bash0816/claude-code",
-  "version": "2.1.122",
+  "version": "2.1.123",
   "description": "Termux-native Claude Code wrapper with audited native replay",
   "license": "MIT",
   "bin": {
