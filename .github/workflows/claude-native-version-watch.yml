@@ -7,6 +7,10 @@ on:
         description: "Claude Code version or @latest"
         required: false
         default: "@latest"
+      base_branch:
+        description: "Base branch for candidate PR"
+        required: false
+        default: "dev"
   schedule:
     - cron: "17 3 * * *"
 
@@ -19,6 +23,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.base_branch || 'dev' }}
 
       - uses: actions/setup-node@v4
         with:
@@ -126,13 +132,14 @@ jobs:
           If upstream package structure changed, close this PR and update the native preparation script.
           EOF
           )"
-          existing_pr="$(gh pr list --head "${branch}" --base main --state open --json url --jq '.[0].url // ""')"
+          base="${{ github.event.inputs.base_branch || 'dev' }}"
+          existing_pr="$(gh pr list --head "${branch}" --base "${base}" --state open --json url --jq '.[0].url // ""')"
           if [ -n "${existing_pr}" ]; then
             echo "Existing PR: ${existing_pr}"
             exit 0
           fi
           gh pr create \
-            --base main \
+            --base "${base}" \
             --head "${branch}" \
             --title "${title}" \
             --body "${body}"
