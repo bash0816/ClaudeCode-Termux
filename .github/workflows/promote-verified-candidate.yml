@@ -10,7 +10,7 @@ on:
       base_branch:
         description: "Base branch for the promotion PR"
         required: false
-        default: "main"
+        default: "dev"
 
 permissions:
   contents: write

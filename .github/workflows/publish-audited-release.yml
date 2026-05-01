@@ -1,0 +1,47 @@
+name: Publish Audited Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "config/**"
+      - "packages/claude-code/**"
+      - "scripts/**"
+      - ".github/workflows/**"
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Resolve publish need
+        id: status
+        run: |
+          set -euo pipefail
+          node scripts/release-automation-status.js --json > status.json
+          audited_version="$(node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync("status.json","utf8"));process.stdout.write(String(j.latest_audited_version||""))')"
+          needs_publish="$(node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync("status.json","utf8"));process.stdout.write(String(j.needs_publish))')"
+          echo "audited_version=${audited_version}" >> "${GITHUB_OUTPUT}"
+          echo "needs_publish=${needs_publish}" >> "${GITHUB_OUTPUT}"
+
+      - name: Dispatch npm publish workflow
+        if: steps.status.outputs.needs_publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run npm-package.yml \
+            --ref main \
+            -f publish=true \
+            -f package_version=${{ steps.status.outputs.audited_version }} \
+            -f npm_tag=latest
