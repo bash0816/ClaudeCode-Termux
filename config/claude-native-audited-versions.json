@@ -34,6 +34,13 @@
       "entry_js_offset": 232194756,
       "entry_end_offset": 246144430,
       "status": "termux_verified"
+    },
+    "2.1.126": {
+      "wrapper_spec": "@anthropic-ai/claude-code@2.1.126",
+      "native_spec": "@anthropic-ai/claude-code-linux-arm64@2.1.126",
+      "entry_js_offset": 232535252,
+      "entry_end_offset": 246515761,
+      "status": "termux_verified"
     }
   }
 }
