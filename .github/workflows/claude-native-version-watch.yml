@@ -12,7 +12,7 @@ on:
         required: false
         default: "dev"
   schedule:
-    - cron: "17 3 * * *"
+    - cron: "0 0 * * *"
 
 permissions:
   contents: write
@@ -24,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.base_branch || 'dev' }}
+          ref: ${{ github.ref_name }}
 
       - uses: actions/setup-node@v4
         with:
@@ -64,35 +64,19 @@ jobs:
           version="${{ steps.version.outputs.version }}"
           workdir="${RUNNER_TEMP}/claude-${version}-native-poc"
           WORKDIR="${workdir}" node scripts/termux-prepare-claude-native-version.js "@${version}" --json > "${workdir}.json"
-          node - <<'NODE' "${version}" "${workdir}.json"
-          const fs = require('fs');
-          const version = process.argv[2];
-          const offsetFile = process.argv[3];
-          const offsets = JSON.parse(fs.readFileSync(offsetFile, 'utf8'));
-
-          const versionEntry = {
-            wrapper_spec: `@anthropic-ai/claude-code@${version}`,
-            native_spec: `@anthropic-ai/claude-code-linux-arm64@${version}`,
-            entry_js_offset: offsets.entry_js_offset,
-            entry_end_offset: offsets.entry_end_offset,
-            status: 'offset_discovered'
-          };
-
-          for (const configFile of [
-            'config/claude-native-audited-versions.json',
-            'packages/claude-code/config/claude-native-audited-versions.json'
-          ]) {
-            const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
-            config.versions[version] = versionEntry;
-            fs.writeFileSync(configFile, JSON.stringify(config, null, 2) + '\\n');
-          }
-
-          const packageFile = 'packages/claude-code/package.json';
-          const pkg = JSON.parse(fs.readFileSync(packageFile, 'utf8'));
-          pkg.version = version;
-          fs.writeFileSync(packageFile, JSON.stringify(pkg, null, 2) + '\\n');
-          NODE
+          node scripts/add-candidate-metadata.js "${version}" "${workdir}.json" > "${workdir}.update.json"
+          node -e 'for (const file of ["config/claude-native-audited-versions.json","packages/claude-code/config/claude-native-audited-versions.json","packages/claude-code/package.json"]) JSON.parse(require("fs").readFileSync(file,"utf8"));'
           node scripts/update-release-manifest.js
+
+      - name: Candidate metadata diagnostics
+        if: steps.existing.outputs.exists == 'false' && always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+          workdir="${RUNNER_TEMP}/claude-${version}-native-poc"
+          test -f "${workdir}.json" && cat "${workdir}.json" || true
+          test -f "${workdir}.update.json" && cat "${workdir}.update.json" || true
 
       - name: Commit candidate metadata
         id: candidate
@@ -108,7 +92,7 @@ jobs:
           git checkout -B "${branch}"
           git add config/claude-native-audited-versions.json config/claude-termux-release-manifest.json packages/claude-code/config/claude-native-audited-versions.json packages/claude-code/config/claude-termux-release-manifest.json packages/claude-code/package.json
           git commit -m "Add Claude native ${version} offset metadata"
-          git push -u origin "${branch}" --force-with-lease
+          git push -u origin "${branch}" --force
 
       - name: Open native candidate pull request
         if: steps.existing.outputs.exists == 'false'
@@ -133,13 +117,19 @@ jobs:
           EOF
           )"
           base="${{ github.event.inputs.base_branch || 'dev' }}"
-          existing_pr="$(gh pr list --head "${branch}" --base "${base}" --state open --json url --jq '.[0].url // ""')"
+          existing_pr="$(gh pr list --repo bash0816/ClaudeCode-Termux --head "${branch}" --base "${base}" --state open --json url --jq '.[0].url // ""')"
           if [ -n "${existing_pr}" ]; then
             echo "Existing PR: ${existing_pr}"
             exit 0
           fi
-          gh pr create \
+          if gh pr create \
+            --repo bash0816/ClaudeCode-Termux \
             --base "${base}" \
             --head "${branch}" \
             --title "${title}" \
-            --body "${body}"
+            --body "${body}"; then
+            echo "Created candidate PR for ${branch}"
+          else
+            echo "PR create failed for ${branch}; continue with local gh fallback" >&2
+            exit 0
+          fi
