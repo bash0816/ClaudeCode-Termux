@@ -67,6 +67,7 @@ jobs:
           node scripts/add-candidate-metadata.js "${version}" "${workdir}.json" > "${workdir}.update.json"
           node -e 'for (const file of ["config/claude-native-audited-versions.json","packages/claude-code/config/claude-native-audited-versions.json","packages/claude-code/package.json"]) JSON.parse(require("fs").readFileSync(file,"utf8"));'
           node scripts/update-release-manifest.js
+          node scripts/update-readme-version-guidance.js
 
       - name: Candidate metadata diagnostics
         if: steps.existing.outputs.exists == 'false' && always()
@@ -90,7 +91,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -B "${branch}"
-          git add config/claude-native-audited-versions.json config/claude-termux-release-manifest.json packages/claude-code/config/claude-native-audited-versions.json packages/claude-code/config/claude-termux-release-manifest.json packages/claude-code/package.json
+          git add README.md config/claude-native-audited-versions.json config/claude-termux-release-manifest.json packages/claude-code/README.md packages/claude-code/config/claude-native-audited-versions.json packages/claude-code/config/claude-termux-release-manifest.json packages/claude-code/package.json
           git commit -m "Add Claude native ${version} offset metadata"
           git push -u origin "${branch}" --force
 

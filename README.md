@@ -81,10 +81,6 @@ Only versions registered in the audited metadata can run.
 
 監査済み metadata に登録済みの version だけを実行します。
 
-Current audited versions in this repository:
-
-この repository に現在入っている監査済み version:
-
 - `2.1.118`
 - `2.1.119`
 - `2.1.121`

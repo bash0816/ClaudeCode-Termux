@@ -92,7 +92,7 @@ Normal launch also checks the same manifest with a short timeout and prints a no
 
 - Only audited versions in `config/claude-native-audited-versions.json` can run.
 - `config/claude-native-audited-versions.json` にある監査済み version だけを実行できます。
-- `2.1.118`, `2.1.119`, `2.1.121`, `2.1.122`, `2.1.123`, and `2.1.126` are included in the package metadata.
+- `2.1.118`, `2.1.119`, `2.1.121`, `2.1.122`, `2.1.123`, `2.1.126` are included in the package metadata.
 - `2.1.118`、`2.1.119`、`2.1.121`、`2.1.122`、`2.1.123`、`2.1.126` を package metadata に含めています。
 - The metadata file is the source of truth for the currently audited set.
 - 現在の監査済み version 集合の source of truth は metadata file です。

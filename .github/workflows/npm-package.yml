@@ -3,7 +3,9 @@ name: Npm Package
 on:
   pull_request:
     paths:
+      - "README.md"
       - "packages/claude-code/**"
+      - "packages/claude-code/README.md"
       - "config/**"
       - "scripts/**"
       - ".github/workflows/npm-package.yml"
@@ -13,7 +15,9 @@ on:
       - dev
       - staging
     paths:
+      - "README.md"
       - "packages/claude-code/**"
+      - "packages/claude-code/README.md"
       - "config/**"
       - "scripts/**"
       - ".github/workflows/npm-package.yml"
@@ -79,6 +83,7 @@ jobs:
           node --check lib/check-updates.js
           node --check lib/postinstall.js
           node --check lib/preinstall.js
+          node --check ../../scripts/update-readme-version-guidance.js
           node --check ../../scripts/update-release-manifest.js
           node --check ../../scripts/promote-verified-version.js
 
@@ -107,7 +112,8 @@ jobs:
         run: |
           set -euo pipefail
           node ../../scripts/update-release-manifest.js
-          git diff --exit-code -- config/claude-native-audited-versions.json config/claude-termux-release-manifest.json
+          node ../../scripts/update-readme-version-guidance.js
+          git diff --exit-code -- ../../README.md README.md config/claude-native-audited-versions.json config/claude-termux-release-manifest.json
 
       - name: Pack dry run
         run: npm pack --dry-run
