@@ -24,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.base_branch || 'dev' }}
+          ref: ${{ github.ref_name }}
 
       - uses: actions/setup-node@v4
         with:
