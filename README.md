@@ -44,11 +44,17 @@ Install a specific audited version.
 
 監査済みの固定 version を入れる場合:
 
+Current quick examples:
+
+現在の quick example:
+
 ```sh
 npm install -g @bash0816/claude-code@2.1.118
 npm install -g @bash0816/claude-code@2.1.119
 npm install -g @bash0816/claude-code@2.1.121
 npm install -g @bash0816/claude-code@2.1.122
+npm install -g @bash0816/claude-code@2.1.123
+npm install -g @bash0816/claude-code@2.1.126
 ```
 
 ## Update / 更新
@@ -75,10 +81,20 @@ Only versions registered in the audited metadata can run.
 
 監査済み metadata に登録済みの version だけを実行します。
 
+Current audited versions in this repository:
+
+この repository に現在入っている監査済み version:
+
 - `2.1.118`
 - `2.1.119`
 - `2.1.121`
 - `2.1.122`
+- `2.1.123`
+- `2.1.126`
+
+The source of truth is the metadata files below.
+
+正式な source of truth は、下の metadata files です。
 
 Metadata files:
 
@@ -105,7 +121,15 @@ Expected version output:
 期待値:
 
 ```text
-2.1.122 (Claude Code)
+<installed_audited_version> (Claude Code)
+```
+
+Example:
+
+例:
+
+```text
+2.1.126 (Claude Code)
 ```
 
 ## Package Development / package 開発
@@ -123,6 +147,8 @@ CLAUDE_TERMUX_CLAUDE_VERSION=2.1.118 claude --version
 CLAUDE_TERMUX_CLAUDE_VERSION=2.1.119 claude --version
 CLAUDE_TERMUX_CLAUDE_VERSION=2.1.121 claude --version
 CLAUDE_TERMUX_CLAUDE_VERSION=2.1.122 claude --version
+CLAUDE_TERMUX_CLAUDE_VERSION=2.1.123 claude --version
+CLAUDE_TERMUX_CLAUDE_VERSION=2.1.126 claude --version
 ```
 
 ## Native Version Metadata / native metadata
