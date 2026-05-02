@@ -22,12 +22,17 @@
   - inline metadata 追記
   - `update-release-manifest.js`
   を実行した再現では成功した
+- 修正後の `workflow_dispatch version=2.1.126` では metadata 更新と candidate branch push までは成功した
+- 同 run は `gh pr create` で失敗した
+- failure message は `GitHub Actions is not permitted to create or approve pull requests (createPullRequest)` だった
 
 ## 推測
 
 - failure は `2.1.126` package 自体ではなく、workflow 内の candidate metadata 更新経路の脆さに寄っている可能性が高い
 - inline Node script と `update-release-manifest.js` の間に、JSON file 汚染または branch/checkout 条件差がある
 - 原因切り分けのためには、workflow 内の inline mutation を専用 script に寄せて、更新後 JSON を即検証する方が安全
+- candidate intake の後段 failure は metadata 更新ではなく、GitHub Actions の PR 作成権限に寄っている
+- 今回の通し実行を止めないためには、candidate branch push を CI/CD の成功条件に含め、PR 作成は local `gh` fallback を許容する方が現実的
 
 ## STEP 2 設計判断
 
@@ -39,6 +44,11 @@
 - `update-release-manifest.js` の前に JSON parse check を入れる
 - failure 時はどの file が壊れているか分かるよう、diagnostic を増やす
 - 今回は schedule を待たず、`workflow_dispatch version=2.1.126` で candidate intake を手動実行する
+- candidate intake workflow の成功条件は
+  - metadata 更新成功
+  - candidate branch push 成功
+  とし、PR 作成は best-effort に落とす
+- PR 作成に失敗した場合は local `gh pr create` を手動 fallback とする
 - candidate intake 成功後は既存 gate に従い
   - Termux verification
   - verified promotion
@@ -61,8 +71,12 @@
 ## Stop / Rollback
 
 - candidate intake failure:
-  - workflow は branch/PR を作らず停止
+  - metadata 更新または branch push に失敗した場合のみ workflow failure とする
   - local repo 側は feature branch にのみ修正を残す
+- candidate branch push 成功後に PR 作成だけ失敗:
+  - workflow は diagnostics を残して success で終える
+  - candidate branch は維持
+  - local `gh pr create` で次段へ進める
 - candidate PR 作成後に Termux verification 失敗:
   - candidate PR は close
   - target version は `offset_discovered` のまま据え置き
@@ -84,6 +98,7 @@
 - `node scripts/update-release-manifest.js`
 - root/package config の JSON parse check
 - `npm pack --dry-run ./packages/claude-code`
-- `Claude Native Version Watch` の `workflow_dispatch version=2.1.126` で candidate branch/PR が作成されること
+- `Claude Native Version Watch` の `workflow_dispatch version=2.1.126` で candidate branch が作成されること
+- GitHub Actions から PR が作れない場合、local `gh pr create` fallback で candidate PR を起こせること
 - `2.1.126` の verified promotion / publish / legacy sync まで到達できること
 - 各 stop 条件で後段 workflow が起動しないこと

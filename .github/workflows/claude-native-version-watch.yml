@@ -117,13 +117,19 @@ jobs:
           EOF
           )"
           base="${{ github.event.inputs.base_branch || 'dev' }}"
-          existing_pr="$(gh pr list --head "${branch}" --base "${base}" --state open --json url --jq '.[0].url // ""')"
+          existing_pr="$(gh pr list --repo bash0816/ClaudeCode-Termux --head "${branch}" --base "${base}" --state open --json url --jq '.[0].url // ""')"
           if [ -n "${existing_pr}" ]; then
             echo "Existing PR: ${existing_pr}"
             exit 0
           fi
-          gh pr create \
+          if gh pr create \
+            --repo bash0816/ClaudeCode-Termux \
             --base "${base}" \
             --head "${branch}" \
             --title "${title}" \
-            --body "${body}"
+            --body "${body}"; then
+            echo "Created candidate PR for ${branch}"
+          else
+            echo "PR create failed for ${branch}; continue with local gh fallback" >&2
+            exit 0
+          fi
