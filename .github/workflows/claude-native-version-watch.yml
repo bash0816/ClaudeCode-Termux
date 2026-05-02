@@ -92,7 +92,7 @@ jobs:
           git checkout -B "${branch}"
           git add config/claude-native-audited-versions.json config/claude-termux-release-manifest.json packages/claude-code/config/claude-native-audited-versions.json packages/claude-code/config/claude-termux-release-manifest.json packages/claude-code/package.json
           git commit -m "Add Claude native ${version} offset metadata"
-          git push -u origin "${branch}" --force-with-lease
+          git push -u origin "${branch}" --force
 
       - name: Open native candidate pull request
         if: steps.existing.outputs.exists == 'false'

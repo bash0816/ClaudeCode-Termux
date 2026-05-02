@@ -19,17 +19,19 @@
    - JSON parse check
    を残す
 5. workflow の PR 作成 step を best-effort にし、failure 時は diagnostics を残して継続できるようにする
-6. local で `2.1.126` candidate intake を再現し、script / manifest 更新が通ることを確認する
-7. `workflow_dispatch` で `2.1.126` candidate intake を再実行する
-8. candidate branch は CI/CD で必ず作成し、PR が無ければ local `gh pr create` で補完する
-9. candidate branch/PR 作成後、Termux verification を通して `2.1.126` を verified promotion する
-10. canonical `dev -> staging -> main` と canonical publish を進める
-11. legacy sync 完了まで確認する
+6. candidate automation branch push は再実行を許容し、`--force-with-lease` ではなく `--force` を使う
+7. local で `2.1.126` candidate intake を再現し、script / manifest 更新が通ることを確認する
+8. `workflow_dispatch` で `2.1.126` candidate intake を再実行する
+9. candidate branch は CI/CD で必ず作成し、PR が無ければ local `gh pr create` で補完する
+10. candidate branch/PR 作成後、Termux verification を通して `2.1.126` を verified promotion する
+11. canonical `dev -> staging -> main` と canonical publish を進める
+12. legacy sync 完了まで確認する
 
 ## 停止条件
 
 - `add-candidate-metadata.js` または branch push が失敗したら candidate intake workflow は exit 1 で停止する
 - PR 作成だけ失敗した場合は candidate branch を残し、local `gh` fallback へ切り替える
+- candidate automation branch への再実行衝突は `--force` 上書きで吸収する
 - candidate PR 作成後に Termux verification が失敗したら、その版では verified promotion を実行しない
 - canonical publish が失敗したら legacy sync を dispatch しない
 - legacy sync が失敗したら canonical publish は rollback せず、legacy sync だけ再試行対象にする

@@ -25,6 +25,8 @@
 - 修正後の `workflow_dispatch version=2.1.126` では metadata 更新と candidate branch push までは成功した
 - 同 run は `gh pr create` で失敗した
 - failure message は `GitHub Actions is not permitted to create or approve pull requests (createPullRequest)` だった
+- その後の再実行では `Commit candidate metadata` が remote `automation/native-claude-2.1.126` への `--force-with-lease` push で失敗した
+- failure message は `stale info` だった
 
 ## 推測
 
@@ -33,6 +35,8 @@
 - 原因切り分けのためには、workflow 内の inline mutation を専用 script に寄せて、更新後 JSON を即検証する方が安全
 - candidate intake の後段 failure は metadata 更新ではなく、GitHub Actions の PR 作成権限に寄っている
 - 今回の通し実行を止めないためには、candidate branch push を CI/CD の成功条件に含め、PR 作成は local `gh` fallback を許容する方が現実的
+- 再実行 failure は candidate automation branch の lease 競合に寄っている
+- candidate automation branch は human branch ではないため、同一 version の再実行では `--force` 上書きに寄せる方が実運用に合う
 
 ## STEP 2 設計判断
 
@@ -49,6 +53,7 @@
   - candidate branch push 成功
   とし、PR 作成は best-effort に落とす
 - PR 作成に失敗した場合は local `gh pr create` を手動 fallback とする
+- candidate automation branch は再実行時の上書きを許容し、push は `--force-with-lease` ではなく `--force` にする
 - candidate intake 成功後は既存 gate に従い
   - Termux verification
   - verified promotion
@@ -77,6 +82,9 @@
   - workflow は diagnostics を残して success で終える
   - candidate branch は維持
   - local `gh pr create` で次段へ進める
+- candidate branch push が `stale info` で失敗:
+  - automation branch の再実行衝突とみなし、workflow 実装を `--force` 上書きに修正する
+  - human branch への影響は無い
 - candidate PR 作成後に Termux verification 失敗:
   - candidate PR は close
   - target version は `offset_discovered` のまま据え置き
