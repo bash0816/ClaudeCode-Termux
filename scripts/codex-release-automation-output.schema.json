@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "mode": {
+      "type": "string",
+      "enum": [
+        "verify_candidate",
+        "publish_release",
+        "no_action"
+      ]
+    },
+    "candidate_version": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "audited_version": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "published_version": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "verification_passed": {
+      "type": "boolean"
+    },
+    "promotion_dispatched": {
+      "type": "boolean"
+    },
+    "publish_dispatched": {
+      "type": "boolean"
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "mode",
+    "candidate_version",
+    "audited_version",
+    "published_version",
+    "verification_passed",
+    "promotion_dispatched",
+    "publish_dispatched",
+    "notes"
+  ],
+  "additionalProperties": false
+}

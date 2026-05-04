@@ -1,0 +1,136 @@
+name: Claude Native Version Watch
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Claude Code version or @latest"
+        required: false
+        default: "@latest"
+      base_branch:
+        description: "Base branch for candidate PR"
+        required: false
+        default: "dev"
+  schedule:
+    - cron: "0 19 * * *"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  prepare-native-candidate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          requested="${{ github.event.inputs.version || '@latest' }}"
+          case "${requested}" in
+            @latest|latest) version="$(npm view @anthropic-ai/claude-code version)" ;;
+            @anthropic-ai/claude-code@*) version="${requested##*@}" ;;
+            @*) version="${requested#@}" ;;
+            *) version="${requested}" ;;
+          esac
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Skip existing audited version
+        id: existing
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+          if node -e 'const fs=require("fs"); const j=JSON.parse(fs.readFileSync("config/claude-native-audited-versions.json","utf8")); process.exit(j.versions[process.argv[1]] ? 0 : 1)' "${version}"; then
+            echo "exists=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "exists=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Prepare artifact and discover offsets
+        if: steps.existing.outputs.exists == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+          workdir="${RUNNER_TEMP}/claude-${version}-native-poc"
+          WORKDIR="${workdir}" node scripts/termux-prepare-claude-native-version.js "@${version}" --json > "${workdir}.json"
+          node scripts/add-candidate-metadata.js "${version}" "${workdir}.json" > "${workdir}.update.json"
+          node -e 'for (const file of ["config/claude-native-audited-versions.json","packages/claude-code/config/claude-native-audited-versions.json","packages/claude-code/package.json"]) JSON.parse(require("fs").readFileSync(file,"utf8"));'
+          node scripts/update-release-manifest.js
+          node scripts/update-readme-version-guidance.js
+
+      - name: Candidate metadata diagnostics
+        if: steps.existing.outputs.exists == 'false' && always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+          workdir="${RUNNER_TEMP}/claude-${version}-native-poc"
+          test -f "${workdir}.json" && cat "${workdir}.json" || true
+          test -f "${workdir}.update.json" && cat "${workdir}.update.json" || true
+
+      - name: Commit candidate metadata
+        id: candidate
+        if: steps.existing.outputs.exists == 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+          branch="automation/native-claude-${version}"
+          echo "branch=${branch}" >> "${GITHUB_OUTPUT}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "${branch}"
+          git add README.md config/claude-native-audited-versions.json config/claude-termux-release-manifest.json packages/claude-code/README.md packages/claude-code/config/claude-native-audited-versions.json packages/claude-code/config/claude-termux-release-manifest.json packages/claude-code/package.json
+          git commit -m "Add Claude native ${version} offset metadata"
+          git push -u origin "${branch}" --force
+
+      - name: Open native candidate pull request
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+          branch="${{ steps.candidate.outputs.branch }}"
+          title="Add Claude native ${version} metadata"
+          body="$(cat <<EOF
+          Automated native metadata candidate for Claude Code ${version}.
+
+          Review required before merge:
+          - Confirm install on Termux.
+          - Confirm launch and auth status.
+          - Confirm \`claude update\` behavior.
+          - Confirm npm package dry-run or publish flow.
+
+          If upstream package structure changed, close this PR and update the native preparation script.
+          EOF
+          )"
+          base="${{ github.event.inputs.base_branch || 'dev' }}"
+          existing_pr="$(gh pr list --repo bash0816/ClaudeCode-Termux --head "${branch}" --base "${base}" --state open --json url --jq '.[0].url // ""')"
+          if [ -n "${existing_pr}" ]; then
+            echo "Existing PR: ${existing_pr}"
+            exit 0
+          fi
+          if gh pr create \
+            --repo bash0816/ClaudeCode-Termux \
+            --base "${base}" \
+            --head "${branch}" \
+            --title "${title}" \
+            --body "${body}"; then
+            echo "Created candidate PR for ${branch}"
+          else
+            echo "PR create failed for ${branch}; continue with local gh fallback" >&2
+            exit 0
+          fi

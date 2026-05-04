@@ -1,0 +1,84 @@
+name: Promote Verified Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Verified Claude Code version to promote"
+        required: true
+        default: "2.1.122"
+      base_branch:
+        description: "Base branch for the promotion PR"
+        required: false
+        default: "dev"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.base_branch || 'main' }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Promote verified version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ inputs.version }}"
+          node scripts/promote-verified-version.js "${version}"
+          node scripts/update-release-manifest.js
+          node scripts/update-readme-version-guidance.js
+
+      - name: Commit promotion branch
+        id: branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ inputs.version }}"
+          branch="automation/promote-claude-${version}"
+          echo "branch=${branch}" >> "${GITHUB_OUTPUT}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "${branch}"
+          git add README.md config/claude-native-audited-versions.json config/claude-termux-release-manifest.json packages/claude-code/README.md packages/claude-code/config/claude-native-audited-versions.json packages/claude-code/config/claude-termux-release-manifest.json packages/claude-code/package.json
+          git commit -m "Promote Claude native ${version} to termux verified"
+          git push -u origin "${branch}" --force-with-lease
+
+      - name: Open promotion pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ inputs.version }}"
+          branch="${{ steps.branch.outputs.branch }}"
+          base="${{ inputs.base_branch || 'main' }}"
+          title="Promote Claude native ${version}"
+          body="$(cat <<EOF
+          Promotion candidate for Claude Code ${version}.
+
+          Expected operator action:
+          - Verify install on Termux device
+          - Verify launch and auth status
+          - Verify \`claude update\`
+          - Merge after review
+          EOF
+          )"
+          existing_pr="$(gh pr list --head "${branch}" --base "${base}" --state open --json url --jq '.[0].url // ""')"
+          if [ -n "${existing_pr}" ]; then
+            echo "Existing PR: ${existing_pr}"
+            exit 0
+          fi
+          gh pr create \
+            --base "${base}" \
+            --head "${branch}" \
+            --title "${title}" \
+            --body "${body}"

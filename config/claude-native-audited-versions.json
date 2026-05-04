@@ -1,0 +1,46 @@
+{
+  "versions": {
+    "2.1.118": {
+      "wrapper_spec": "@anthropic-ai/claude-code@2.1.118",
+      "native_spec": "@anthropic-ai/claude-code-linux-arm64@2.1.118",
+      "entry_js_offset": 224788180,
+      "entry_end_offset": 238022890,
+      "status": "termux_verified"
+    },
+    "2.1.119": {
+      "wrapper_spec": "@anthropic-ai/claude-code@2.1.119",
+      "native_spec": "@anthropic-ai/claude-code-linux-arm64@2.1.119",
+      "entry_js_offset": 229972324,
+      "entry_end_offset": 243693409,
+      "status": "termux_verified"
+    },
+    "2.1.121": {
+      "wrapper_spec": "@anthropic-ai/claude-code@2.1.121",
+      "native_spec": "@anthropic-ai/claude-code-linux-arm64@2.1.121",
+      "entry_js_offset": 231769700,
+      "entry_end_offset": 245677986,
+      "status": "termux_verified"
+    },
+    "2.1.122": {
+      "wrapper_spec": "@anthropic-ai/claude-code@2.1.122",
+      "native_spec": "@anthropic-ai/claude-code-linux-arm64@2.1.122",
+      "entry_js_offset": 232193716,
+      "entry_end_offset": 246143358,
+      "status": "termux_verified"
+    },
+    "2.1.123": {
+      "wrapper_spec": "@anthropic-ai/claude-code@2.1.123",
+      "native_spec": "@anthropic-ai/claude-code-linux-arm64@2.1.123",
+      "entry_js_offset": 232194756,
+      "entry_end_offset": 246144430,
+      "status": "termux_verified"
+    },
+    "2.1.126": {
+      "wrapper_spec": "@anthropic-ai/claude-code@2.1.126",
+      "native_spec": "@anthropic-ai/claude-code-linux-arm64@2.1.126",
+      "entry_js_offset": 232535252,
+      "entry_end_offset": 246515761,
+      "status": "termux_verified"
+    }
+  }
+}
