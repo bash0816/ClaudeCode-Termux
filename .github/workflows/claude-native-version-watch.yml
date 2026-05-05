@@ -20,8 +20,6 @@ jobs:
     env:
       BASE_BRANCH: dev
       REQUESTED_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '@latest' }}
-      CANDIDATE_WORKDIR: ${{ runner.temp }}/claude-native-candidate-work
-      PREPARE_JSON: ${{ runner.temp }}/claude-native-prepare.json
     steps:
       - uses: actions/checkout@v4
         with:
@@ -65,6 +63,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          CANDIDATE_WORKDIR="${RUNNER_TEMP}/claude-native-candidate-work"
+          PREPARE_JSON="${RUNNER_TEMP}/claude-native-prepare.json"
           rm -rf "${CANDIDATE_WORKDIR}"
           WORKDIR="${CANDIDATE_WORKDIR}" node scripts/termux-prepare-claude-native-version.js "@${{ steps.resolve_version.outputs.version }}" --json > "${PREPARE_JSON}"
 
@@ -73,6 +73,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          PREPARE_JSON="${RUNNER_TEMP}/claude-native-prepare.json"
           node scripts/add-candidate-metadata.js "${{ steps.resolve_version.outputs.version }}" "${PREPARE_JSON}"
 
       - name: Validate prepared metadata
