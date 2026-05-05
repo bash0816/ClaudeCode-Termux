@@ -11,37 +11,164 @@ on:
     - cron: "0 19 * * *"
 
 permissions:
-  contents: read
+  contents: write
+  pull-requests: write
 
 jobs:
-  check-native-candidate:
+  candidate-intake:
     runs-on: ubuntu-latest
+    env:
+      BASE_BRANCH: dev
+      REQUESTED_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '@latest' }}
+      CANDIDATE_WORKDIR: ${{ runner.temp }}/claude-native-candidate-work
+      PREPARE_JSON: ${{ runner.temp }}/claude-native-prepare.json
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref_name }}
+          ref: dev
+          fetch-depth: 0
+          persist-credentials: true
 
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+          registry-url: "https://registry.npmjs.org"
 
       - name: Resolve version
-        id: version
+        id: resolve_version
         shell: bash
         run: |
           set -euo pipefail
-          requested="${{ github.event.inputs.version || '@latest' }}"
+          requested="${REQUESTED_VERSION}"
           case "${requested}" in
-            @latest|latest) version="$(npm view @anthropic-ai/claude-code version)" ;;
+            @latest|latest|@anthropic-ai/claude-code@latest) version="$(npm view @anthropic-ai/claude-code version)" ;;
             @anthropic-ai/claude-code@*) version="${requested##*@}" ;;
             @*) version="${requested#@}" ;;
             *) version="${requested}" ;;
           esac
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
 
-      - name: Check audited version status
+      - name: Skip existing audited version
+        id: skip_existing
         shell: bash
         run: |
           set -euo pipefail
-          version="${{ steps.version.outputs.version }}"
-          node -e 'const fs=require("fs"); const j=JSON.parse(fs.readFileSync("config/claude-native-audited-versions.json","utf8")); if (!j.versions[process.argv[1]]) { process.exit(1); }' "${version}"
+          version="${{ steps.resolve_version.outputs.version }}"
+          should_intake="$(node -e 'const fs=require("fs"); const j=JSON.parse(fs.readFileSync("config/claude-native-audited-versions.json","utf8")); process.stdout.write(j.versions[process.argv[1]] ? "false" : "true");' "${version}")"
+          echo "should_intake=${should_intake}" >> "${GITHUB_OUTPUT}"
+          if [ "${should_intake}" = "false" ]; then
+            echo "Version already exists in audited metadata: ${version}"
+          fi
+
+      - name: Prepare artifact and discover offsets
+        if: steps.skip_existing.outputs.should_intake == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "${CANDIDATE_WORKDIR}"
+          WORKDIR="${CANDIDATE_WORKDIR}" node scripts/termux-prepare-claude-native-version.js "@${{ steps.resolve_version.outputs.version }}" --json > "${PREPARE_JSON}"
+
+      - name: Add candidate metadata
+        if: steps.skip_existing.outputs.should_intake == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/add-candidate-metadata.js "${{ steps.resolve_version.outputs.version }}" "${PREPARE_JSON}"
+
+      - name: Validate prepared metadata
+        if: steps.skip_existing.outputs.should_intake == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.resolve_version.outputs.version }}"
+          node - "${version}" <<'NODE'
+          const fs = require('fs');
+          const version = process.argv[2];
+          const rootConfig = JSON.parse(fs.readFileSync('config/claude-native-audited-versions.json', 'utf8'));
+          const packageConfig = JSON.parse(fs.readFileSync('packages/claude-code/config/claude-native-audited-versions.json', 'utf8'));
+          const packageFile = JSON.parse(fs.readFileSync('packages/claude-code/package.json', 'utf8'));
+          const entry = rootConfig.versions[version];
+          if (!entry) throw new Error(`missing candidate metadata: ${version}`);
+          if (entry.status !== 'offset_discovered') throw new Error(`unexpected candidate status: ${entry.status}`);
+          if (!packageConfig.versions[version]) throw new Error(`package config missing candidate metadata: ${version}`);
+          if (packageFile.version !== version) throw new Error(`package version mismatch: ${packageFile.version}`);
+          NODE
+
+      - name: Update release manifest
+        if: steps.skip_existing.outputs.should_intake == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/update-release-manifest.js
+
+      - name: Update README guidance
+        if: steps.skip_existing.outputs.should_intake == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/update-readme-version-guidance.js
+
+      - name: Check duplicate branch / open PR
+        if: steps.skip_existing.outputs.should_intake == 'true'
+        id: duplicate_guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.resolve_version.outputs.version }}"
+          candidate_branch="automation/native-claude-${version}"
+          branch_exists="$(git ls-remote --heads origin "${candidate_branch}" | wc -l | tr -d " ")"
+          open_pr_count="$(gh pr list --repo "${GITHUB_REPOSITORY}" --state open --head "${candidate_branch}" --json number --jq 'length')"
+          if [ "${branch_exists}" -gt 0 ] || [ "${open_pr_count}" -gt 0 ]; then
+            echo "should_publish_branch=false" >> "${GITHUB_OUTPUT}"
+            echo "Existing candidate branch or PR already exists for ${candidate_branch}"
+          else
+            echo "should_publish_branch=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Commit candidate intake changes
+        if: steps.skip_existing.outputs.should_intake == 'true' && steps.duplicate_guard.outputs.should_publish_branch == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.resolve_version.outputs.version }}"
+          candidate_branch="automation/native-claude-${version}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B "${candidate_branch}"
+          git add \
+            README.md \
+            config/claude-native-audited-versions.json \
+            config/claude-termux-release-manifest.json \
+            packages/claude-code/README.md \
+            packages/claude-code/config/claude-native-audited-versions.json \
+            packages/claude-code/config/claude-termux-release-manifest.json \
+            packages/claude-code/package.json
+          git commit -m "Intake native Claude ${version}"
+
+      - name: Push candidate branch
+        if: steps.skip_existing.outputs.should_intake == 'true' && steps.duplicate_guard.outputs.should_publish_branch == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.resolve_version.outputs.version }}"
+          candidate_branch="automation/native-claude-${version}"
+          git push -u origin "${candidate_branch}"
+
+      - name: Create candidate PR best-effort
+        if: steps.skip_existing.outputs.should_intake == 'true' && steps.duplicate_guard.outputs.should_publish_branch == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.resolve_version.outputs.version }}"
+          candidate_branch="automation/native-claude-${version}"
+          gh pr create \
+            --repo "${GITHUB_REPOSITORY}" \
+            --base "${BASE_BRANCH}" \
+            --head "${candidate_branch}" \
+            --title "Intake native Claude ${version}" \
+            --body "Automated candidate intake for ${version}."
