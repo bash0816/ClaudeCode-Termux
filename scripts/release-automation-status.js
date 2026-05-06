@@ -61,14 +61,16 @@ function loadManifestFromGit(cwd, ref) {
 }
 
 function listRemoteBranches(prefix) {
-  const result = run('git', ['for-each-ref', '--format=%(refname:short)', `refs/remotes/origin/${prefix}`]);
+  const result = run('git', ['for-each-ref', '--format=%(refname:short)', 'refs/remotes/origin']);
   return result.stdout ? result.stdout.split('\n').map(line => line.trim()).filter(Boolean) : [];
 }
 
 function extractVersionFromBranch(branch, prefix) {
   const marker = `origin/${prefix}`;
   if (!branch.startsWith(marker)) return '';
-  return branch.slice(marker.length);
+  const tail = branch.slice(marker.length);
+  if (!/^\d+(?:\.\d+){1,2}(?:[-+][0-9A-Za-z.-]+)?$/.test(tail)) return '';
+  return tail;
 }
 
 function maxVersion(versions) {
