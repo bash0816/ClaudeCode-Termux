@@ -39,6 +39,10 @@ read_json_field() {
   node -e 'const fs=require("fs"); const j=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); const v=j[process.argv[2]]; process.stdout.write(v === undefined ? "" : String(v));' "$1" "$2"
 }
 
+read_git_config() {
+  git -C "${REPO_ROOT}" config --get "$1" 2>/dev/null || true
+}
+
 candidate_version=$(read_json_field "${status_json}" latest_candidate_version)
 audited_version=$(read_json_field "${status_json}" latest_audited_version)
 published_version=$(read_json_field "${status_json}" published_version)
@@ -102,6 +106,20 @@ EOF
   cat "${result_json}"
   exit 0
 fi
+
+git_user_name=$(read_git_config user.name)
+git_user_email=$(read_git_config user.email)
+
+if [ -z "${git_user_name}" ] || [ -z "${git_user_email}" ]; then
+  cat > "${result_json}" <<EOF
+{"mode":"no_action","candidate_version":"${candidate_version}","audited_version":"${audited_version}","published_version":"${published_version}","verification_passed":false,"promotion_dispatched":false,"publish_dispatched":false,"notes":["identity missing; stopped before verification","user_name_present=$([ -n "${git_user_name}" ] && printf true || printf false)","user_email_present=$([ -n "${git_user_email}" ] && printf true || printf false)","state_file=${local_state_file}"]} 
+EOF
+  cat "${result_json}"
+  exit 0
+fi
+
+git -C "${run_dir}/repo" config user.name "${git_user_name}"
+git -C "${run_dir}/repo" config user.email "${git_user_email}"
 
 if ! git -C "${run_dir}/repo" show-ref --verify --quiet "refs/remotes/${candidate_remote_ref}"; then
   cat > "${result_json}" <<EOF
