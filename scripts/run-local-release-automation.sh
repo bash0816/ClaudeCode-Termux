@@ -12,6 +12,7 @@ STATE_FILE="${CLAUDE_TERMUX_STATE_FILE:-${STATE_ROOT}/canonical-release-state.js
 SCHEMA_FILE="${REPO_ROOT}/scripts/codex-release-automation-output.schema.json"
 SOURCE_REF="${CLAUDE_TERMUX_AUTOMATION_SOURCE_REF:-main}"
 BASE_BRANCH="${CLAUDE_TERMUX_AUTOMATION_BASE_BRANCH:-dev}"
+LEGACY_SYNC_SCRIPT="${REPO_ROOT}/scripts/sync-legacy-metadata.sh"
 DRY_RUN=0
 
 if [ "${1:-}" = "--dry-run" ]; then
@@ -41,6 +42,11 @@ read_json_field() {
 
 read_git_config() {
   git -C "${REPO_ROOT}" config --get "$1" 2>/dev/null || true
+}
+
+is_valid_json_file() {
+  [ -f "$1" ] || return 1
+  node -e 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));' "$1" >/dev/null 2>&1
 }
 
 candidate_version=$(read_json_field "${status_json}" latest_candidate_version)
@@ -92,6 +98,24 @@ apply_result_state() {
 }
 
 if [ "${needs_verification}" != "true" ]; then
+  if [ "${needs_publish}" != "true" ] && [ "${needs_legacy_sync}" = "true" ]; then
+    if [ "${DRY_RUN}" -eq 1 ]; then
+      sh "${LEGACY_SYNC_SCRIPT}" --dry-run "${audited_version}"
+      exit 0
+    fi
+    helper_status=0
+    sh "${LEGACY_SYNC_SCRIPT}" "${audited_version}" > "${result_json}" || helper_status=$?
+    if [ "${helper_status}" -ne 0 ]; then
+      if ! is_valid_json_file "${result_json}"; then
+        cat > "${result_json}" <<EOF
+{"mode":"legacy_sync","audited_version":"${audited_version}","legacy_sync_completed":false,"legacy_sync_branch":"","legacy_sync_stage":"error","legacy_sync_prs":[],"notes":["legacy sync helper failed without valid result json"]} 
+EOF
+      fi
+    fi
+    cat "${result_json}"
+    [ "${helper_status}" -eq 0 ] || exit "${helper_status}"
+    exit 0
+  fi
   note="no candidate verification required"
   if [ "${local_verification_locked}" = "true" ]; then
     note="candidate verification locked by local state"
