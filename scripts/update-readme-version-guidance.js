@@ -56,6 +56,13 @@ function replaceToEnd(content, start, replacement, fileLabel) {
   return content.slice(0, searchIndex) + replacement;
 }
 
+function maybeReplaceBetween(content, start, end, replacement) {
+  if (!content.includes(start) || !content.includes(end)) {
+    return content;
+  }
+  return replaceBetween(content, start, end, replacement, 'optional section');
+}
+
 function formatShellBlock(lines) {
   return `\`\`\`sh\n${lines.join('\n')}\n\`\`\``;
 }
@@ -125,7 +132,7 @@ function updateRootReadme(content, versions, latestAudited) {
   content = replaceBetween(
     content,
     'Expected version output:\n\n期待値:\n\n',
-    '\n## Package Development / package 開発\n',
+    '\n## Do Not Use / 非推奨\n',
     expectedBlock,
     'README.md expected output'
   );
@@ -135,12 +142,11 @@ function updateRootReadme(content, versions, latestAudited) {
     '',
   ].join('\n');
 
-  content = replaceBetween(
+  content = maybeReplaceBetween(
     content,
     'For development and verification, the launcher can switch between audited versions from the same package.\n\n開発・検証時のみ、同じ package から監査済み version を切り替えられます。\n\n',
     '\n## Native Version Metadata / native metadata\n',
-    overrideBlock,
-    'README.md override examples'
+    overrideBlock
   );
 
   return content;
@@ -159,7 +165,7 @@ function updatePackageReadme(content, versions) {
   content = replaceBetween(
     content,
     'Specific audited versions:\n\n監査済みの固定 version:\n\n',
-    '\nDevelopment override:\n',
+    '\n## Update / 更新\n',
     installBlock,
     'packages/claude-code/README.md install examples'
   );
@@ -169,12 +175,11 @@ function updatePackageReadme(content, versions) {
     '',
   ].join('\n');
 
-  content = replaceBetween(
+  content = maybeReplaceBetween(
     content,
     'Development override:\n\n開発・検証用 override:\n\n',
     '\n## Update / 更新\n',
-    overrideBlock,
-    'packages/claude-code/README.md override examples'
+    overrideBlock
   );
 
   const policySection = [
