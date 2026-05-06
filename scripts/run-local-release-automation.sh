@@ -12,7 +12,6 @@ STATE_FILE="${CLAUDE_TERMUX_STATE_FILE:-${STATE_ROOT}/canonical-release-state.js
 SCHEMA_FILE="${REPO_ROOT}/scripts/codex-release-automation-output.schema.json"
 SOURCE_REF="${CLAUDE_TERMUX_AUTOMATION_SOURCE_REF:-main}"
 BASE_BRANCH="${CLAUDE_TERMUX_AUTOMATION_BASE_BRANCH:-dev}"
-WORKFLOW_REF="${CLAUDE_TERMUX_AUTOMATION_WORKFLOW_REF:-main}"
 DRY_RUN=0
 
 if [ "${1:-}" = "--dry-run" ]; then
@@ -48,6 +47,8 @@ needs_publish=$(read_json_field "${status_json}" needs_publish)
 needs_legacy_sync=$(read_json_field "${status_json}" needs_legacy_sync)
 local_verification_locked=$(read_json_field "${status_json}" local_verification_locked)
 local_state_file=$(read_json_field "${status_json}" local_state_file)
+candidate_branch="automation/native-claude-${candidate_version}"
+candidate_remote_ref="origin/${candidate_branch}"
 
 write_state() {
   version="$1"
@@ -93,7 +94,7 @@ if [ "${needs_verification}" != "true" ]; then
   elif [ "${needs_publish}" = "true" ]; then
     note="canonical publish pending in GitHub Actions follow-up"
   elif [ "${needs_legacy_sync}" = "true" ]; then
-    note="legacy sync pending in GitHub Actions follow-up"
+    note="follow-up pending in GitHub Actions"
   fi
   cat > "${result_json}" <<EOF
 {"mode":"no_action","candidate_version":null,"audited_version":"${audited_version}","published_version":"${published_version}","verification_passed":false,"promotion_dispatched":false,"publish_dispatched":false,"notes":["${note}","state_file=${local_state_file}"]} 
@@ -102,25 +103,43 @@ EOF
   exit 0
 fi
 
+if ! git -C "${run_dir}/repo" show-ref --verify --quiet "refs/remotes/${candidate_remote_ref}"; then
+  cat > "${result_json}" <<EOF
+{"mode":"no_action","candidate_version":"${candidate_version}","audited_version":"${audited_version}","published_version":"${published_version}","verification_passed":false,"promotion_dispatched":false,"publish_dispatched":false,"notes":["candidate branch missing; stopped before verification","branch=${candidate_branch}","state_file=${local_state_file}"]} 
+EOF
+  cat "${result_json}"
+  exit 0
+fi
+
+git -C "${run_dir}/repo" checkout -B "${candidate_branch}" "${candidate_remote_ref}" >/dev/null 2>&1
+
 prompt_file="${log_dir}/prompt.txt"
 cat > "${prompt_file}" <<EOF
 Use skill cluade-termux-release-cicd.
 
 Facts:
 - Repository: ${run_dir}/repo
+- Repository checked out at candidate branch: ${candidate_branch}
 - Latest audited version on main manifest: ${audited_version}
 - Latest candidate version on main manifest: ${candidate_version}
 - Promotion target base branch: ${BASE_BRANCH}
-- Promotion workflow ref: ${WORKFLOW_REF}
 - Local state file: ${local_state_file}
 
 Task:
-1. Verify candidate version ${candidate_version} on this Termux environment.
+1. Verify candidate version ${candidate_version} on checked out candidate branch ${candidate_branch}.
 2. Run prepare-native, claude --version, claude auth status, claude update --dry-run, and temp-prefix npm install checks through the wrapper path.
 3. If and only if all checks pass, run:
-   gh workflow run promote-verified-candidate.yml --repo bash0816/ClaudeCode-Termux --ref ${WORKFLOW_REF} -f version=${candidate_version} -f base_branch=${BASE_BRANCH}
-4. Do not push code changes.
+   node scripts/promote-verified-version.js ${candidate_version}
+   node scripts/update-release-manifest.js
+   node scripts/update-readme-version-guidance.js
+   git add README.md config/claude-native-audited-versions.json config/claude-termux-release-manifest.json packages/claude-code/README.md packages/claude-code/config/claude-native-audited-versions.json packages/claude-code/config/claude-termux-release-manifest.json packages/claude-code/package.json
+   git commit -m "Promote native Claude ${candidate_version}"
+   git push --force-with-lease origin ${candidate_branch}
+   if no open PR exists, gh pr create --repo bash0816/ClaudeCode-Termux --base ${BASE_BRANCH} --head ${candidate_branch}
+4. Do not use the removed workflow or any publish/legacy sync path.
 5. Final answer must be JSON matching the provided schema.
+6. Set promotion_dispatched=true only when the local branch / PR handoff is prepared.
+7. If promotion_dispatched=true, notes must explicitly say it means local branch/PR handoff prepared and not GitHub workflow dispatch.
 EOF
 
 if [ "${DRY_RUN}" -eq 1 ]; then
