@@ -73,6 +73,17 @@ function ensureEntryFile() {
   return extractedFile;
 }
 
+function stringWidth(value) {
+  const text = String(value ?? '');
+  if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
+    const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' });
+    let width = 0;
+    for (const _segment of segmenter.segment(text)) width += 1;
+    return width;
+  }
+  return Array.from(text).length;
+}
+
 function createFakeRequire(realRequire) {
   const realChild = realRequire('child_process');
   function rewriteArgs(args) {
@@ -140,7 +151,7 @@ async function main() {
     process.once('uncaughtException', onAsyncError);
     process.once('unhandledRejection', onAsyncError);
     Object.defineProperty(process.versions, 'bun', { value: '1.1.8', configurable: true });
-    globalThis.Bun = { version: '1.1.8' };
+    globalThis.Bun = { version: '1.1.8', stringWidth };
     process.argv = ['node', extractedFile, ...argv];
     process.exit = code => {
       throw new RequestedExit(code);
