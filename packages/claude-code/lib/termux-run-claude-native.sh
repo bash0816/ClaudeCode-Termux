@@ -6,6 +6,7 @@ WORKDIR="${WORKDIR:-${HOME}/.claude-termux-native-package/launcher-workdir}"
 ENTRY_JS_OFFSET="${ENTRY_JS_OFFSET:?ENTRY_JS_OFFSET is required}"
 ENTRY_END_OFFSET="${ENTRY_END_OFFSET:?ENTRY_END_OFFSET is required}"
 CURRENT_CLAUDE_VERSION="${CURRENT_CLAUDE_VERSION:?CURRENT_CLAUDE_VERSION is required}"
+CLAUDE_TERMUX_PACKAGE_DIR="${CLAUDE_TERMUX_PACKAGE_DIR:?CLAUDE_TERMUX_PACKAGE_DIR is required}"
 TERMUX_TMPDIR="${TMPDIR:-/data/data/com.termux/files/usr/tmp}"
 SSL_CERT_DIR="${SSL_CERT_DIR:-/data/data/com.termux/files/usr/etc/tls}"
 SSL_CERT_FILE="${SSL_CERT_FILE:-/data/data/com.termux/files/usr/etc/tls/cert.pem}"
@@ -42,6 +43,10 @@ export CURRENT_CLAUDE_VERSION
 node - "$@" <<'NODE'
 const fs = require('fs');
 const path = require('path');
+const {
+  BLOCK_MESSAGE,
+  createGuardedChildProcess,
+} = require(path.join(process.env.CLAUDE_TERMUX_PACKAGE_DIR, 'lib', 'native-update-guard.js'));
 
 const sourceBin = process.env.SOURCE_BIN;
 const workdir = process.env.WORKDIR;
@@ -86,6 +91,7 @@ function stringWidth(value) {
 
 function createFakeRequire(realRequire) {
   const realChild = realRequire('child_process');
+
   function rewriteArgs(args) {
     if (
       Array.isArray(args) &&
@@ -97,6 +103,18 @@ function createFakeRequire(realRequire) {
     }
     return args;
   }
+
+  const guardedChild = createGuardedChildProcess(
+    {
+      spawn: (...args) => realChild.spawn(...rewriteArgs(args)),
+      execFile: (...args) => realChild.execFile(...args),
+      exec: (...args) => realChild.exec(...args),
+      spawnSync: (...args) => realChild.spawnSync(...rewriteArgs(args)),
+      execFileSync: (...args) => realChild.execFileSync(...args),
+      execSync: (...args) => realChild.execSync(...args),
+    },
+    value => process.stderr.write(value),
+  );
 
   return function fakeRequire(id) {
     if (id === 'ws') {
@@ -112,14 +130,11 @@ function createFakeRequire(realRequire) {
     }
 
     if (id === 'child_process') {
-      return {
-        spawn: (...args) => realChild.spawn(...rewriteArgs(args)),
-        execFile: (...args) => realChild.execFile(...args),
-        exec: (...args) => realChild.exec(...args),
-        spawnSync: (...args) => realChild.spawnSync(...rewriteArgs(args)),
-        execFileSync: (...args) => realChild.execFileSync(...args),
-        execSync: (...args) => realChild.execSync(...args),
-      };
+      return guardedChild;
+    }
+
+    if (id === 'node:child_process') {
+      return guardedChild;
     }
 
     if (id.startsWith('/$bunfs/root/')) {
@@ -186,6 +201,10 @@ async function main() {
 }
 
 main().catch(error => {
+  if (error && error.code === 'CLAUDE_TERMUX_OFFICIAL_UPDATE_BLOCKED') {
+    console.error(BLOCK_MESSAGE);
+    process.exit(error.status || 1);
+  }
   console.error(error && error.stack ? error.stack : String(error));
   process.exit(1);
 });
