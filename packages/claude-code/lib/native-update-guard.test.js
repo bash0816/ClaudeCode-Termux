@@ -47,6 +47,71 @@ test('does not block unrelated exec string', () => {
   );
 });
 
+test('blocks env npm install of official package', () => {
+  assert.equal(
+    shouldBlockCommand('env', ['FOO=bar', 'npm', 'install', '-g', '@anthropic-ai/claude-code@latest']),
+    true,
+  );
+});
+
+test('blocks npx official package invocation', () => {
+  assert.equal(shouldBlockCommand('npx', ['@anthropic-ai/claude-code']), true);
+});
+
+test('blocks npx package option official package invocation', () => {
+  assert.equal(shouldBlockCommand('npx', ['-p', '@anthropic-ai/claude-code', 'claude']), true);
+  assert.equal(shouldBlockCommand('npx', ['--package=@anthropic-ai/claude-code', 'claude']), true);
+});
+
+test('blocks pnpm add of official package', () => {
+  assert.equal(
+    shouldBlockCommand('pnpm', ['add', '-g', '@anthropic-ai/claude-code']),
+    true,
+  );
+});
+
+test('blocks yarn global add of official package', () => {
+  assert.equal(
+    shouldBlockCommand('yarn', ['global', 'add', '@anthropic-ai/claude-code']),
+    true,
+  );
+});
+
+test('blocks corepack pnpm add of official package', () => {
+  assert.equal(
+    shouldBlockCommand('corepack', ['pnpm', 'add', '-g', '@anthropic-ai/claude-code']),
+    true,
+  );
+});
+
+test('blocks corepack yarn global add of official package', () => {
+  assert.equal(
+    shouldBlockCommand('corepack', ['yarn', 'global', 'add', '@anthropic-ai/claude-code']),
+    true,
+  );
+});
+
+test('does not block corepack pnpm add of canonical package', () => {
+  assert.equal(
+    shouldBlockCommand('corepack', ['pnpm', 'add', '-g', '@bash0816/claude-code@2.1.137']),
+    false,
+  );
+});
+
+test('blocks exec string through env npm', () => {
+  assert.equal(
+    shouldBlockExecString('env FOO=bar npm install -g @anthropic-ai/claude-code@latest'),
+    true,
+  );
+});
+
+test('blocks exec string through corepack yarn', () => {
+  assert.equal(
+    shouldBlockExecString('corepack yarn global add @anthropic-ai/claude-code'),
+    true,
+  );
+});
+
 function createRealChildStub() {
   const calls = [];
   return {
