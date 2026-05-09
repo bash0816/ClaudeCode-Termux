@@ -121,15 +121,23 @@ jobs:
           candidate_branch="automation/native-claude-${version}"
           branch_exists="$(git ls-remote --heads origin "${candidate_branch}" | wc -l | tr -d " ")"
           open_pr_count="$(gh pr list --repo "${GITHUB_REPOSITORY}" --state open --head "${candidate_branch}" --json number --jq 'length')"
+          competing_open_count="$(gh pr list --repo "${GITHUB_REPOSITORY}" --state open --json headRefName --jq '[.[] | select(.headRefName | startswith("automation/native-claude-")) | select(.headRefName != "'"${candidate_branch}"'")] | length')"
           if [ "${branch_exists}" -gt 0 ] || [ "${open_pr_count}" -gt 0 ]; then
-            echo "should_publish_branch=false" >> "${GITHUB_OUTPUT}"
+            echo "should_commit_branch=false" >> "${GITHUB_OUTPUT}"
+            echo "should_open_pr=false" >> "${GITHUB_OUTPUT}"
             echo "Existing candidate branch or PR already exists for ${candidate_branch}"
           else
-            echo "should_publish_branch=true" >> "${GITHUB_OUTPUT}"
+            echo "should_commit_branch=true" >> "${GITHUB_OUTPUT}"
+            if [ "${competing_open_count}" -gt 0 ]; then
+              echo "should_open_pr=false" >> "${GITHUB_OUTPUT}"
+              echo "Another candidate PR is still open; queue ${candidate_branch} as branch-only"
+            else
+              echo "should_open_pr=true" >> "${GITHUB_OUTPUT}"
+            fi
           fi
 
       - name: Commit candidate intake changes
-        if: steps.skip_existing.outputs.should_intake == 'true' && steps.duplicate_guard.outputs.should_publish_branch == 'true'
+        if: steps.skip_existing.outputs.should_intake == 'true' && steps.duplicate_guard.outputs.should_commit_branch == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -149,7 +157,7 @@ jobs:
           git commit -m "Intake native Claude ${version}"
 
       - name: Push candidate branch
-        if: steps.skip_existing.outputs.should_intake == 'true' && steps.duplicate_guard.outputs.should_publish_branch == 'true'
+        if: steps.skip_existing.outputs.should_intake == 'true' && steps.duplicate_guard.outputs.should_commit_branch == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -158,7 +166,7 @@ jobs:
           git push -u origin "${candidate_branch}"
 
       - name: Create candidate PR best-effort
-        if: steps.skip_existing.outputs.should_intake == 'true' && steps.duplicate_guard.outputs.should_publish_branch == 'true'
+        if: steps.skip_existing.outputs.should_intake == 'true' && steps.duplicate_guard.outputs.should_commit_branch == 'true' && steps.duplicate_guard.outputs.should_open_pr == 'true'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
