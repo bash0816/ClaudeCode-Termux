@@ -41,6 +41,11 @@ function isCorepackCommand(command) {
   return lastPathSegment(command) === 'corepack';
 }
 
+function isShellCommand(command) {
+  const leaf = lastPathSegment(command);
+  return leaf === 'sh' || leaf === 'bash';
+}
+
 function isSupportedOperation(value) {
   return ['install', 'i', 'add', 'update', 'up', 'upgrade'].includes(String(value || ''));
 }
@@ -120,6 +125,15 @@ function normalizeTokensForExec(tokens) {
   return [normalized.command, ...normalized.args].filter(value => value !== undefined);
 }
 
+function unwrapShellCommand(command, args) {
+  if (!isShellCommand(command) || !Array.isArray(args) || args.length < 2) return null;
+  const first = String(args[0] || '');
+  const second = String(args[1] || '');
+  if ((first === '-c' || first === '-lc') && second) return second;
+  if (first === '-l' && String(args[1] || '') === '-c' && String(args[2] || '')) return String(args[2]);
+  return null;
+}
+
 function tokenizeShellString(command) {
   const text = String(command || '').trim();
   if (!text) return [];
@@ -139,6 +153,8 @@ function unquote(token) {
 function shouldBlockExecString(command) {
   const tokens = normalizeTokensForExec(tokenizeShellString(command).map(unquote));
   if (tokens.length === 0) return false;
+  const shellInner = unwrapShellCommand(tokens[0], tokens.slice(1));
+  if (shellInner) return shouldBlockExecString(shellInner);
   return shouldBlockCommand(tokens[0], tokens.slice(1));
 }
 
@@ -197,6 +213,8 @@ function shouldBlockSpawnArgs(args) {
   if (!Array.isArray(args) || args.length === 0) return false;
   const command = args[0];
   const commandArgs = Array.isArray(args[1]) ? args[1] : [];
+  const shellInner = unwrapShellCommand(command, commandArgs);
+  if (shellInner) return shouldBlockExecString(shellInner);
   return shouldBlockCommand(command, commandArgs);
 }
 
