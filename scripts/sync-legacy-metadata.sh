@@ -5,6 +5,7 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 CANONICAL_REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
 LEGACY_REPO_ROOT="${CLAUDE_TERMUX_LEGACY_REPO_ROOT:-${HOME}/CluadeCode-Termux-public}"
 LEGACY_REPO_SLUG="${CLAUDE_TERMUX_LEGACY_REPO_SLUG:-bash0816/CluadeCode-Termux}"
+CANONICAL_SOURCE_REF="${CLAUDE_TERMUX_CANONICAL_SOURCE_REF:-origin/main}"
 DRY_RUN=0
 ACTIVE_LEGACY_REPO_ROOT="${LEGACY_REPO_ROOT}"
 TMP_REPO_ROOT=""
@@ -218,7 +219,14 @@ ensure_pr_merged() {
   body="$4"
   temp_branch="$5"
 
-  record=$(read_pr_record "${base}" "${head}" || true)
+  effective_head="${head}"
+
+  if [ -n "${temp_branch}" ] && [ "${DRY_RUN}" -ne 1 ]; then
+    prepare_temp_promotion_branch "${temp_branch}" "${base}" "${head}"
+    effective_head="${temp_branch}"
+  fi
+
+  record=$(read_pr_record "${base}" "${effective_head}" || true)
   state=$(pr_state "${record}")
   number=$(pr_number "${record}")
   url=$(pr_url "${record}")
@@ -231,28 +239,17 @@ ensure_pr_merged() {
 
   if [ "${state}" = "MERGED" ]; then
     [ -n "${url}" ] && add_pr "${url}"
-    add_note "already merged ${head} -> ${base}"
+    add_note "already merged ${effective_head} -> ${base}"
     return
   fi
 
   if [ -z "${number}" ]; then
-    create_output=$(create_pr "${base}" "${head}" "${title}" "${body}" || true)
-    if printf '%s' "${create_output}" | grep -q "No commits between"; then
-      [ -n "${temp_branch}" ] || fail "pr create no-commits without fallback branch: ${head} -> ${base}"
-      add_note "using fallback branch ${temp_branch} for ${head} -> ${base}"
-      prepare_temp_promotion_branch "${temp_branch}" "${base}" "${head}"
-      head="${temp_branch}"
-      record=$(read_pr_record "${base}" "${head}" || true)
-      number=$(pr_number "${record}")
-      if [ -z "${number}" ]; then
-        create_output=$(create_pr "${base}" "${head}" "${title}" "${body}" || true)
-      fi
-    fi
-    record=$(read_pr_record "${base}" "${head}" || true)
+    create_output=$(create_pr "${base}" "${effective_head}" "${title}" "${body}" || true)
+    record=$(read_pr_record "${base}" "${effective_head}" || true)
     number=$(pr_number "${record}")
     state=$(pr_state "${record}")
     url=$(pr_url "${record}")
-    [ -n "${number}" ] || fail "pr create failed: ${head} -> ${base}"
+    [ -n "${number}" ] || fail "pr create failed: ${effective_head} -> ${base}"
   fi
 
   [ -n "${url}" ] && add_pr "${url}"
@@ -288,6 +285,7 @@ if [ "${DRY_RUN}" -eq 1 ]; then
 fi
 
 git -C "${ACTIVE_LEGACY_REPO_ROOT}" fetch --prune origin >/dev/null 2>&1 || fail "legacy fetch failed"
+git -C "${CANONICAL_REPO_ROOT}" fetch --prune origin >/dev/null 2>&1 || fail "canonical fetch failed"
 ensure_clean_worktree
 git -C "${ACTIVE_LEGACY_REPO_ROOT}" config user.name "${git_user_name}"
 git -C "${ACTIVE_LEGACY_REPO_ROOT}" config user.email "${git_user_email}"
@@ -305,7 +303,7 @@ SYNC_BRANCH="${feature_branch}"
 
 git -C "${ACTIVE_LEGACY_REPO_ROOT}" checkout -B "${feature_branch}" "origin/main" >/dev/null 2>&1
 
-CLAUDE_TERMUX_LEGACY_REPO_ROOT="${ACTIVE_LEGACY_REPO_ROOT}" node "${CANONICAL_REPO_ROOT}/scripts/sync-legacy-metadata.js" || fail "legacy metadata sync failed"
+CLAUDE_TERMUX_LEGACY_REPO_ROOT="${ACTIVE_LEGACY_REPO_ROOT}" CLAUDE_TERMUX_CANONICAL_SOURCE_REF="${CANONICAL_SOURCE_REF}" node "${CANONICAL_REPO_ROOT}/scripts/sync-legacy-metadata.js" || fail "legacy metadata sync failed"
 node "${ACTIVE_LEGACY_REPO_ROOT}/scripts/update-release-manifest.js" || fail "legacy manifest update failed"
 node "${ACTIVE_LEGACY_REPO_ROOT}/scripts/update-readme-version-guidance.js" || fail "legacy readme update failed"
 
