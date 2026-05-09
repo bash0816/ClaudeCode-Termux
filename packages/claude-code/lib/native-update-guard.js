@@ -19,6 +19,28 @@ function isNpmCommand(command) {
   return leaf === 'npm' || leaf === 'npm-cli.js';
 }
 
+function isPnpmCommand(command) {
+  return lastPathSegment(command) === 'pnpm';
+}
+
+function isYarnCommand(command) {
+  const leaf = lastPathSegment(command);
+  return leaf === 'yarn' || leaf === 'yarnpkg';
+}
+
+function isNpxCommand(command) {
+  const leaf = lastPathSegment(command);
+  return leaf === 'npx' || leaf === 'pnpx';
+}
+
+function isEnvCommand(command) {
+  return lastPathSegment(command) === 'env';
+}
+
+function isCorepackCommand(command) {
+  return lastPathSegment(command) === 'corepack';
+}
+
 function isSupportedOperation(value) {
   return ['install', 'i', 'add', 'update', 'up', 'upgrade'].includes(String(value || ''));
 }
@@ -27,11 +49,75 @@ function isOfficialTarget(value) {
   return String(value || '') === OFFICIAL_PACKAGE || String(value || '').startsWith(`${OFFICIAL_PACKAGE}@`);
 }
 
-function shouldBlockCommand(command, args) {
-  if (!isNpmCommand(command) || !Array.isArray(args)) return false;
-  const operation = args.find(isSupportedOperation);
-  if (!operation) return false;
+function normalizeCommand(command, args) {
+  let normalizedCommand = command;
+  let normalizedArgs = Array.isArray(args) ? args.slice() : [];
+
+  if (isEnvCommand(normalizedCommand)) {
+    while (normalizedArgs.length > 0 && /^[A-Za-z_][A-Za-z0-9_]*=.*/.test(String(normalizedArgs[0]))) {
+      normalizedArgs.shift();
+    }
+    if (normalizedArgs.length === 0) return { command: normalizedCommand, args: normalizedArgs };
+    normalizedCommand = normalizedArgs.shift();
+  }
+
+  if (isCorepackCommand(normalizedCommand)) {
+    if (normalizedArgs.length === 0) return { command: normalizedCommand, args: normalizedArgs };
+    normalizedCommand = normalizedArgs.shift();
+  }
+
+  return { command: normalizedCommand, args: normalizedArgs };
+}
+
+function hasOfficialTarget(args) {
   return args.some(isOfficialTarget);
+}
+
+function shouldBlockNpmLike(command, args) {
+  if (!(isNpmCommand(command) || isPnpmCommand(command))) return false;
+  if (!args.find(isSupportedOperation)) return false;
+  return hasOfficialTarget(args);
+}
+
+function shouldBlockYarn(command, args) {
+  if (!isYarnCommand(command)) return false;
+  return String(args[0] || '') === 'global' && String(args[1] || '') === 'add' && hasOfficialTarget(args.slice(2));
+}
+
+function shouldBlockNpx(command, args) {
+  if (!isNpxCommand(command)) return false;
+  for (let index = 0; index < args.length; index += 1) {
+    const token = String(args[index] || '');
+    if (token === '-p' || token === '--package') {
+      if (isOfficialTarget(args[index + 1])) return true;
+      index += 1;
+      continue;
+    }
+    if (token.startsWith('--package=')) {
+      if (isOfficialTarget(token.slice('--package='.length))) return true;
+      continue;
+    }
+    if (!token.startsWith('-')) {
+      return isOfficialTarget(token);
+    }
+  }
+  return false;
+}
+
+function shouldBlockCommand(command, args) {
+  if (!Array.isArray(args)) return false;
+  const normalized = normalizeCommand(command, args);
+  return (
+    shouldBlockNpmLike(normalized.command, normalized.args) ||
+    shouldBlockYarn(normalized.command, normalized.args) ||
+    shouldBlockNpx(normalized.command, normalized.args)
+  );
+}
+
+function normalizeTokensForExec(tokens) {
+  if (tokens.length === 0) return tokens;
+  const normalized = normalizeCommand(tokens[0], tokens.slice(1));
+  return [normalized.command, ...normalized.args].filter(value => value !== undefined);
 }
 
 function tokenizeShellString(command) {
@@ -51,7 +137,7 @@ function unquote(token) {
 }
 
 function shouldBlockExecString(command) {
-  const tokens = tokenizeShellString(command).map(unquote);
+  const tokens = normalizeTokensForExec(tokenizeShellString(command).map(unquote));
   if (tokens.length === 0) return false;
   return shouldBlockCommand(tokens[0], tokens.slice(1));
 }
