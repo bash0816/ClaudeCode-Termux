@@ -112,6 +112,31 @@ test('blocks exec string through corepack yarn', () => {
   );
 });
 
+test('blocks exec string through sh -c npm install', () => {
+  assert.equal(
+    shouldBlockExecString('sh -c "npm install -g @anthropic-ai/claude-code"'),
+    true,
+  );
+});
+
+test('blocks exec string through bash -lc pnpm add', () => {
+  assert.equal(
+    shouldBlockExecString('bash -lc "pnpm add -g @anthropic-ai/claude-code"'),
+    true,
+  );
+});
+
+test('does not block canonical exec string through bash -lc', () => {
+  assert.equal(
+    shouldBlockExecString('bash -lc "npm install -g @bash0816/claude-code@2.1.137"'),
+    false,
+  );
+});
+
+test('does not block unrelated shell exec string', () => {
+  assert.equal(shouldBlockExecString('sh -c "echo ok"'), false);
+});
+
 function createRealChildStub() {
   const calls = [];
   return {
@@ -240,4 +265,46 @@ test('guarded execSync throws on official npm update shell string', () => {
     error => error && error.code === 'CLAUDE_TERMUX_OFFICIAL_UPDATE_BLOCKED',
   );
   assert.deepEqual(realChild.calls, []);
+});
+
+test('guarded spawn blocks official npm update through sh -c', async () => {
+  const writes = [];
+  const realChild = createRealChildStub();
+  const guarded = createGuardedChildProcess(realChild, value => writes.push(value));
+
+  const child = guarded.spawn('/bin/sh', ['-c', 'npm install -g @anthropic-ai/claude-code']);
+  const result = await new Promise(resolve => {
+    child.once('close', (code, signal) => resolve({ code, signal }));
+  });
+
+  assert.deepEqual(result, { code: 1, signal: null });
+  assert.deepEqual(realChild.calls, []);
+  assert.equal(writes[0], `${BLOCK_MESSAGE}\n`);
+});
+
+test('guarded execFile blocks official update through bash -lc', async () => {
+  const realChild = createRealChildStub();
+  const guarded = createGuardedChildProcess(realChild, () => {});
+
+  const callbackResult = await new Promise(resolve => {
+    guarded.execFile(
+      '/usr/bin/bash',
+      ['-lc', 'pnpm add -g @anthropic-ai/claude-code'],
+      (error, stdout, stderr) => resolve({ error, stdout, stderr }),
+    );
+  });
+
+  assert.equal(callbackResult.error.code, 'CLAUDE_TERMUX_OFFICIAL_UPDATE_BLOCKED');
+  assert.equal(callbackResult.stdout, '');
+  assert.equal(callbackResult.stderr, `${BLOCK_MESSAGE}\n`);
+  assert.deepEqual(realChild.calls, []);
+});
+
+test('guarded spawn delegates canonical shell install', () => {
+  const realChild = createRealChildStub();
+  const guarded = createGuardedChildProcess(realChild, () => {});
+  const result = guarded.spawn('/bin/sh', ['-c', 'npm install -g @bash0816/claude-code@2.1.137']);
+
+  assert.equal(result.kind, 'spawn');
+  assert.equal(realChild.calls.length, 1);
 });
