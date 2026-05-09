@@ -51,6 +51,7 @@ npm install -g @bash0816/claude-code@2.1.123
 npm install -g @bash0816/claude-code@2.1.126
 npm install -g @bash0816/claude-code@2.1.128
 npm install -g @bash0816/claude-code@2.1.136
+npm install -g @bash0816/claude-code@2.1.137
 ```
 
 ## Update / 更新
@@ -75,8 +76,8 @@ Normal launch also checks the same manifest with a short timeout and prints a no
 
 - Only audited versions in `config/claude-native-audited-versions.json` can run.
 - `config/claude-native-audited-versions.json` にある監査済み version だけを実行できます。
-- `2.1.118`, `2.1.119`, `2.1.121`, `2.1.122`, `2.1.123`, `2.1.126`, `2.1.128`, `2.1.136` are included in the package metadata.
-- `2.1.118`、`2.1.119`、`2.1.121`、`2.1.122`、`2.1.123`、`2.1.126`、`2.1.128`、`2.1.136` を package metadata に含めています。
+- `2.1.118`, `2.1.119`, `2.1.121`, `2.1.122`, `2.1.123`, `2.1.126`, `2.1.128`, `2.1.136`, `2.1.137` are included in the package metadata.
+- `2.1.118`、`2.1.119`、`2.1.121`、`2.1.122`、`2.1.123`、`2.1.126`、`2.1.128`、`2.1.136`、`2.1.137` を package metadata に含めています。
 - The metadata file is the source of truth for the currently audited set.
 - 現在の監査済み version 集合の source of truth は metadata file です。
 - Native artifacts are cached under `${HOME}/.claude-termux-native-package`.
