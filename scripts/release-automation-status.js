@@ -60,7 +60,11 @@ function loadManifestFromGit(cwd, ref) {
   }
 }
 
-function listRemoteBranches(prefix) {
+function refreshOriginRefs(cwd) {
+  run('git', ['fetch', '--prune', 'origin'], cwd, true);
+}
+
+function listRemoteBranches() {
   const result = run('git', ['for-each-ref', '--format=%(refname:short)', 'refs/remotes/origin']);
   return result.stdout ? result.stdout.split('\n').map(line => line.trim()).filter(Boolean) : [];
 }
@@ -77,6 +81,17 @@ function maxVersion(versions) {
   return versions.slice().sort(compareVersions).pop() || '';
 }
 
+function minVersion(versions) {
+  return versions.slice().sort(compareVersions)[0] || '';
+}
+
+function selectCandidateVersion(branches, mainAuditedVersion) {
+  const versions = branches
+    .map(branch => extractVersionFromBranch(branch, 'automation/native-claude-'))
+    .filter(version => compareVersions(version, mainAuditedVersion) > 0);
+  return minVersion(Array.from(new Set(versions)));
+}
+
 function loadPublishedVersion() {
   const result = run('npm', ['view', packageName, 'version'], repoRoot, true);
   return result.status === 0 ? result.stdout : '';
@@ -91,11 +106,8 @@ function loadLegacyMainManifest() {
 }
 
 function loadCandidateVersion(mainAuditedVersion) {
-  const branches = listRemoteBranches('automation/native-claude-');
-  const versions = branches
-    .map(branch => extractVersionFromBranch(branch, 'automation/native-claude-'))
-    .filter(version => compareVersions(version, mainAuditedVersion) > 0);
-  return maxVersion(versions);
+  const branches = listRemoteBranches();
+  return selectCandidateVersion(branches, mainAuditedVersion);
 }
 
 function isLocalVerificationLocked(state, version) {
@@ -106,6 +118,7 @@ function isLocalVerificationLocked(state, version) {
 }
 
 function main() {
+  refreshOriginRefs(repoRoot);
   const localManifest = loadJsonFile(manifestPath);
   const mainManifest = loadManifestFromGit(repoRoot, 'origin/main') || localManifest;
   const devManifest = loadManifestFromGit(repoRoot, 'origin/dev') || mainManifest;
@@ -141,9 +154,17 @@ function main() {
   }
 }
 
-try {
-  main();
-} catch (error) {
-  console.error(error && error.stack ? error.stack : String(error));
-  process.exit(1);
+if (require.main === module) {
+  try {
+    main();
+  } catch (error) {
+    console.error(error && error.stack ? error.stack : String(error));
+    process.exit(1);
+  }
+} else {
+  module.exports = {
+    compareVersions,
+    extractVersionFromBranch,
+    selectCandidateVersion,
+  };
 }
