@@ -56,6 +56,7 @@ needs_verification=$(read_json_field "${status_json}" needs_verification)
 needs_publish=$(read_json_field "${status_json}" needs_publish)
 needs_legacy_sync=$(read_json_field "${status_json}" needs_legacy_sync)
 local_verification_locked=$(read_json_field "${status_json}" local_verification_locked)
+candidate_state_status=$(read_json_field "${status_json}" candidate_state_status)
 local_state_file=$(read_json_field "${status_json}" local_state_file)
 candidate_branch="automation/native-claude-${candidate_version}"
 candidate_remote_ref="origin/${candidate_branch}"
@@ -90,6 +91,11 @@ apply_result_state() {
   result_candidate=$(read_json_field "${result_json}" candidate_version)
   result_passed=$(read_json_field "${result_json}" verification_passed)
   result_dispatched=$(read_json_field "${result_json}" promotion_dispatched)
+  result_publish=$(read_json_field "${result_json}" publish_dispatched)
+  if [ "${result_candidate}" = "${candidate_version}" ] && [ "${result_passed}" = "true" ] && [ "${result_publish}" = "true" ]; then
+    write_state "${candidate_version}" "publish_dispatched"
+    return
+  fi
   if [ "${result_candidate}" = "${candidate_version}" ] && [ "${result_passed}" = "true" ] && [ "${result_dispatched}" = "true" ]; then
     write_state "${candidate_version}" "promotion_dispatched"
     return
@@ -119,6 +125,8 @@ EOF
   note="no candidate verification required"
   if [ "${local_verification_locked}" = "true" ]; then
     note="candidate verification locked by local state"
+  elif [ "${candidate_state_status}" = "promotion_dispatched" ] || [ "${candidate_state_status}" = "pending_promotion" ] || [ "${candidate_state_status}" = "publish_dispatched" ]; then
+    note="candidate promotion follow-up is pending a fresh reconcile run"
   elif [ "${needs_publish}" = "true" ]; then
     note="canonical publish pending in GitHub Actions follow-up"
   elif [ "${needs_legacy_sync}" = "true" ]; then
@@ -178,10 +186,25 @@ Task:
    git commit -m "Promote native Claude ${candidate_version}"
    git push --force-with-lease origin ${candidate_branch}
    if no open PR exists, gh pr create --repo bash0816/ClaudeCode-Termux --base ${BASE_BRANCH} --head ${candidate_branch}
-4. Do not use the removed workflow or any publish/legacy sync path.
-5. Final answer must be JSON matching the provided schema.
-6. Set promotion_dispatched=true only when the local branch / PR handoff is prepared.
-7. If promotion_dispatched=true, notes must explicitly say it means local branch/PR handoff prepared and not GitHub workflow dispatch.
+4. Then continue the canonical release flow automatically.
+   - check candidate PR ${candidate_branch} -> ${BASE_BRANCH}
+   - if README drift or similar sync-only drift is the reason checks failed, repair it on ${candidate_branch}, push it, and wait for the PR check to rerun
+   - merge candidate PR when state is OPEN, not draft, merge state is acceptable, and all visible checks are completed without failure
+   - promote ${BASE_BRANCH} -> staging by using a versioned temp branch named automation/promote-dev-to-staging-${candidate_version}
+   - promote staging -> main by using a versioned temp branch named automation/promote-staging-to-main-${candidate_version}
+   - after origin/main reaches ${candidate_version}, dispatch npm-package.yml with publish=true and npm_tag=latest
+   - wait for the workflow_dispatch run of Npm Package on main to succeed
+   - verify npm view @bash0816/claude-code version reaches ${candidate_version}
+   - if legacy sync is still needed, run sh scripts/sync-legacy-metadata.sh ${candidate_version}
+5. Hard-stop instead of guessing when:
+   - merge conflict
+   - draft PR
+   - failed checks that are not simple sync drift
+   - publish workflow failure
+   - npm published version does not advance
+6. Final answer must be JSON matching the provided schema.
+7. Set promotion_dispatched=true only when promotion moved beyond candidate verification into PR merge / branch promotion / publish follow-up.
+8. Set publish_dispatched=true only when the publish workflow was dispatched and confirmed successful.
 EOF
 
 if [ "${DRY_RUN}" -eq 1 ]; then
