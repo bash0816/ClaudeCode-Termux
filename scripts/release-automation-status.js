@@ -110,11 +110,15 @@ function loadCandidateVersion(mainAuditedVersion) {
   return selectCandidateVersion(branches, mainAuditedVersion);
 }
 
-function isLocalVerificationLocked(state, version) {
+function candidateStateStatus(state, version) {
   if (!version) return false;
   const item = state.candidates && state.candidates[version];
-  if (!item) return false;
-  return item.status === 'verification_in_progress' || item.status === 'promotion_dispatched';
+  return item && item.status ? String(item.status) : '';
+}
+
+function isLocalVerificationLocked(state, version) {
+  const status = candidateStateStatus(state, version);
+  return status === 'verification_in_progress';
 }
 
 function main() {
@@ -129,6 +133,7 @@ function main() {
   const latestAudited = mainManifest.latest_audited_version || '';
   const latestCandidate = loadCandidateVersion(latestAudited) || devManifest.latest_candidate_version || latestAudited;
   const latestLegacySyncedVersion = legacyManifest ? (legacyManifest.latest_audited_version || '') : '';
+  const candidateState = candidateStateStatus(state, latestCandidate);
   const localVerificationLocked = isLocalVerificationLocked(state, latestCandidate);
 
   const result = {
@@ -137,6 +142,7 @@ function main() {
     latest_candidate_version: latestCandidate,
     published_version: publishedVersion,
     latest_legacy_synced_version: latestLegacySyncedVersion,
+    candidate_state_status: candidateState,
     local_verification_locked: localVerificationLocked,
     local_state_file: stateFile,
     needs_verification: Boolean(latestCandidate) && compareVersions(latestCandidate, latestAudited) > 0 && !localVerificationLocked,
