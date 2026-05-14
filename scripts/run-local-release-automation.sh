@@ -178,6 +178,8 @@ Facts:
 Task:
 1. Verify candidate version ${candidate_version} on checked out candidate branch ${candidate_branch}.
 2. Run prepare-native, claude --version, claude auth status, claude update --dry-run, and temp-prefix npm install checks through the wrapper path.
+   - use a temp prefix under /data/data/com.termux/files/usr/tmp
+   - for the install-path check, use the local package path ./packages/claude-code and never the bare spec packages/claude-code
 3. If and only if all checks pass, run:
    node scripts/promote-verified-version.js ${candidate_version}
    node scripts/update-release-manifest.js
