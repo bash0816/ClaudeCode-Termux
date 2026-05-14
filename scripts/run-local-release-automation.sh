@@ -188,6 +188,15 @@ Task:
    if no open PR exists, gh pr create --repo bash0816/ClaudeCode-Termux --base ${BASE_BRANCH} --head ${candidate_branch}
 4. Then continue the canonical release flow automatically.
    - check candidate PR ${candidate_branch} -> ${BASE_BRANCH}
+   - if the candidate PR is DIRTY because ${BASE_BRANCH} advanced after intake, rebuild ${candidate_branch} from origin/${BASE_BRANCH} before retrying:
+     1. reset local ${candidate_branch} to origin/${BASE_BRANCH}
+     2. run WORKDIR=<temp-dir> node scripts/termux-prepare-claude-native-version.js @${candidate_version} --json > <prepare-json>
+     3. run node scripts/add-candidate-metadata.js ${candidate_version} <prepare-json>
+     4. rerun node scripts/update-release-manifest.js
+     5. rerun node scripts/promote-verified-version.js ${candidate_version}
+     6. rerun node scripts/update-release-manifest.js
+     7. rerun node scripts/update-readme-version-guidance.js
+     8. commit and force-push ${candidate_branch} again
    - if README drift or similar sync-only drift is the reason checks failed, repair it on ${candidate_branch}, push it, and wait for the PR check to rerun
    - merge candidate PR when state is OPEN, not draft, merge state is acceptable, and all visible checks are completed without failure
    - promote ${BASE_BRANCH} -> staging by using a versioned temp branch named automation/promote-dev-to-staging-${candidate_version}
