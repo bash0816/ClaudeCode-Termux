@@ -61,6 +61,21 @@ local_state_file=$(read_json_field "${status_json}" local_state_file)
 candidate_branch="automation/native-claude-${candidate_version}"
 candidate_remote_ref="origin/${candidate_branch}"
 
+compare_versions() {
+  node -e '
+const a = String(process.argv[1] || "").split(".").map(Number);
+const b = String(process.argv[2] || "").split(".").map(Number);
+const len = Math.max(a.length, b.length);
+for (let i = 0; i < len; i += 1) {
+  const diff = (a[i] || 0) - (b[i] || 0);
+  if (diff !== 0) {
+    process.exit(diff > 0 ? 0 : 1);
+  }
+}
+process.exit(0);
+' "$1" "$2"
+}
+
 write_state() {
   version="$1"
   status="$2"
@@ -104,6 +119,15 @@ apply_result_state() {
 }
 
 if [ "${needs_verification}" != "true" ]; then
+  if [ -n "${candidate_version}" ] && \
+     [ "${needs_publish}" != "true" ] && \
+     [ "${needs_legacy_sync}" != "true" ] && \
+     [ "${candidate_state_status}" = "promotion_dispatched" -o "${candidate_state_status}" = "publish_dispatched" ]; then
+    if compare_versions "${audited_version}" "${candidate_version}" && compare_versions "${published_version}" "${audited_version}" && compare_versions "${audited_version}" "${latest_legacy_synced_version:-${audited_version}}"; then
+      write_state "${candidate_version}" "complete"
+      candidate_state_status="complete"
+    fi
+  fi
   if [ "${needs_publish}" != "true" ] && [ "${needs_legacy_sync}" = "true" ]; then
     if [ "${DRY_RUN}" -eq 1 ]; then
       sh "${LEGACY_SYNC_SCRIPT}" --dry-run "${audited_version}"
