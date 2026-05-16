@@ -44,6 +44,25 @@ read_git_config() {
   git -C "${REPO_ROOT}" config --get "$1" 2>/dev/null || true
 }
 
+read_global_git_config() {
+  git config --global --get "$1" 2>/dev/null || true
+}
+
+resolve_identity_fallback() {
+  field="$1"
+  if [ "$field" = "user.name" ]; then
+    gh api user --jq '.login' 2>/dev/null || true
+    return
+  fi
+  if [ "$field" = "user.email" ]; then
+    login="$(gh api user --jq '.login' 2>/dev/null || true)"
+    if [ -n "$login" ]; then
+      printf '%s\n' "${login}@users.noreply.github.com"
+    fi
+    return
+  fi
+}
+
 is_valid_json_file() {
   [ -f "$1" ] || return 1
   node -e 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));' "$1" >/dev/null 2>&1
@@ -166,6 +185,19 @@ fi
 git_user_name=$(read_git_config user.name)
 git_user_email=$(read_git_config user.email)
 
+if [ -z "${git_user_name}" ]; then
+  git_user_name=$(read_global_git_config user.name)
+fi
+if [ -z "${git_user_email}" ]; then
+  git_user_email=$(read_global_git_config user.email)
+fi
+if [ -z "${git_user_name}" ]; then
+  git_user_name=$(resolve_identity_fallback user.name)
+fi
+if [ -z "${git_user_email}" ]; then
+  git_user_email=$(resolve_identity_fallback user.email)
+fi
+
 if [ -z "${git_user_name}" ] || [ -z "${git_user_email}" ]; then
   cat > "${result_json}" <<EOF
 {"mode":"no_action","candidate_version":"${candidate_version}","audited_version":"${audited_version}","published_version":"${published_version}","verification_passed":false,"promotion_dispatched":false,"publish_dispatched":false,"notes":["identity missing; stopped before verification","user_name_present=$([ -n "${git_user_name}" ] && printf true || printf false)","user_email_present=$([ -n "${git_user_email}" ] && printf true || printf false)","state_file=${local_state_file}"]} 
@@ -260,3 +292,16 @@ codex exec \
 apply_result_state
 
 cat "${result_json}"
+
+post_status_json="${log_dir}/post-status.json"
+node "${run_dir}/repo/scripts/release-automation-status.js" --json > "${post_status_json}" || true
+post_needs_verification=$(read_json_field "${post_status_json}" needs_verification)
+post_needs_publish=$(read_json_field "${post_status_json}" needs_publish)
+post_needs_legacy_sync=$(read_json_field "${post_status_json}" needs_legacy_sync)
+
+if [ "${post_needs_verification}" != "true" ] && [ "${post_needs_publish}" != "true" ] && [ "${post_needs_legacy_sync}" != "true" ]; then
+  gh workflow run claude-native-version-watch.yml \
+    --repo bash0816/ClaudeCode-Termux \
+    --ref main \
+    -f version=@latest >/dev/null 2>&1 || true
+fi
