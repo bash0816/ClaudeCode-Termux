@@ -11,6 +11,9 @@ const config = require(path.join(packageDir, 'config', 'claude-native-audited-ve
 const pkg = require(path.join(packageDir, 'package.json'));
 const version = process.argv[2] || pkg.version;
 const item = config.versions[version];
+const curlRetries = process.env.CLAUDE_TERMUX_FETCH_RETRIES || '4';
+const curlConnectTimeout = process.env.CLAUDE_TERMUX_FETCH_CONNECT_TIMEOUT || '20';
+const curlMaxTime = process.env.CLAUDE_TERMUX_FETCH_MAX_TIME || '300';
 
 if (!item) {
   console.error(`Unsupported audited Claude Code version: ${version}`);
@@ -31,15 +34,11 @@ fs.mkdirSync(versionDir, { recursive: true });
 const packDir = fs.mkdtempSync(path.join(os.tmpdir(), `claude-code-${version}-`));
 
 try {
-  run('npm', ['pack', item.native_spec, '--pack-destination', packDir]);
-  const tgz = fs.readdirSync(packDir).find(name => name.endsWith('.tgz'));
-  if (!tgz) {
-    throw new Error('npm pack did not produce a tgz');
-  }
+  const tgzPath = fetchNativeTarball(item.native_spec, packDir);
 
   const extractDir = path.join(packDir, 'native');
   fs.mkdirSync(extractDir, { recursive: true });
-  run('tar', ['-xzf', path.join(packDir, tgz), '-C', extractDir]);
+  run('tar', ['-xzf', tgzPath, '-C', extractDir]);
 
   fs.rmSync(nativeDest, { recursive: true, force: true });
   fs.mkdirSync(path.dirname(nativeDest), { recursive: true });
@@ -54,6 +53,50 @@ function run(command, args) {
   if (result.status !== 0) {
     throw new Error(`${command} ${args.join(' ')} failed`);
   }
+}
+
+function runCapture(command, args) {
+  const result = cp.spawnSync(command, args, {
+    stdio: ['ignore', 'pipe', 'inherit'],
+    encoding: 'utf8',
+  });
+  if (result.status !== 0) {
+    throw new Error(`${command} ${args.join(' ')} failed`);
+  }
+  return result.stdout.trim();
+}
+
+function fetchNativeTarball(spec, packDir) {
+  const directTarball = path.join(packDir, 'native-package.tgz');
+
+  try {
+    const tarballUrl = runCapture('npm', ['view', spec, 'dist.tarball', '--json']).replace(/^"|"$/g, '');
+    if (!tarballUrl) {
+      throw new Error(`npm view did not return dist.tarball for ${spec}`);
+    }
+    run('curl', [
+      '--fail',
+      '--location',
+      '--retry', String(curlRetries),
+      '--connect-timeout', String(curlConnectTimeout),
+      '--max-time', String(curlMaxTime),
+      '--output', directTarball,
+      tarballUrl,
+    ]);
+    if (fs.existsSync(directTarball)) {
+      return directTarball;
+    }
+  } catch (error) {
+    console.error(`Direct tarball fetch failed for ${spec}; falling back to npm pack.`);
+    console.error(error && error.message ? error.message : String(error));
+  }
+
+  run('npm', ['pack', spec, '--pack-destination', packDir]);
+  const tgz = fs.readdirSync(packDir).find(name => name.endsWith('.tgz'));
+  if (!tgz) {
+    throw new Error('npm pack did not produce a tgz');
+  }
+  return path.join(packDir, tgz);
 }
 
 function validateOffsets(file, audited) {
