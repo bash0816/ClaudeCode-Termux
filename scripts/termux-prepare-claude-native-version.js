@@ -8,6 +8,9 @@ const path = require('path');
 
 const requested = process.argv[2] || '@latest';
 const jsonOnly = process.argv.includes('--json');
+const curlRetries = process.env.CLAUDE_TERMUX_FETCH_RETRIES || '4';
+const curlConnectTimeout = process.env.CLAUDE_TERMUX_FETCH_CONNECT_TIMEOUT || '20';
+const curlMaxTime = process.env.CLAUDE_TERMUX_FETCH_MAX_TIME || '300';
 
 function normalizeVersion(input) {
   if (input === '@latest' || input === 'latest') return 'latest';
@@ -33,6 +36,39 @@ function resolveVersion(input) {
     return run('npm', ['view', '@anthropic-ai/claude-code', 'version'], { capture: true });
   }
   return normalized;
+}
+
+function fetchNativeTarball(spec, packDir) {
+  const directTarball = path.join(packDir, 'native-package.tgz');
+
+  try {
+    const tarballUrl = run('npm', ['view', spec, 'dist.tarball', '--json'], { capture: true }).replace(/^"|"$/g, '');
+    if (!tarballUrl) {
+      throw new Error(`npm view did not return dist.tarball for ${spec}`);
+    }
+    run('curl', [
+      '--fail',
+      '--location',
+      '--retry', String(curlRetries),
+      '--connect-timeout', String(curlConnectTimeout),
+      '--max-time', String(curlMaxTime),
+      '--output', directTarball,
+      tarballUrl,
+    ], { quiet: jsonOnly });
+    if (fs.existsSync(directTarball)) {
+      return directTarball;
+    }
+  } catch (error) {
+    if (!jsonOnly) {
+      console.error(`Direct tarball fetch failed for ${spec}; falling back to npm pack.`);
+      console.error(error && error.message ? error.message : String(error));
+    }
+  }
+
+  run('npm', ['pack', spec, '--pack-destination', packDir], { quiet: jsonOnly });
+  const tgz = fs.readdirSync(packDir).find(name => name.endsWith('.tgz'));
+  if (!tgz) throw new Error('npm pack did not produce a tgz');
+  return path.join(packDir, tgz);
 }
 
 function discoverOffsets(binary) {
@@ -78,13 +114,11 @@ function main() {
   fs.mkdirSync(nativeDest, { recursive: true });
 
   try {
-    run('npm', ['pack', nativeSpec, '--pack-destination', packDir], { quiet: jsonOnly });
-    const tgz = fs.readdirSync(packDir).find(name => name.endsWith('.tgz'));
-    if (!tgz) throw new Error('npm pack did not produce a tgz');
+    const tgzPath = fetchNativeTarball(nativeSpec, packDir);
 
     const extractDir = path.join(packDir, 'native');
     fs.mkdirSync(extractDir, { recursive: true });
-    run('tar', ['-xzf', path.join(packDir, tgz), '-C', extractDir], { quiet: jsonOnly });
+    run('tar', ['-xzf', tgzPath, '-C', extractDir], { quiet: jsonOnly });
     fs.rmSync(nativeDest, { recursive: true, force: true });
     fs.cpSync(path.join(extractDir, 'package'), nativeDest, { recursive: true });
 
