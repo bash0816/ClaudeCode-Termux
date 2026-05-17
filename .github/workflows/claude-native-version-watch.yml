@@ -21,13 +21,13 @@ jobs:
       BASE_BRANCH: dev
       REQUESTED_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '@latest' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.0.2
         with:
           ref: dev
           fetch-depth: 0
           persist-credentials: true
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6.4.0
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
