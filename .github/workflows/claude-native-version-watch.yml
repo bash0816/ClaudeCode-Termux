@@ -8,7 +8,7 @@ on:
         required: false
         default: "@latest"
   schedule:
-    - cron: "0 19 * * *"
+    - cron: "7 19 * * *"
 
 permissions:
   contents: write
