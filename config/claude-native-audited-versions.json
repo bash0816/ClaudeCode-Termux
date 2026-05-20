@@ -110,7 +110,7 @@
       "native_spec": "@anthropic-ai/claude-code-linux-arm64@2.1.144",
       "entry_js_offset": 216877940,
       "entry_end_offset": 231466269,
-      "status": "offset_discovered"
+      "status": "termux_verified"
     }
   }
 }
