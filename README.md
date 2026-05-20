@@ -44,6 +44,7 @@ npm install -g @bash0816/claude-code@2.1.140
 npm install -g @bash0816/claude-code@2.1.141
 npm install -g @bash0816/claude-code@2.1.142
 npm install -g @bash0816/claude-code@2.1.143
+npm install -g @bash0816/claude-code@2.1.144
 ```
 
 ## Update / 更新
@@ -85,6 +86,7 @@ Only versions registered in the audited metadata can run.
 - `2.1.141`
 - `2.1.142`
 - `2.1.143`
+- `2.1.144`
 
 The source of truth is the metadata files below.
 
@@ -122,7 +124,7 @@ Example:
 例:
 
 ```text
-2.1.143 (Claude Code)
+2.1.144 (Claude Code)
 ```
 
 ## Do Not Use / 非推奨
