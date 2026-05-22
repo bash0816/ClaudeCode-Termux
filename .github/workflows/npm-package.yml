@@ -31,6 +31,14 @@ on:
         options:
           - "false"
           - "true"
+      publish_mode:
+        description: "Publish mode: direct publishes immediately, stage requires later 2FA approval"
+        required: false
+        default: "direct"
+        type: choice
+        options:
+          - "direct"
+          - "stage"
       package_version:
         description: "Optional package.json version override for historical publishes"
         required: false
@@ -118,11 +126,49 @@ jobs:
       - name: Pack dry run
         run: npm pack --dry-run
 
-      - name: Publish
+      - name: Verify npm staged publishing support
+        if: github.event_name == 'workflow_dispatch' && inputs.publish == 'true'
+        env:
+          PUBLISH_MODE: ${{ inputs.publish_mode || 'direct' }}
+        run: |
+          set -euo pipefail
+          node_version="$(node -v | sed 's/^v//')"
+          npm_version="$(npm -v)"
+          echo "node=${node_version}"
+          echo "npm=${npm_version}"
+          if [ "${PUBLISH_MODE}" = "stage" ]; then
+            if [ "$(printf '%s\n' "22.14.0" "${node_version}" | sort -V | head -n1)" != "22.14.0" ]; then
+              echo "staged publishing requires node >= 22.14.0; got ${node_version}" >&2
+              exit 1
+            fi
+            if [ "$(printf '%s\n' "11.15.0" "${npm_version}" | sort -V | head -n1)" != "11.15.0" ]; then
+              echo "staged publishing requires npm >= 11.15.0; got ${npm_version}" >&2
+              exit 1
+            fi
+            npm stage --help >/dev/null
+          fi
+
+      - name: Publish or stage
         if: github.event_name == 'workflow_dispatch' && inputs.publish == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          PUBLISH_MODE: ${{ inputs.publish_mode || 'direct' }}
           NPM_TAG: ${{ inputs.npm_tag || 'latest' }}
         run: |
           set -euo pipefail
-          npm publish --access public --tag "${NPM_TAG}"
+          if [ "${PUBLISH_MODE}" = "stage" ]; then
+            npm stage publish --tag "${NPM_TAG}"
+            npm stage list @bash0816/claude-code || true
+          else
+            npm publish --access public --tag "${NPM_TAG}"
+          fi
+
+      - name: Emit staged publish follow-up
+        if: github.event_name == 'workflow_dispatch' && inputs.publish == 'true' && inputs.publish_mode == 'stage'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "Package was staged, not published live."
+          echo "Approve it with 2FA from npmjs.com Staged Packages or via npm stage approve <stage-id>."
+          npm stage list @bash0816/claude-code || true
