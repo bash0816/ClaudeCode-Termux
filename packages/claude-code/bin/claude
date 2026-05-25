@@ -1,0 +1,62 @@
+#!/usr/bin/env sh
+set -eu
+
+SELF="$0"
+while [ -L "${SELF}" ]; do
+  DIR=$(CDPATH= cd -- "$(dirname -- "${SELF}")" && pwd)
+  TARGET=$(readlink "${SELF}")
+  case "${TARGET}" in
+    /*) SELF="${TARGET}" ;;
+    *) SELF="${DIR}/${TARGET}" ;;
+  esac
+done
+
+PACKAGE_DIR=$(CDPATH= cd -- "$(dirname -- "${SELF}")/.." && pwd)
+CONFIG_FILE="${PACKAGE_DIR}/config/claude-native-audited-versions.json"
+PACKAGE_VERSION=$(node -e 'const fs=require("fs"); const path=require("path"); const p=JSON.parse(fs.readFileSync(path.join(process.argv[1],"package.json"),"utf8")); process.stdout.write(p.version)' "${PACKAGE_DIR}")
+CLAUDE_VERSION="${CLAUDE_TERMUX_CLAUDE_VERSION:-${PACKAGE_VERSION}}"
+UPDATE_HELPER="${PACKAGE_DIR}/lib/check-updates.js"
+
+if [ "${1:-}" = "update" ]; then
+  shift
+  exec node "${UPDATE_HELPER}" update "${CLAUDE_VERSION}" "$@"
+fi
+
+node "${UPDATE_HELPER}" notify "${CLAUDE_VERSION}" || true
+
+json_field() {
+  node -e '
+const fs = require("fs");
+const config = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+const version = process.argv[2];
+const field = process.argv[3];
+const item = config.versions[version];
+if (!item || item[field] === undefined) {
+  process.exit(1);
+}
+process.stdout.write(String(item[field]));
+' "${CONFIG_FILE}" "${CLAUDE_VERSION}" "$1"
+}
+
+ENTRY_JS_OFFSET=$(json_field entry_js_offset)
+ENTRY_END_OFFSET=$(json_field entry_end_offset)
+CACHE_DIR="${CLAUDE_TERMUX_PACKAGE_CACHE:-${HOME}/.claude-termux-native-package}/versions/${CLAUDE_VERSION}"
+SOURCE_BIN="${CACHE_DIR}/app/node_modules/@anthropic-ai/claude-code-linux-arm64/claude"
+
+if [ ! -f "${SOURCE_BIN}" ]; then
+  node "${PACKAGE_DIR}/lib/prepare-native.js" "${CLAUDE_VERSION}"
+fi
+
+if [ ! -f "${SOURCE_BIN}" ]; then
+  echo "Failed to prepare native Claude Code binary: ${SOURCE_BIN}" >&2
+  exit 1
+fi
+
+SOURCE_BIN="${SOURCE_BIN}" \
+WORKDIR="${CACHE_DIR}/launcher-workdir" \
+ENTRY_JS_OFFSET="${ENTRY_JS_OFFSET}" \
+ENTRY_END_OFFSET="${ENTRY_END_OFFSET}" \
+CURRENT_CLAUDE_VERSION="${CLAUDE_VERSION}" \
+CLAUDE_TERMUX_PACKAGE_DIR="${PACKAGE_DIR}" \
+CLAUDE_NATIVE_UPDATE_CHECK=0 \
+exec sh "${PACKAGE_DIR}/lib/termux-run-claude-native.sh" "$@"
