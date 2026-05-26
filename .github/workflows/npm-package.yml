@@ -1,4 +1,7 @@
-name: Npm Package
+name: npm package (verify)
+
+# Publish is handled by the private repo workflow (bash0816/CluadeCode-Termux-private).
+# This workflow runs verify-only on PRs and pushes.
 
 on:
   pull_request:
@@ -22,31 +25,6 @@ on:
       - "scripts/**"
       - ".github/workflows/npm-package.yml"
   workflow_dispatch:
-    inputs:
-      publish:
-        description: "Publish @bash0816/claude-code to npm"
-        required: true
-        default: "false"
-        type: choice
-        options:
-          - "false"
-          - "true"
-      publish_mode:
-        description: "Publish mode: direct publishes immediately, stage requires later 2FA approval"
-        required: false
-        default: "direct"
-        type: choice
-        options:
-          - "direct"
-          - "stage"
-      package_version:
-        description: "Optional package.json version override for historical publishes"
-        required: false
-        default: ""
-      npm_tag:
-        description: "npm dist-tag to use when publishing"
-        required: false
-        default: "latest"
 
 permissions:
   contents: read
@@ -58,29 +36,11 @@ jobs:
       run:
         working-directory: packages/claude-code
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v6.4.0
+      - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          registry-url: "https://registry.npmjs.org"
-
-      - name: Set dispatch package version
-        if: github.event_name == 'workflow_dispatch' && inputs.package_version != ''
-        run: |
-          set -euo pipefail
-          version="${{ inputs.package_version }}"
-          node - <<'NODE' "${version}"
-          const fs = require('fs');
-          const version = process.argv[2];
-          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-          const config = JSON.parse(fs.readFileSync('config/claude-native-audited-versions.json', 'utf8'));
-          if (!config.versions[version]) {
-            throw new Error(`cannot publish unaudited version ${version}`);
-          }
-          pkg.version = version;
-          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-          NODE
 
       - name: Syntax check
         run: |
@@ -103,13 +63,6 @@ jobs:
           const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
           const config = JSON.parse(fs.readFileSync('config/claude-native-audited-versions.json', 'utf8'));
           const manifest = JSON.parse(fs.readFileSync('config/claude-termux-release-manifest.json', 'utf8'));
-          for (const version of ['2.1.118', '2.1.119', '2.1.121', '2.1.122']) {
-            const item = config.versions[version];
-            if (!item) throw new Error(`missing audited version ${version}`);
-            for (const field of ['native_spec', 'entry_js_offset', 'entry_end_offset']) {
-              if (!item[field]) throw new Error(`missing ${field} for ${version}`);
-            }
-          }
           if (pkg.name !== '@bash0816/claude-code') throw new Error('unexpected package name');
           if (pkg.version !== manifest.latest_audited_version) {
             throw new Error(`package version ${pkg.version} does not match manifest latest audited ${manifest.latest_audited_version}`);
@@ -125,50 +78,3 @@ jobs:
 
       - name: Pack dry run
         run: npm pack --dry-run
-
-      - name: Verify npm staged publishing support
-        if: github.event_name == 'workflow_dispatch' && inputs.publish == 'true'
-        env:
-          PUBLISH_MODE: ${{ inputs.publish_mode || 'direct' }}
-        run: |
-          set -euo pipefail
-          node_version="$(node -v | sed 's/^v//')"
-          npm_version="$(npm -v)"
-          echo "node=${node_version}"
-          echo "npm=${npm_version}"
-          if [ "${PUBLISH_MODE}" = "stage" ]; then
-            if [ "$(printf '%s\n' "22.14.0" "${node_version}" | sort -V | head -n1)" != "22.14.0" ]; then
-              echo "staged publishing requires node >= 22.14.0; got ${node_version}" >&2
-              exit 1
-            fi
-            if [ "$(printf '%s\n' "11.15.0" "${npm_version}" | sort -V | head -n1)" != "11.15.0" ]; then
-              echo "staged publishing requires npm >= 11.15.0; got ${npm_version}" >&2
-              exit 1
-            fi
-            npm stage --help >/dev/null
-          fi
-
-      - name: Publish or stage
-        if: github.event_name == 'workflow_dispatch' && inputs.publish == 'true'
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          PUBLISH_MODE: ${{ inputs.publish_mode || 'direct' }}
-          NPM_TAG: ${{ inputs.npm_tag || 'latest' }}
-        run: |
-          set -euo pipefail
-          if [ "${PUBLISH_MODE}" = "stage" ]; then
-            npm stage publish --tag "${NPM_TAG}"
-            npm stage list @bash0816/claude-code || true
-          else
-            npm publish --access public --tag "${NPM_TAG}"
-          fi
-
-      - name: Emit staged publish follow-up
-        if: github.event_name == 'workflow_dispatch' && inputs.publish == 'true' && inputs.publish_mode == 'stage'
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          set -euo pipefail
-          echo "Package was staged, not published live."
-          echo "Approve it with 2FA from npmjs.com Staged Packages or via npm stage approve <stage-id>."
-          npm stage list @bash0816/claude-code || true

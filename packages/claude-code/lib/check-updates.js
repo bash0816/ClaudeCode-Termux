@@ -122,8 +122,8 @@ function shouldNotify(cache, latestVersion) {
   return Date.now() - Number(lastNotice.notified_at || 0) >= ttlMs;
 }
 
-function installTarget(targetVersion) {
-  const spec = `${pkg.name}@${targetVersion}`;
+function installTarget(packageName, targetVersion) {
+  const spec = `${packageName}@${targetVersion}`;
   const command = `npm install -g ${spec}`;
 
   if (dryRun) {
@@ -153,12 +153,13 @@ async function runNotify() {
 
 async function runUpdate() {
   const { manifest } = await resolveManifest(true);
+  const packageName = manifest.package_name || localManifest.package_name;
   const target = manifest.latest_audited_version || localManifest.latest_audited_version || pkg.version;
   if (compareVersions(currentVersion, target) >= 0) {
     console.error(`Already on latest audited version: ${currentVersion}`);
     return 0;
   }
-  return installTarget(target);
+  return installTarget(packageName, target);
 }
 
 async function main() {
