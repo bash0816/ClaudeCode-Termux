@@ -1,5 +1,43 @@
 # Release Notes / リリースノート
 
+## 2.1.153-2 — 2026-05-28
+
+### Fix: compareVersions -N suffix; manifest_url wrong repo / compareVersions -N 対応・manifest_url 誤参照修正
+
+**English**
+
+Fixes two bugs introduced by the -N versioning scheme:
+
+- `compareVersions()` — `"2.1.153-1".split('.').map(Number)` produced `NaN` for the last segment, causing any `-N` version to appear older than a plain `X.Y.Z` version. Fixed by parsing the `-N` patch suffix separately before numeric conversion.
+- `manifest_url` — the bundled manifest pointed to `CluadeCode-Termux` (legacy typo repo) whose root `config/` was never updated past `2.1.150`. Changed to `ClaudeCode-Termux` (correct canonical repo).
+
+Together these caused `claude` to show a false "update available: 2.1.153-1 → 2.1.150" notice on every launch. Running `claude update` would have downgraded the package.
+
+To upgrade:
+
+```sh
+npm install -g @bash0816/claude-code@2.1.153-2
+```
+
+---
+
+**日本語**
+
+-N バージョン方式で混入した 2 つのバグを修正します：
+
+- `compareVersions()` — `"2.1.153-1".split('.').map(Number)` が末尾セグメントを `NaN` に変換し、`-N` 付きバージョンが常に `X.Y.Z` より古く見えていた。`-N` サフィックスを分離してから数値変換するよう修正。
+- `manifest_url` — バンドル済みマニフェストが `CluadeCode-Termux`（typo レガシーリポジトリ）を参照しており、そのルート `config/` は `2.1.150` から更新されていなかった。正しい `ClaudeCode-Termux` に変更。
+
+この 2 つが重なり、`claude` 起動ごとに「update available: 2.1.153-1 → 2.1.150」という誤った通知が表示されていた。`claude update` を実行するとパッケージがダウングレードされる危険があった。
+
+アップグレード:
+
+```sh
+npm install -g @bash0816/claude-code@2.1.153-2
+```
+
+---
+
 ## 2.1.153-1 — 2026-05-28
 
 ### Fix: TerminalShim.write() data callback regression / TerminalShim.write() データコールバック regression 修正
