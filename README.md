@@ -46,6 +46,7 @@ npm install -g @bash0816/claude-code@2.1.142
 npm install -g @bash0816/claude-code@2.1.143
 npm install -g @bash0816/claude-code@2.1.144
 npm install -g @bash0816/claude-code@2.1.150
+npm install -g @bash0816/claude-code@2.1.150-1
 ```
 
 ## Update / 更新
@@ -89,6 +90,8 @@ Only versions registered in the audited metadata can run.
 - `2.1.143`
 - `2.1.144`
 - `2.1.150`
+- `2.1.150-1` — fixes interactive launch crash on Node v24 (see [RELEASES.md](RELEASES.md))
+- `2.1.150-1` — Node v24 での対話起動クラッシュを修正（[RELEASES.md](RELEASES.md) 参照）
 
 The source of truth is the metadata files below.
 
