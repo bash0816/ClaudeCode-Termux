@@ -120,8 +120,19 @@ Only versions registered in the audited metadata can run.
 - `2.1.142`
 - `2.1.143`
 - `2.1.144`
-- `2.1.150` through `2.1.153-2` — historical audited versions; not recommended for new installs because of known interactive mode issues. Use `2.1.153-3` or newer.
-- `2.1.150` から `2.1.153-2` — 履歴上の監査済み version。interactive mode の既知問題があるため新規 install 非推奨。`2.1.153-3` 以上を使用してください。
+- `2.1.150` — ⚠️ known interactive mode issues; not recommended
+- `2.1.150-1` — fixes interactive launch crash on Node v24 (see [RELEASES.md](RELEASES.md)) ⚠️ known interactive mode issues; not recommended
+- `2.1.150-1` — Node v24 での対話起動クラッシュを修正（[RELEASES.md](RELEASES.md) 参照）⚠️ 対話モードに既知の問題あり・非推奨
+- `2.1.150-2` — completes Bun shim (Terminal, YAML, Transpiler, semver.satisfies, spawn fixes) ⚠️ known interactive mode issues; not recommended
+- `2.1.150-2` — Bun shim 完全版（Terminal / YAML / Transpiler / semver.satisfies / spawn 修正）⚠️ 対話モードに既知の問題あり・非推奨
+- `2.1.150-3` — fixes Transpiler class, spawn stdio array, raises Node.js minimum to v20 (see [RELEASES.md](RELEASES.md)) ⚠️ known interactive mode issues; not recommended
+- `2.1.150-3` — Transpiler クラス化・spawn stdio 配列修正・Node.js 最小バージョン v20 に引き上げ（[RELEASES.md](RELEASES.md) 参照）⚠️ 対話モードに既知の問題あり・非推奨
+- `2.1.153` — upstream 2.1.153 (no new Bun APIs; same shim as 2.1.150-3) ⚠️ known interactive mode issues; not recommended
+- `2.1.153` — upstream 2.1.153（Bun API 追加なし；shim は 2.1.150-3 と同一）⚠️ 対話モードに既知の問題あり・非推奨
+- `2.1.153-1` — fixes TerminalShim.write() data callback regression (interactive mode silent exit on some devices) ⚠️ root cause not yet fixed; not recommended
+- `2.1.153-1` — TerminalShim.write() データコールバック regression 修正（一部端末で対話モードが即終了する問題）⚠️ 根本原因は未修正・非推奨
+- `2.1.153-2` — fixes compareVersions() for -N suffixed versions; fixes manifest_url pointing to wrong repo ⚠️ root cause not yet fixed; not recommended
+- `2.1.153-2` — compareVersions() の -N サフィックス対応修正；manifest_url が誤ったリポジトリを参照していた問題を修正 ⚠️ 根本原因は未修正・非推奨
 - `2.1.153-3` — fixes root cause of interactive mode silent exit: injects Bun into vm contexts created by Claude Code
 - `2.1.153-3` — 対話モード即終了の根本原因修正：Claude Code が作成する vm コンテキストに Bun を注入
 
