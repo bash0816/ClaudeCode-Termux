@@ -1,5 +1,43 @@
 # Release Notes / リリースノート
 
+## 2.1.150-3 — 2026-05-28
+
+### Fix: Transpiler class, spawn stdio array, Node.js >=20 requirement / Transpiler クラス化・spawn stdio 配列対応・Node.js >=20 要件追加
+
+**English**
+
+Fixes critical bugs found in the 2.1.150-2 Bun shim review:
+
+- `Bun.Transpiler` — changed from plain object to proper class; `new Bun.Transpiler()` and `new Bun.Transpiler(options)` now work correctly
+- `Bun.Transpiler.scanImports()` — now returns `{ path, kind }` with correct `kind` values (`import-statement`, `dynamic-import`, `require-call`) matching what Claude Code expects
+- `Bun.spawn()` — fixed `stdio` array form (`["ignore","ignore","ignore"]`); background/PTY host processes with `detached:true` no longer incorrectly pipe stdio
+- Node.js minimum version raised to **v20** (was v18); enforced at install time via `preinstall.js`
+
+To upgrade:
+
+```sh
+npm install -g @bash0816/claude-code@2.1.150-3
+```
+
+---
+
+**日本語**
+
+2.1.150-2 の Bun shim レビューで発見された重大なバグを修正しました：
+
+- `Bun.Transpiler` — plain object から proper class に変更；`new Bun.Transpiler()` および `new Bun.Transpiler(options)` が正しく動作するようになりました
+- `Bun.Transpiler.scanImports()` — `{ path, kind }` を返すように修正；`kind` 値は Claude Code が期待する `import-statement` / `dynamic-import` / `require-call` に合わせました
+- `Bun.spawn()` — `stdio` 配列形式（`["ignore","ignore","ignore"]`）を正しく処理するよう修正；`detached:true` の background/PTY host プロセスが stdio を誤って pipe しなくなりました
+- Node.js 最小バージョンを **v20** に引き上げ（v18 から変更）；`preinstall.js` でインストール時に強制チェック
+
+アップグレード:
+
+```sh
+npm install -g @bash0816/claude-code@2.1.150-3
+```
+
+---
+
 ## 2.1.150-2 — 2026-05-28
 
 ### Fix: Remaining Bun API gaps (Terminal, YAML, Transpiler, semver.satisfies, etc.) / 残存 Bun API の補完
