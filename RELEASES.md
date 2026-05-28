@@ -12,7 +12,13 @@ Claude Code uses `require('vm').createContext()` internally to run isolated sand
 
 Fix: intercept `require('vm')` and patch `createContext`, `runInNewContext`, and `Script.prototype.runInContext` / `runInNewContext` to automatically inject `globalThis.Bun` into every new vm context.
 
-This is the root cause that 2.1.153-1 and 2.1.153-2 did not address (those fixed the update-check bug and a TerminalShim regression, respectively). The fix was identified by independent investigation on Device B (Codex + gpt-5.5).
+Additionally, `createFakeRequire(require)` and `eval('(' + code)` were moved to inside the try block, after `globalThis.Bun = createBunShim()`. This ensures the vm patch is applied before entry JS is evaluated, closing a window where vm contexts created during eval could have missed the injection.
+
+Also fixed in this release:
+- Root manifest `package_name` corrected from `@bash0816/cluade-code` (typo) to `@bash0816/claude-code`
+- `scripts/update-release-manifest.js`: `compareVersions` fixed for `-N` suffixed versions, `package_name` now reads from `canonical_package_name`, `manifestUrl` corrected to `ClaudeCode-Termux`
+
+This is the root cause that 2.1.153-1 and 2.1.153-2 did not address (those fixed the update-check bug and a TerminalShim regression, respectively). The vm fix was identified by independent investigation on Device B (Codex + gpt-5.5); the eval ordering and infrastructure fixes were found during GPT-5.5 pre-publish review.
 
 To upgrade:
 
@@ -30,7 +36,13 @@ Claude Code は内部で `require('vm').createContext()` を使って独立し�
 
 修正: `require('vm')` を横取りし、`createContext` / `runInNewContext` / `Script.prototype.runInContext` / `runInNewContext` をパッチして、新しい vm コンテキスト作成時に自動で `globalThis.Bun` を注入するようにします。
 
-これは 2.1.153-1・2.1.153-2 が対処していなかった根本原因です（それらはそれぞれ update-check バグと TerminalShim regression を修正）。Device B での独立調査（Codex + gpt-5.5）により特定されました。
+加えて、`createFakeRequire(require)` と `eval('(' + code)` を try ブロック内の `globalThis.Bun = createBunShim()` より後に移動しました。これにより、vm パッチが entry JS の eval より前に適用されることが保証され、eval 中に作成された vm コンテキストが注入を受け取れないウィンドウを閉じます。
+
+本リリースでの追加修正:
+- root manifest の `package_name` を `@bash0816/cluade-code`（typo）から `@bash0816/claude-code` に修正
+- `scripts/update-release-manifest.js`: `-N` サフィックス対応 `compareVersions` 修正・`package_name` を `canonical_package_name` から取得するよう修正・`manifestUrl` を `ClaudeCode-Termux` に修正
+
+これは 2.1.153-1・2.1.153-2 が対処していなかった根本原因です（それらはそれぞれ update-check バグと TerminalShim regression を修正）。vm 修正は Device B での独立調査（Codex + gpt-5.5）により特定され、eval 順序・インフラ修正は GPT-5.5 の publish 前レビューで発見されました。
 
 アップグレード:
 
