@@ -121,21 +121,22 @@ Only versions registered in the audited metadata can run.
 - `2.1.142`
 - `2.1.143`
 - `2.1.144`
-- `2.1.150` — ⚠️ known interactive mode issues; not recommended
-- `2.1.150-1` — fixes interactive launch crash on Node v24 (see [RELEASES.md](RELEASES.md)) ⚠️ known interactive mode issues; not recommended
-- `2.1.150-1` — Node v24 での対話起動クラッシュを修正（[RELEASES.md](RELEASES.md) 参照）⚠️ 対話モードに既知の問題あり・非推奨
-- `2.1.150-2` — completes Bun shim (Terminal, YAML, Transpiler, semver.satisfies, spawn fixes) ⚠️ known interactive mode issues; not recommended
-- `2.1.150-2` — Bun shim 完全版（Terminal / YAML / Transpiler / semver.satisfies / spawn 修正）⚠️ 対話モードに既知の問題あり・非推奨
-- `2.1.150-3` — fixes Transpiler class, spawn stdio array, raises Node.js minimum to v20 (see [RELEASES.md](RELEASES.md)) ⚠️ known interactive mode issues; not recommended
-- `2.1.150-3` — Transpiler クラス化・spawn stdio 配列修正・Node.js 最小バージョン v20 に引き上げ（[RELEASES.md](RELEASES.md) 参照）⚠️ 対話モードに既知の問題あり・非推奨
-- `2.1.153` — upstream 2.1.153 (no new Bun APIs; same shim as 2.1.150-3) ⚠️ known interactive mode issues; not recommended
-- `2.1.153` — upstream 2.1.153（Bun API 追加なし；shim は 2.1.150-3 と同一）⚠️ 対話モードに既知の問題あり・非推奨
-- `2.1.153-1` — fixes TerminalShim.write() data callback regression (interactive mode silent exit on some devices) ⚠️ root cause not yet fixed; not recommended
-- `2.1.153-1` — TerminalShim.write() データコールバック regression 修正（一部端末で対話モードが即終了する問題）⚠️ 根本原因は未修正・非推奨
-- `2.1.153-2` — fixes compareVersions() for -N suffixed versions; fixes manifest_url pointing to wrong repo ⚠️ root cause not yet fixed; not recommended
-- `2.1.153-2` — compareVersions() の -N サフィックス対応修正；manifest_url が誤ったリポジトリを参照していた問題を修正 ⚠️ 根本原因は未修正・非推奨
-- `2.1.153-3` — fixes root cause of interactive mode silent exit: injects Bun into vm contexts created by Claude Code ⚠️ globalThis.Bun cleanup bug remains; not recommended
-- `2.1.153-3` — 対話モード即終了の根本原因修正：Claude Code が作成する vm コンテキストに Bun を注入 ⚠️ globalThis.Bun クリーンアップバグが残存・非推奨
+- `2.1.150` — ⚠️ **deprecated** — known interactive mode issues
+- `2.1.150` — ⚠️ **deprecated** — 対話モードに既知の問題あり
+- `2.1.150-1` — fixes interactive launch crash on Node v24 (see [RELEASES.md](RELEASES.md)) ⚠️ **deprecated** — known interactive mode issues
+- `2.1.150-1` — Node v24 での対話起動クラッシュを修正（[RELEASES.md](RELEASES.md) 参照）⚠️ **deprecated** — 対話モードに既知の問題あり
+- `2.1.150-2` — completes Bun shim (Terminal, YAML, Transpiler, semver.satisfies, spawn fixes) ⚠️ **deprecated** — known interactive mode issues
+- `2.1.150-2` — Bun shim 完全版（Terminal / YAML / Transpiler / semver.satisfies / spawn 修正）⚠️ **deprecated** — 対話モードに既知の問題あり
+- `2.1.150-3` — fixes Transpiler class, spawn stdio array, raises Node.js minimum to v20 (see [RELEASES.md](RELEASES.md)) ⚠️ **deprecated** — known interactive mode issues
+- `2.1.150-3` — Transpiler クラス化・spawn stdio 配列修正・Node.js 最小バージョン v20 に引き上げ（[RELEASES.md](RELEASES.md) 参照）⚠️ **deprecated** — 対話モードに既知の問題あり
+- `2.1.153` — upstream 2.1.153 (no new Bun APIs; same shim as 2.1.150-3) ⚠️ **deprecated** — known interactive mode issues
+- `2.1.153` — upstream 2.1.153（Bun API 追加なし；shim は 2.1.150-3 と同一）⚠️ **deprecated** — 対話モードに既知の問題あり
+- `2.1.153-1` — fixes TerminalShim.write() data callback regression (interactive mode silent exit on some devices) ⚠️ **deprecated** — root cause not yet fixed
+- `2.1.153-1` — TerminalShim.write() データコールバック regression 修正（一部端末で対話モードが即終了する問題）⚠️ **deprecated** — 根本原因は未修正
+- `2.1.153-2` — fixes compareVersions() for -N suffixed versions; fixes manifest_url pointing to wrong repo ⚠️ **deprecated** — root cause not yet fixed
+- `2.1.153-2` — compareVersions() の -N サフィックス対応修正；manifest_url が誤ったリポジトリを参照していた問題を修正 ⚠️ **deprecated** — 根本原因は未修正
+- `2.1.153-3` — fixes root cause of interactive mode silent exit: injects Bun into vm contexts created by Claude Code ⚠️ **deprecated** — globalThis.Bun cleanup bug causes Bun is not defined in vm contexts
+- `2.1.153-3` — 対話モード即終了の根本原因修正：Claude Code が作成する vm コンテキストに Bun を注入 ⚠️ **deprecated** — globalThis.Bun クリーンアップバグにより vm コンテキストで Bun is not defined が発生
 - `2.1.153-4` — fixes globalThis.Bun being cleared in finally after fn() resolves (interactive mode fix completion)
 - `2.1.153-4` — finally で globalThis.Bun が削除される問題を修正（対話モード修正の完成版）
 
