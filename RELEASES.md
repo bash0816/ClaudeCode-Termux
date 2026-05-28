@@ -1,5 +1,47 @@
 # Release Notes / リリースノート
 
+## 2.1.153-4 — 2026-05-28
+
+### Fix: globalThis.Bun not cleaned up in finally (interactive mode Bun lost after fn() resolves) / finally で globalThis.Bun を削除しないよう修正
+
+**English**
+
+Fixes interactive mode failing silently when vm contexts are created after `fn()` resolves.
+
+`injectBunIntoContext` reads `globalThis.Bun` at the time each vm context is created (not captured at setup). In 2.1.153-3, the `finally` block deleted `globalThis.Bun` after the module's Promise resolved + 200ms drain. Any vm context created after that point would receive `Bun = undefined`.
+
+Fix: remove `globalThis.Bun` restore/delete from the `finally` block. The wrapper runs in a dedicated Node.js process, so leaving the shim alive for the process lifetime has no meaningful side-effect.
+
+Root cause was identified via PR #8 from Device B (Codex + gpt-5.5), which confirmed interactive mode worked with the cleanup removed.
+
+To upgrade:
+
+```sh
+npm install -g @bash0816/claude-code@latest
+claude --version
+```
+
+---
+
+**日本語**
+
+`fn()` の Promise が resolve した後に vm コンテキストが作られると対話モードが無言で失敗する問題を修正します。
+
+`injectBunIntoContext` は vm コンテキスト生成時に毎回 `globalThis.Bun` を読み取ります（セットアップ時にキャプチャしません）。2.1.153-3 では `finally` ブロックがモジュールの Promise resolve + 200ms 後に `globalThis.Bun` を削除していました。それ以降に作られる vm コンテキストには `Bun = undefined` が注入されていました。
+
+修正: `finally` ブロックから `globalThis.Bun` の復元/削除を除去します。wrapper は専用 Node.js プロセス内で動くため、shim をプロセス終了まで残しても実質的な副作用はありません。
+
+根本原因は Device B からの PR #8（Codex + gpt-5.5）で特定されました。クリーンアップを除去すると対話モードが動作することが Device B で確認済みです。
+
+アップグレード:
+
+```sh
+npm install -g @bash0816/claude-code@latest
+claude --version
+```
+
+---
+
 ## 2.1.153-3 — 2026-05-28
 
 ### Fix: vm context Bun injection (interactive mode silent exit root cause) / vm コンテキスト Bun 注入（対話モード即終了の根本原因修正）

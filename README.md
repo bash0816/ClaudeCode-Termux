@@ -70,6 +70,7 @@ npm install -g @bash0816/claude-code@2.1.142
 npm install -g @bash0816/claude-code@2.1.143
 npm install -g @bash0816/claude-code@2.1.144
 npm install -g @bash0816/claude-code@2.1.153-3
+npm install -g @bash0816/claude-code@2.1.153-4
 ```
 
 ## Update / 更新
@@ -133,8 +134,10 @@ Only versions registered in the audited metadata can run.
 - `2.1.153-1` — TerminalShim.write() データコールバック regression 修正（一部端末で対話モードが即終了する問題）⚠️ 根本原因は未修正・非推奨
 - `2.1.153-2` — fixes compareVersions() for -N suffixed versions; fixes manifest_url pointing to wrong repo ⚠️ root cause not yet fixed; not recommended
 - `2.1.153-2` — compareVersions() の -N サフィックス対応修正；manifest_url が誤ったリポジトリを参照していた問題を修正 ⚠️ 根本原因は未修正・非推奨
-- `2.1.153-3` — fixes root cause of interactive mode silent exit: injects Bun into vm contexts created by Claude Code
-- `2.1.153-3` — 対話モード即終了の根本原因修正：Claude Code が作成する vm コンテキストに Bun を注入
+- `2.1.153-3` — fixes root cause of interactive mode silent exit: injects Bun into vm contexts created by Claude Code ⚠️ globalThis.Bun cleanup bug remains; not recommended
+- `2.1.153-3` — 対話モード即終了の根本原因修正：Claude Code が作成する vm コンテキストに Bun を注入 ⚠️ globalThis.Bun クリーンアップバグが残存・非推奨
+- `2.1.153-4` — fixes globalThis.Bun being cleared in finally after fn() resolves (interactive mode fix completion)
+- `2.1.153-4` — finally で globalThis.Bun が削除される問題を修正（対話モード修正の完成版）
 
 The source of truth is the metadata files below.
 
@@ -172,7 +175,7 @@ Example:
 例:
 
 ```text
-2.1.153-3 (Claude Code)
+2.1.153-4 (Claude Code)
 ```
 
 ## Do Not Use / 非推奨
