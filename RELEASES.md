@@ -1,5 +1,33 @@
 # Release Notes / リリースノート
 
+## 2.1.153 — 2026-05-28
+
+### Upstream update / upstream 更新
+
+**English**
+
+Tracks upstream `@anthropic-ai/claude-code@2.1.153`. No new Bun APIs were added compared to 2.1.150; the same shim as 2.1.150-3 is used with updated entry offsets.
+
+To upgrade:
+
+```sh
+npm install -g @bash0816/claude-code@2.1.153
+```
+
+---
+
+**日本語**
+
+upstream `@anthropic-ai/claude-code@2.1.153` に追従します。2.1.150 比で Bun API の追加はなく、2.1.150-3 と同一の shim を entry offset の更新のみで使用しています。
+
+アップグレード:
+
+```sh
+npm install -g @bash0816/claude-code@2.1.153
+```
+
+---
+
 ## 2.1.150-3 — 2026-05-28
 
 ### Fix: Transpiler class, spawn stdio array, Node.js >=20 requirement / Transpiler クラス化・spawn stdio 配列対応・Node.js >=20 要件追加
