@@ -1,5 +1,45 @@
 # Release Notes / リリースノート
 
+## 2.1.153-3 — 2026-05-28
+
+### Fix: vm context Bun injection (interactive mode silent exit root cause) / vm コンテキスト Bun 注入（対話モード即終了の根本原因修正）
+
+**English**
+
+Fixes the root cause of interactive mode exiting silently on launch.
+
+Claude Code uses `require('vm').createContext()` internally to run isolated sandboxes. `globalThis.Bun` set by the launcher was not visible inside these vm contexts, causing `ReferenceError: Bun is not defined` before any interactive UI code could run.
+
+Fix: intercept `require('vm')` and patch `createContext`, `runInNewContext`, and `Script.prototype.runInContext` / `runInNewContext` to automatically inject `globalThis.Bun` into every new vm context.
+
+This is the root cause that 2.1.153-1 and 2.1.153-2 did not address (those fixed the update-check bug and a TerminalShim regression, respectively). The fix was identified by independent investigation on Device B (Codex + gpt-5.5).
+
+To upgrade:
+
+```sh
+npm install -g @bash0816/claude-code@2.1.153-3
+```
+
+---
+
+**日本語**
+
+対話モードが起動直後に無言で終了する根本原因を修正します。
+
+Claude Code は内部で `require('vm').createContext()` を使って独立したサンドボックスを作成します。ランチャーが設定した `globalThis.Bun` はこれらの vm コンテキスト内から見えないため、対話 UI コードが実行される前に `ReferenceError: Bun is not defined` が発生して即終了していました。
+
+修正: `require('vm')` を横取りし、`createContext` / `runInNewContext` / `Script.prototype.runInContext` / `runInNewContext` をパッチして、新しい vm コンテキスト作成時に自動で `globalThis.Bun` を注入するようにします。
+
+これは 2.1.153-1・2.1.153-2 が対処していなかった根本原因です（それらはそれぞれ update-check バグと TerminalShim regression を修正）。Device B での独立調査（Codex + gpt-5.5）により特定されました。
+
+アップグレード:
+
+```sh
+npm install -g @bash0816/claude-code@2.1.153-3
+```
+
+---
+
 ## 2.1.153-2 — 2026-05-28
 
 ### Fix: compareVersions -N suffix; manifest_url wrong repo / compareVersions -N 対応・manifest_url 誤参照修正

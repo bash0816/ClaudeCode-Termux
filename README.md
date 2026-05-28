@@ -52,6 +52,7 @@ npm install -g @bash0816/claude-code@2.1.150-3
 npm install -g @bash0816/claude-code@2.1.153
 npm install -g @bash0816/claude-code@2.1.153-1
 npm install -g @bash0816/claude-code@2.1.153-2
+npm install -g @bash0816/claude-code@2.1.153-3
 ```
 
 ## Update / 更新
@@ -107,6 +108,8 @@ Only versions registered in the audited metadata can run.
 - `2.1.153-1` — TerminalShim.write() データコールバック regression 修正（一部端末で対話モードが即終了する問題）
 - `2.1.153-2` — fixes compareVersions() for -N suffixed versions; fixes manifest_url pointing to wrong repo
 - `2.1.153-2` — compareVersions() の -N サフィックス対応修正；manifest_url が誤ったリポジトリを参照していた問題を修正
+- `2.1.153-3` — fixes root cause of interactive mode silent exit: injects Bun into vm contexts created by Claude Code
+- `2.1.153-3` — 対話モード即終了の根本原因修正：Claude Code が作成する vm コンテキストに Bun を注入
 
 The source of truth is the metadata files below.
 
