@@ -8,6 +8,30 @@ Current install and update paths are consolidated into npm.
 
 現在の導入・更新手順は npm package に一本化しています。
 
+## Important Notice / 重要な注意
+
+Use `2.1.153-3` or newer.
+
+`2.1.150` through `2.1.153-2` have known interactive mode problems on Termux. Some older builds can also show an incorrect downgrade notice such as `2.1.153-1 -> 2.1.150` because of an update version comparison bug.
+
+If you are on one of those versions, install the current package explicitly:
+
+```sh
+npm install -g @bash0816/claude-code@latest
+claude --version
+```
+
+`2.1.153-3` 以上を使用してください。
+
+`2.1.150` から `2.1.153-2` には、Termux の interactive mode に既知の問題があります。一部の古い build では update version 比較バグにより、`2.1.153-1 -> 2.1.150` のような誤った downgrade 通知が出る場合もあります。
+
+該当 version を使用している場合は、現在の package を明示的に install してください:
+
+```sh
+npm install -g @bash0816/claude-code@latest
+claude --version
+```
+
 ## Install / インストール
 
 ```sh
@@ -45,13 +69,6 @@ npm install -g @bash0816/claude-code@2.1.141
 npm install -g @bash0816/claude-code@2.1.142
 npm install -g @bash0816/claude-code@2.1.143
 npm install -g @bash0816/claude-code@2.1.144
-npm install -g @bash0816/claude-code@2.1.150
-npm install -g @bash0816/claude-code@2.1.150-1
-npm install -g @bash0816/claude-code@2.1.150-2
-npm install -g @bash0816/claude-code@2.1.150-3
-npm install -g @bash0816/claude-code@2.1.153
-npm install -g @bash0816/claude-code@2.1.153-1
-npm install -g @bash0816/claude-code@2.1.153-2
 npm install -g @bash0816/claude-code@2.1.153-3
 ```
 
@@ -65,6 +82,10 @@ claude update
 
 `claude update` は最新の監査済み package version を install します。
 
+If an older version shows a downgrade notice, do not follow it. Install the latest package explicitly with npm.
+
+古い version で downgrade 通知が出た場合は従わず、npm で latest を明示 install してください。
+
 ```sh
 npm install -g @bash0816/claude-code@<latest_audited_version>
 ```
@@ -74,6 +95,10 @@ On normal launch, the wrapper also checks the same manifest with a short timeout
 通常起動時も、wrapper は短い timeout で同じ manifest を確認し、新しい監査済み version があれば通知します。
 
 ## Supported Versions / 対応バージョン
+
+Registration in the audited metadata means the wrapper can identify and launch that version. It does not mean every historical version is recommended for new installs.
+
+監査済み metadata への登録は、その version を wrapper が識別・起動できるという意味です。過去 version すべてを新規 install に推奨する意味ではありません。
 
 Only versions registered in the audited metadata can run.
 
@@ -95,19 +120,8 @@ Only versions registered in the audited metadata can run.
 - `2.1.142`
 - `2.1.143`
 - `2.1.144`
-- `2.1.150`
-- `2.1.150-1` — fixes interactive launch crash on Node v24 (see [RELEASES.md](RELEASES.md))
-- `2.1.150-1` — Node v24 での対話起動クラッシュを修正（[RELEASES.md](RELEASES.md) 参照）
-- `2.1.150-2` — completes Bun shim (Terminal, YAML, Transpiler, semver.satisfies, spawn fixes)
-- `2.1.150-2` — Bun shim 完全版（Terminal / YAML / Transpiler / semver.satisfies / spawn 修正）
-- `2.1.150-3` — fixes Transpiler class, spawn stdio array, raises Node.js minimum to v20 (see [RELEASES.md](RELEASES.md))
-- `2.1.150-3` — Transpiler クラス化・spawn stdio 配列修正・Node.js 最小バージョン v20 に引き上げ（[RELEASES.md](RELEASES.md) 参照）
-- `2.1.153` — upstream 2.1.153 (no new Bun APIs; same shim as 2.1.150-3)
-- `2.1.153` — upstream 2.1.153（Bun API 追加なし；shim は 2.1.150-3 と同一）
-- `2.1.153-1` — fixes TerminalShim.write() data callback regression (interactive mode silent exit on some devices)
-- `2.1.153-1` — TerminalShim.write() データコールバック regression 修正（一部端末で対話モードが即終了する問題）
-- `2.1.153-2` — fixes compareVersions() for -N suffixed versions; fixes manifest_url pointing to wrong repo
-- `2.1.153-2` — compareVersions() の -N サフィックス対応修正；manifest_url が誤ったリポジトリを参照していた問題を修正
+- `2.1.150` through `2.1.153-2` — historical audited versions; not recommended for new installs because of known interactive mode issues. Use `2.1.153-3` or newer.
+- `2.1.150` から `2.1.153-2` — 履歴上の監査済み version。interactive mode の既知問題があるため新規 install 非推奨。`2.1.153-3` 以上を使用してください。
 - `2.1.153-3` — fixes root cause of interactive mode silent exit: injects Bun into vm contexts created by Claude Code
 - `2.1.153-3` — 対話モード即終了の根本原因修正：Claude Code が作成する vm コンテキストに Bun を注入
 
@@ -147,7 +161,7 @@ Example:
 例:
 
 ```text
-2.1.150 (Claude Code)
+2.1.153-3 (Claude Code)
 ```
 
 ## Do Not Use / 非推奨
