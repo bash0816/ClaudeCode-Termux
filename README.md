@@ -50,6 +50,7 @@ npm install -g @bash0816/claude-code@2.1.150-1
 npm install -g @bash0816/claude-code@2.1.150-2
 npm install -g @bash0816/claude-code@2.1.150-3
 npm install -g @bash0816/claude-code@2.1.153
+npm install -g @bash0816/claude-code@2.1.153-1
 ```
 
 ## Update / 更新
@@ -101,6 +102,8 @@ Only versions registered in the audited metadata can run.
 - `2.1.150-3` — Transpiler クラス化・spawn stdio 配列修正・Node.js 最小バージョン v20 に引き上げ（[RELEASES.md](RELEASES.md) 参照）
 - `2.1.153` — upstream 2.1.153 (no new Bun APIs; same shim as 2.1.150-3)
 - `2.1.153` — upstream 2.1.153（Bun API 追加なし；shim は 2.1.150-3 と同一）
+- `2.1.153-1` — fixes TerminalShim.write() data callback regression (interactive mode silent exit on some devices)
+- `2.1.153-1` — TerminalShim.write() データコールバック regression 修正（一部端末で対話モードが即終了する問題）
 
 The source of truth is the metadata files below.
 

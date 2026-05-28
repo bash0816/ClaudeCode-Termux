@@ -118,6 +118,41 @@
       "entry_js_offset": 221278436,
       "entry_end_offset": 236586147,
       "status": "termux_verified"
+    },
+    "2.1.150-1": {
+      "wrapper_spec": "@anthropic-ai/claude-code@2.1.150",
+      "native_spec": "@anthropic-ai/claude-code-linux-arm64@2.1.150",
+      "entry_js_offset": 221278436,
+      "entry_end_offset": 236586147,
+      "status": "termux_verified"
+    },
+    "2.1.150-2": {
+      "wrapper_spec": "@anthropic-ai/claude-code@2.1.150",
+      "native_spec": "@anthropic-ai/claude-code-linux-arm64@2.1.150",
+      "entry_js_offset": 221278436,
+      "entry_end_offset": 236586147,
+      "status": "termux_verified"
+    },
+    "2.1.150-3": {
+      "wrapper_spec": "@anthropic-ai/claude-code@2.1.150",
+      "native_spec": "@anthropic-ai/claude-code-linux-arm64@2.1.150",
+      "entry_js_offset": 221278436,
+      "entry_end_offset": 236586147,
+      "status": "termux_verified"
+    },
+    "2.1.153": {
+      "wrapper_spec": "@anthropic-ai/claude-code@2.1.153",
+      "native_spec": "@anthropic-ai/claude-code-linux-arm64@2.1.153",
+      "entry_js_offset": 222525028,
+      "entry_end_offset": 237958345,
+      "status": "termux_verified"
+    },
+    "2.1.153-1": {
+      "wrapper_spec": "@anthropic-ai/claude-code@2.1.153",
+      "native_spec": "@anthropic-ai/claude-code-linux-arm64@2.1.153",
+      "entry_js_offset": 222525028,
+      "entry_end_offset": 237958345,
+      "status": "termux_verified"
     }
   }
 }

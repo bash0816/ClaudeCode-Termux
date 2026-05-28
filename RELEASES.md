@@ -1,5 +1,37 @@
 # Release Notes / リリースノート
 
+## 2.1.153-1 — 2026-05-28
+
+### Fix: TerminalShim.write() data callback regression / TerminalShim.write() データコールバック regression 修正
+
+**English**
+
+Fixes a regression introduced in 2.1.150-3: `TerminalShim.write()` was missing the `options.data` callback call, causing interactive mode to exit silently (exit=0) immediately on some devices.
+
+Root cause: during the 2.1.150-3 Codex refactor, the line that fires the data callback from `write()` was accidentally dropped. Claude Code's interactive UI initialization writes initial data to a `Bun.Terminal` and expects the `data` callback to confirm the terminal is alive. Without it, the process exits immediately.
+
+To upgrade:
+
+```sh
+npm install -g @bash0816/claude-code@2.1.153-1
+```
+
+---
+
+**日本語**
+
+2.1.150-3 で混入した regression を修正します：`TerminalShim.write()` から `options.data` コールバックの呼び出しが失われており、一部の端末で対話モードが即 exit=0 で終了していました。
+
+根本原因：2.1.150-3 の Codex リファクタで `write()` から data コールバックを発火する行が誤って削除されました。Claude Code の対話 UI 初期化は `Bun.Terminal` に初期データを書き込み、`data` コールバックが呼ばれることを前提にしています。コールバックがないと即座に終了します。
+
+アップグレード:
+
+```sh
+npm install -g @bash0816/claude-code@2.1.153-1
+```
+
+---
+
 ## 2.1.153 — 2026-05-28
 
 ### Upstream update / upstream 更新
