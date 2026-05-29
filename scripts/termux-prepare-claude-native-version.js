@@ -2,6 +2,7 @@
 'use strict';
 
 const cp = require('child_process');
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -30,6 +31,11 @@ function run(command, args, options = {}) {
   return options.capture ? result.stdout.trim() : '';
 }
 
+function runJson(command, args) {
+  const output = run(command, args, { capture: true });
+  return output ? JSON.parse(output) : null;
+}
+
 function resolveVersion(input) {
   const normalized = normalizeVersion(input);
   if (normalized === 'latest') {
@@ -40,6 +46,7 @@ function resolveVersion(input) {
 
 function fetchNativeTarball(spec, packDir) {
   const directTarball = path.join(packDir, 'native-package.tgz');
+  const distIntegrity = runJson('npm', ['view', spec, 'dist.integrity', '--json']);
 
   try {
     const tarballUrl = run('npm', ['view', spec, 'dist.tarball', '--json'], { capture: true }).replace(/^"|"$/g, '');
@@ -56,7 +63,7 @@ function fetchNativeTarball(spec, packDir) {
       tarballUrl,
     ], { quiet: jsonOnly });
     if (fs.existsSync(directTarball)) {
-      return directTarball;
+      return { tgzPath: directTarball, tarballIntegrity: distIntegrity };
     }
   } catch (error) {
     if (!jsonOnly) {
@@ -68,7 +75,11 @@ function fetchNativeTarball(spec, packDir) {
   run('npm', ['pack', spec, '--pack-destination', packDir], { quiet: jsonOnly });
   const tgz = fs.readdirSync(packDir).find(name => name.endsWith('.tgz'));
   if (!tgz) throw new Error('npm pack did not produce a tgz');
-  return path.join(packDir, tgz);
+  return { tgzPath: path.join(packDir, tgz), tarballIntegrity: distIntegrity };
+}
+
+function sha256(file) {
+  return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 }
 
 function discoverOffsets(binary) {
@@ -114,7 +125,7 @@ function main() {
   fs.mkdirSync(nativeDest, { recursive: true });
 
   try {
-    const tgzPath = fetchNativeTarball(nativeSpec, packDir);
+    const { tgzPath, tarballIntegrity } = fetchNativeTarball(nativeSpec, packDir);
 
     const extractDir = path.join(packDir, 'native');
     fs.mkdirSync(extractDir, { recursive: true });
@@ -127,6 +138,8 @@ function main() {
       version,
       wrapper_spec: `@anthropic-ai/claude-code@${version}`,
       native_spec: nativeSpec,
+      tarball_integrity: tarballIntegrity,
+      tarball_sha256: sha256(tgzPath),
       workdir,
       source_bin: sourceBin,
       ...offsets,
@@ -139,6 +152,8 @@ function main() {
       console.log(`source_bin: ${sourceBin}`);
       console.log(`entry_js_offset: ${result.entry_js_offset}`);
       console.log(`entry_end_offset: ${result.entry_end_offset}`);
+      console.log(`tarball_integrity: ${result.tarball_integrity}`);
+      console.log(`tarball_sha256: ${result.tarball_sha256}`);
     }
   } finally {
     fs.rmSync(packDir, { recursive: true, force: true });
