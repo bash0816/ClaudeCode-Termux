@@ -147,7 +147,7 @@ Only versions registered in the audited metadata can run.
 - `2.1.154-1` — finally ブロックの globalThis.Bun クリーンアップを削除 ⚠️ **deprecated** — Bun.YAML と Bun.semver が未実装のため 2.1.154-2 を使用してください
 - `2.1.154-2` — adds Bun.YAML, Bun.semver, Bun.gc, Bun.stdin, and Bun.embeddedFiles to BunShim
 - `2.1.154-2` — Bun.YAML / Bun.semver / Bun.gc / Bun.stdin / Bun.embeddedFiles を BunShim に追加
-- `2.1.156` — upstream 2.1.156 追従・shim 追加修正なしで動作確認
+- `2.1.156` — upstream 2.1.156 tracking; confirmed working with 2.1.154-2 shim, no additional fixes needed
 - `2.1.156` — upstream 2.1.156 追従・shim 追加修正なしで動作確認
 
 The source of truth is the metadata files below.
