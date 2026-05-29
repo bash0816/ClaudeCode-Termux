@@ -44,6 +44,8 @@ function main() {
     native_spec: `@anthropic-ai/claude-code-linux-arm64@${version}`,
     entry_js_offset: offsets.entry_js_offset,
     entry_end_offset: offsets.entry_end_offset,
+    tarball_integrity: offsets.tarball_integrity,
+    tarball_sha256: offsets.tarball_sha256,
     status: 'offset_discovered',
   };
 
