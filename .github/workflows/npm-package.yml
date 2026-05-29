@@ -1,7 +1,7 @@
-name: npm package (verify)
+name: Npm Package
 
-# Publish is handled by the private repo workflow (bash0816/CluadeCode-Termux-private).
-# This workflow runs verify-only on PRs and pushes.
+# This workflow verifies on PRs and pushes, and can publish on workflow_dispatch
+# when explicitly requested.
 
 on:
   pull_request:
@@ -25,6 +25,19 @@ on:
       - "scripts/**"
       - ".github/workflows/npm-package.yml"
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish @bash0816/claude-code to npm"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      npm_tag:
+        description: "npm dist-tag to use when publishing"
+        required: false
+        default: "latest"
 
 permissions:
   contents: read
@@ -36,7 +49,7 @@ jobs:
       run:
         working-directory: packages/claude-code
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - uses: actions/setup-node@v4
         with:
@@ -67,6 +80,11 @@ jobs:
           if (pkg.version !== manifest.latest_audited_version) {
             throw new Error(`package version ${pkg.version} does not match manifest latest audited ${manifest.latest_audited_version}`);
           }
+          const latest = config.versions[manifest.latest_audited_version];
+          if (!latest) throw new Error(`missing audited metadata for ${manifest.latest_audited_version}`);
+          if (latest.status !== 'termux_verified') {
+            throw new Error(`latest audited version ${manifest.latest_audited_version} is not termux_verified`);
+          }
           NODE
 
       - name: Verify release manifest
@@ -78,3 +96,66 @@ jobs:
 
       - name: Pack dry run
         run: npm pack --dry-run
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish == 'true'
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: packages/claude-code
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Publish guard
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs = require('fs');
+          const { execSync } = require('child_process');
+
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const config = JSON.parse(fs.readFileSync('config/claude-native-audited-versions.json', 'utf8'));
+          const manifest = JSON.parse(fs.readFileSync('config/claude-termux-release-manifest.json', 'utf8'));
+          const latestVersion = manifest.latest_audited_version;
+          const latest = config.versions[latestVersion];
+          if (pkg.name !== '@bash0816/claude-code') throw new Error('unexpected package name');
+          if (pkg.version !== latestVersion) {
+            throw new Error(`package version ${pkg.version} does not match manifest latest audited ${latestVersion}`);
+          }
+          if (!latest) throw new Error(`missing audited metadata for ${latestVersion}`);
+          if (latest.status !== 'termux_verified') {
+            throw new Error(`latest audited version ${latestVersion} is not termux_verified`);
+          }
+
+          const packInfo = JSON.parse(execSync('npm pack --dry-run --json', { encoding: 'utf8' }));
+          const pack = Array.isArray(packInfo) ? packInfo[0] : packInfo;
+          const files = (pack && pack.files) || [];
+          const unexpected = [];
+          for (const file of files) {
+            const path = String(file.path || '').replace(/^\.\//, '');
+            if (path === 'package.json' || path === 'README.md') continue;
+            if (path.startsWith('bin/') || path.startsWith('lib/') || path.startsWith('config/')) continue;
+            unexpected.push(path);
+          }
+          if (unexpected.length) {
+            throw new Error(`unexpected files in npm pack: ${unexpected.join(', ')}`);
+          }
+          NODE
+
+      - name: Publish package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TAG: ${{ inputs.npm_tag || 'latest' }}
+        run: |
+          set -euo pipefail
+          npm publish --access public --tag "${NPM_TAG}"
