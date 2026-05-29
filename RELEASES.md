@@ -1,5 +1,11 @@
 # Release Notes / リリースノート
 
+## 2.1.156 — 2026-05-29
+
+### upstream 2.1.156 追従・shim 追加修正なしで動作確認
+- 2.1.154-2 の shim（Bun.YAML / Bun.semver / gc / stdin / embeddedFiles）を引き継ぎ
+- 実機検証: auth / update --dry-run / rollback 全テスト通過・Bun エラー 0件
+
 ## 2.1.154-2 — 2026-05-29
 
 ### Fix: Add Bun.YAML, Bun.semver, Bun.gc, Bun.stdin, Bun.embeddedFiles to BunShim / BunShim に YAML・semver・gc・stdin・embeddedFiles を追加

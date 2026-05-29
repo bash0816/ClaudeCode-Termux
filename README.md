@@ -10,7 +10,7 @@ Current install and update paths are consolidated into npm.
 
 ## Important Notice / 重要な注意
 
-Use `2.1.154-2` or newer.
+Use `2.1.156` or newer.
 
 `2.1.150` through `2.1.153-2` have known interactive mode problems on Termux. Some older builds can also show an incorrect downgrade notice such as `2.1.153-1 -> 2.1.150` because of an update version comparison bug.
 
@@ -21,7 +21,7 @@ npm install -g @bash0816/claude-code@latest
 claude --version
 ```
 
-`2.1.154-2` 以上を使用してください。
+`2.1.156` 以上を使用してください。
 
 `2.1.150` から `2.1.153-2` には、Termux の interactive mode に既知の問題があります。一部の古い build では update version 比較バグにより、`2.1.153-1 -> 2.1.150` のような誤った downgrade 通知が出る場合もあります。
 
@@ -72,6 +72,7 @@ npm install -g @bash0816/claude-code@2.1.144
 npm install -g @bash0816/claude-code@2.1.153-3
 npm install -g @bash0816/claude-code@2.1.153-4
 npm install -g @bash0816/claude-code@2.1.154-2
+npm install -g @bash0816/claude-code@2.1.156
 ```
 
 ## Update / 更新
@@ -146,6 +147,8 @@ Only versions registered in the audited metadata can run.
 - `2.1.154-1` — finally ブロックの globalThis.Bun クリーンアップを削除 ⚠️ **deprecated** — Bun.YAML と Bun.semver が未実装のため 2.1.154-2 を使用してください
 - `2.1.154-2` — adds Bun.YAML, Bun.semver, Bun.gc, Bun.stdin, and Bun.embeddedFiles to BunShim
 - `2.1.154-2` — Bun.YAML / Bun.semver / Bun.gc / Bun.stdin / Bun.embeddedFiles を BunShim に追加
+- `2.1.156` — upstream 2.1.156 追従・shim 追加修正なしで動作確認
+- `2.1.156` — upstream 2.1.156 追従・shim 追加修正なしで動作確認
 
 The source of truth is the metadata files below.
 
