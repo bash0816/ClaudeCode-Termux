@@ -1,5 +1,24 @@
 # Release Notes / リリースノート
 
+## 2.1.154-2 — 2026-05-29
+
+### Fix: Add Bun.YAML, Bun.semver, Bun.gc, Bun.stdin, Bun.embeddedFiles to BunShim / BunShim に YAML・semver・gc・stdin・embeddedFiles を追加
+- Bun.YAML（parse/stringify）追加 — skills/plugins の YAML frontmatter 読み込みが正常化
+- Bun.semver（order/satisfies）追加 — node-semver 完全互換（^/~/||/prerelease 対応）
+- Bun.gc / Bun.stdin / Bun.embeddedFiles 追加
+- 実機検証: 全エラー 0件・2.1.153-4 以来初めてのクリーンな動作
+
+## 2.1.154-1 — 2026-05-29 [deprecated]
+
+### Fix: Remove globalThis.Bun cleanup from finally block / finally ブロックの globalThis.Bun クリーンアップを削除
+- Bun is not defined 37件の退行を修正
+- **非推奨**: Bun.YAML・Bun.semver 未実装のため 2.1.154-2 を使用してください
+
+## 2.1.154 — 2026-05-29 [deprecated]
+
+### upstream 2.1.154 追従
+- **非推奨**: Bun is not defined 37件の退行あり。2.1.154-2 を使用してください
+
 ## 2.1.153-4 — 2026-05-28
 
 ### Fix: globalThis.Bun not cleaned up in finally (interactive mode Bun lost after fn() resolves) / finally で globalThis.Bun を削除しないよう修正

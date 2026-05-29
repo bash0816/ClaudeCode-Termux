@@ -10,7 +10,7 @@ Current install and update paths are consolidated into npm.
 
 ## Important Notice / 重要な注意
 
-Use `2.1.153-3` or newer.
+Use `2.1.154-2` or newer.
 
 `2.1.150` through `2.1.153-2` have known interactive mode problems on Termux. Some older builds can also show an incorrect downgrade notice such as `2.1.153-1 -> 2.1.150` because of an update version comparison bug.
 
@@ -21,7 +21,7 @@ npm install -g @bash0816/claude-code@latest
 claude --version
 ```
 
-`2.1.153-3` 以上を使用してください。
+`2.1.154-2` 以上を使用してください。
 
 `2.1.150` から `2.1.153-2` には、Termux の interactive mode に既知の問題があります。一部の古い build では update version 比較バグにより、`2.1.153-1 -> 2.1.150` のような誤った downgrade 通知が出る場合もあります。
 
@@ -55,6 +55,7 @@ Current quick examples:
 ```sh
 npm install -g @bash0816/claude-code@2.1.118
 npm install -g @bash0816/claude-code@2.1.119
+npm install -g @bash0816/claude-code@2.1.154-2
 npm install -g @bash0816/claude-code@2.1.121
 npm install -g @bash0816/claude-code@2.1.122
 npm install -g @bash0816/claude-code@2.1.123
@@ -139,6 +140,12 @@ Only versions registered in the audited metadata can run.
 - `2.1.153-3` — 対話モード即終了の根本原因修正：Claude Code が作成する vm コンテキストに Bun を注入 ⚠️ **deprecated** — globalThis.Bun クリーンアップバグにより vm コンテキストで Bun is not defined が発生
 - `2.1.153-4` — fixes globalThis.Bun being cleared in finally after fn() resolves (interactive mode fix completion)
 - `2.1.153-4` — finally で globalThis.Bun が削除される問題を修正（対話モード修正の完成版）
+- `2.1.154-2` — adds Bun.YAML, Bun.semver, Bun.gc, Bun.stdin, and Bun.embeddedFiles to BunShim
+- `2.1.154-2` — Bun.YAML / Bun.semver / Bun.gc / Bun.stdin / Bun.embeddedFiles を BunShim に追加
+- `2.1.154-1` — removes globalThis.Bun cleanup from finally block ⚠️ **deprecated** — Bun.YAML and Bun.semver are not implemented; use 2.1.154-2
+- `2.1.154-1` — finally ブロックの globalThis.Bun クリーンアップを削除 ⚠️ **deprecated** — Bun.YAML と Bun.semver が未実装のため 2.1.154-2 を使用してください
+- `2.1.154` — upstream 2.1.154 tracking ⚠️ **deprecated** — Bun is not defined regression; use 2.1.154-2
+- `2.1.154` — upstream 2.1.154 追従 ⚠️ **deprecated** — Bun is not defined 退行のため 2.1.154-2 を使用してください
 
 The source of truth is the metadata files below.
 
@@ -176,7 +183,7 @@ Example:
 例:
 
 ```text
-2.1.153-4 (Claude Code)
+2.1.154-2 (Claude Code)
 ```
 
 ## Do Not Use / 非推奨
