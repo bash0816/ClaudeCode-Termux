@@ -55,7 +55,6 @@ Current quick examples:
 ```sh
 npm install -g @bash0816/claude-code@2.1.118
 npm install -g @bash0816/claude-code@2.1.119
-npm install -g @bash0816/claude-code@2.1.154-2
 npm install -g @bash0816/claude-code@2.1.121
 npm install -g @bash0816/claude-code@2.1.122
 npm install -g @bash0816/claude-code@2.1.123
@@ -72,6 +71,7 @@ npm install -g @bash0816/claude-code@2.1.143
 npm install -g @bash0816/claude-code@2.1.144
 npm install -g @bash0816/claude-code@2.1.153-3
 npm install -g @bash0816/claude-code@2.1.153-4
+npm install -g @bash0816/claude-code@2.1.154-2
 ```
 
 ## Update / 更新
@@ -140,12 +140,12 @@ Only versions registered in the audited metadata can run.
 - `2.1.153-3` — 対話モード即終了の根本原因修正：Claude Code が作成する vm コンテキストに Bun を注入 ⚠️ **deprecated** — globalThis.Bun クリーンアップバグにより vm コンテキストで Bun is not defined が発生
 - `2.1.153-4` — fixes globalThis.Bun being cleared in finally after fn() resolves (interactive mode fix completion)
 - `2.1.153-4` — finally で globalThis.Bun が削除される問題を修正（対話モード修正の完成版）
-- `2.1.154-2` — adds Bun.YAML, Bun.semver, Bun.gc, Bun.stdin, and Bun.embeddedFiles to BunShim
-- `2.1.154-2` — Bun.YAML / Bun.semver / Bun.gc / Bun.stdin / Bun.embeddedFiles を BunShim に追加
-- `2.1.154-1` — removes globalThis.Bun cleanup from finally block ⚠️ **deprecated** — Bun.YAML and Bun.semver are not implemented; use 2.1.154-2
-- `2.1.154-1` — finally ブロックの globalThis.Bun クリーンアップを削除 ⚠️ **deprecated** — Bun.YAML と Bun.semver が未実装のため 2.1.154-2 を使用してください
 - `2.1.154` — upstream 2.1.154 tracking ⚠️ **deprecated** — Bun is not defined regression; use 2.1.154-2
 - `2.1.154` — upstream 2.1.154 追従 ⚠️ **deprecated** — Bun is not defined 退行のため 2.1.154-2 を使用してください
+- `2.1.154-1` — removes globalThis.Bun cleanup from finally block ⚠️ **deprecated** — Bun.YAML and Bun.semver are not implemented; use 2.1.154-2
+- `2.1.154-1` — finally ブロックの globalThis.Bun クリーンアップを削除 ⚠️ **deprecated** — Bun.YAML と Bun.semver が未実装のため 2.1.154-2 を使用してください
+- `2.1.154-2` — adds Bun.YAML, Bun.semver, Bun.gc, Bun.stdin, and Bun.embeddedFiles to BunShim
+- `2.1.154-2` — Bun.YAML / Bun.semver / Bun.gc / Bun.stdin / Bun.embeddedFiles を BunShim に追加
 
 The source of truth is the metadata files below.
 
