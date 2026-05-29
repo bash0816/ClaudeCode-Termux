@@ -1,0 +1,58 @@
+name: Codex V8 Build Follow-up
+
+on:
+  workflow_run:
+    workflows:
+      - build-rusty-v8-android
+    types:
+      - completed
+
+permissions:
+  pull-requests: write
+  actions: write
+
+jobs:
+  followup:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.head_branch != '' && startsWith(github.event.workflow_run.head_branch, 'automation/codex-') }}
+    steps:
+      - name: Resolve candidate PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+
+          pr_number="$(gh pr list --repo "${REPO}" --head "${HEAD_BRANCH}" --state open --json number --jq '.[0].number // empty')"
+          printf 'number=%s\n' "${pr_number}" >> "${GITHUB_OUTPUT}"
+
+      - name: Comment on failure
+        if: ${{ github.event.workflow_run.conclusion != 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${PR_NUMBER}" ]; then
+            echo "no open PR found for ${HEAD_BRANCH}; skipping failure comment"
+            exit 0
+          fi
+
+          gh pr comment "${PR_NUMBER}" --repo "${REPO}" --body "build-rusty-v8-android failed for \`${HEAD_BRANCH}\`. Run: ${RUN_URL}"
+
+      - name: Dispatch external build
+        if: ${{ github.event.workflow_run.conclusion == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+
+          gh workflow run external-build-android-aarch64 --repo "${REPO}" --ref "${HEAD_BRANCH}"

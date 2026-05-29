@@ -1,0 +1,65 @@
+name: Codex External Build Follow-up
+
+on:
+  workflow_run:
+    workflows:
+      - external-build-android-aarch64
+    types:
+      - completed
+
+permissions:
+  pull-requests: write
+  actions: write
+
+jobs:
+  followup:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.head_branch != '' && startsWith(github.event.workflow_run.head_branch, 'automation/codex-') }}
+    steps:
+      - name: Resolve candidate PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+
+          pr_number="$(gh pr list --repo "${REPO}" --head "${HEAD_BRANCH}" --state open --json number --jq '.[0].number // empty')"
+          printf 'number=%s\n' "${pr_number}" >> "${GITHUB_OUTPUT}"
+
+      - name: Comment on success
+        if: ${{ github.event.workflow_run.conclusion == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${PR_NUMBER}" ]; then
+            echo "no open PR found for ${HEAD_BRANCH}; skipping success comment"
+            exit 0
+          fi
+
+          gh pr comment "${PR_NUMBER}" --repo "${REPO}" --body "build artifact ready for \`${HEAD_BRANCH}\`. Run: ${RUN_URL}"
+
+      - name: Comment on failure
+        if: ${{ github.event.workflow_run.conclusion != 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${PR_NUMBER}" ]; then
+            echo "no open PR found for ${HEAD_BRANCH}; skipping failure comment"
+            exit 0
+          fi
+
+          gh pr comment "${PR_NUMBER}" --repo "${REPO}" --body "external-build-android-aarch64 failed for \`${HEAD_BRANCH}\`. Run: ${RUN_URL}"

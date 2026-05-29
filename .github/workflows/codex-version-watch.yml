@@ -1,0 +1,169 @@
+name: Codex Version Watch
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: codex-version-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve upstream Codex release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          tag="$(gh api repos/openai/codex/releases/latest --jq '.tag_name')"
+          case "${tag}" in
+            rust-v*) version="${tag#rust-v}" ;;
+            *)
+              echo "unexpected upstream release tag: ${tag}" >&2
+              exit 1
+              ;;
+          esac
+
+          if ! printf '%s' "${version}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "unexpected upstream version format: ${version}" >&2
+            exit 1
+          fi
+
+          lock_content="$(gh api "repos/openai/codex/contents/codex-rs/Cargo.lock?ref=${tag}" --jq '.content')"
+          v8_version="$({
+            printf '%s' "${lock_content}" \
+              | tr -d '\n' \
+              | base64 --decode \
+              | awk '
+                  $0 == "[[package]]" { in_v8 = 0 }
+                  $0 == "name = \"v8\"" { in_v8 = 1; next }
+                  in_v8 && $1 == "version" {
+                    gsub(/"/, "", $3)
+                    print $3
+                    exit
+                  }
+                '
+          })"
+
+          if [ -z "${v8_version}" ]; then
+            echo "failed to extract v8 version from Cargo.lock at ${tag}" >&2
+            exit 1
+          fi
+
+          asset_name="rusty-v8-v${v8_version}"
+          if gh api "repos/openai/codex/releases/tags/${tag}" --jq '.assets[].name' | grep -Fxq "${asset_name}"; then
+            asset_exists=true
+          else
+            asset_exists=false
+          fi
+
+          printf 'tag=%s\nversion=%s\nv8_version=%s\nasset_name=%s\nasset_exists=%s\n' \
+            "${tag}" "${version}" "${v8_version}" "${asset_name}" "${asset_exists}" >> "${GITHUB_OUTPUT}"
+
+      - name: Check candidate branch
+        id: branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          CANDIDATE_BRANCH: automation/codex-${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          if gh api "repos/${REPO}/git/ref/heads/${CANDIDATE_BRANCH}" >/dev/null 2>&1; then
+            echo 'skip=true' >> "${GITHUB_OUTPUT}"
+            echo "candidate branch already exists: ${CANDIDATE_BRANCH}"
+          else
+            echo 'skip=false' >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Check out repository
+        if: ${{ steps.branch.outputs.skip != 'true' }}
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Create candidate branch and PR
+        if: ${{ steps.branch.outputs.skip != 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          CANDIDATE_BRANCH: automation/codex-${{ steps.release.outputs.version }}
+          UPSTREAM_TAG: ${{ steps.release.outputs.tag }}
+          UPSTREAM_VERSION: ${{ steps.release.outputs.version }}
+          V8_VERSION: ${{ steps.release.outputs.v8_version }}
+          RUSTY_V8_ASSET: ${{ steps.release.outputs.asset_name }}
+          ASSET_EXISTS: ${{ steps.release.outputs.asset_exists }}
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          python3 - <<'PY'
+          from datetime import datetime, timezone
+          from pathlib import Path
+          import json
+          import os
+
+          candidate = {
+              "upstream_release_tag": os.environ["UPSTREAM_TAG"],
+              "upstream_version": os.environ["UPSTREAM_VERSION"],
+              "v8_version": os.environ["V8_VERSION"],
+              "rusty_v8_asset": os.environ["RUSTY_V8_ASSET"],
+              "rusty_v8_asset_present": os.environ["ASSET_EXISTS"].lower() == "true",
+              "followup_workflow": "external-build-android-aarch64" if os.environ["ASSET_EXISTS"].lower() == "true" else "build-rusty-v8-android",
+              "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+          }
+          Path('.github').mkdir(parents=True, exist_ok=True)
+          Path('.github/codex-release-candidate.json').write_text(json.dumps(candidate, indent=2) + '\n', encoding='utf-8')
+          PY
+
+          git add .github/codex-release-candidate.json
+          git commit -m "chore: track Codex ${UPSTREAM_VERSION}"
+          git push origin "HEAD:${CANDIDATE_BRANCH}"
+
+          followup_workflow=$([ "${ASSET_EXISTS}" = "true" ] && printf 'external-build-android-aarch64' || printf 'build-rusty-v8-android')
+
+
+          pr_body=$(printf '%s\n' \
+            "Upstream release: \`${UPSTREAM_TAG}\`" \
+            "Upstream version: \`${UPSTREAM_VERSION}\`" \
+            "v8 version: \`${V8_VERSION}\`" \
+            "rusty-v8 asset: \`${RUSTY_V8_ASSET}\`" \
+            "asset present: \`${ASSET_EXISTS}\`" \
+            "follow-up workflow: \`${followup_workflow}\`"
+          )
+
+          gh pr create \
+            --repo "${REPO}" \
+            --base main \
+            --head "${CANDIDATE_BRANCH}" \
+            --title "chore: track Codex ${UPSTREAM_VERSION}" \
+            --body "${pr_body}"
+
+      - name: Dispatch follow-up workflow
+        if: ${{ steps.branch.outputs.skip != 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          CANDIDATE_BRANCH: automation/codex-${{ steps.release.outputs.version }}
+          ASSET_EXISTS: ${{ steps.release.outputs.asset_exists }}
+        run: |
+          set -euo pipefail
+
+          if [ "${ASSET_EXISTS}" = "true" ]; then
+            gh workflow run external-build-android-aarch64 --repo "${REPO}" --ref "${CANDIDATE_BRANCH}"
+          else
+            gh workflow run build-rusty-v8-android --repo "${REPO}" --ref "${CANDIDATE_BRANCH}"
+          fi
