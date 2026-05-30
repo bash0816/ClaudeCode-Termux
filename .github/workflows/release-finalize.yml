@@ -60,7 +60,7 @@ jobs:
           set -eu
           date_str=$(date -u +%Y-%m-%d)
           notes="$NOTES"
-          [ -z "$notes" ] && notes="upstream @anthropic-ai/claude-code@${VER} 追従。実機検証済み（install / launch / auth / update --dry-run 全通過）。"
+          [ -z "$notes" ] && notes="upstream @anthropic-ai/claude-code@${VER} 追従。"
           entry="## ${VER} — ${date_str}\n\n${notes}\n\n### Install\n\n\`\`\`sh\nnpm install -g @bash0816/claude-code@${VER}\nclaude --version\n\`\`\`\n\n"
           if grep -qF "## ${VER}" RELEASES.md; then
             echo "RELEASES.md already has ${VER} entry, skipping"
@@ -90,6 +90,6 @@ jobs:
           else
             pr_url=$(gh pr create --base main --head "$branch" \
               --title "docs: update README and RELEASES for ${VER}" \
-              --body "release-finalize による自動生成。@bash0816/claude-code@${VER} のリリースノート・README 更新。")
+              --body "release-finalize による自動生成。@bash0816/claude-code@${VER} のリリースノート・README 更新。\n\n> docs-only PR: automation/docs-* -> main は運用上の例外として許可（コード変更なし・README/RELEASES.md のみ）。")
             echo "PR created: $pr_url"
           fi
