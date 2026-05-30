@@ -80,7 +80,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
-          git add README.md RELEASES.md
+          git add README.md packages/claude-code/README.md RELEASES.md
           git diff --cached --quiet && echo "No changes to commit" && exit 0
           git commit -m "docs: update README and RELEASES for ${VER}"
           git push --force-with-lease origin "$branch" || git push --force origin "$branch"

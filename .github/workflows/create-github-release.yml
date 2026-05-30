@@ -78,9 +78,9 @@ print(vers[idx-1] if idx and idx > 0 else '')
             echo "Release $tag already exists, skipping"
             exit 0
           fi
-          release_notes=$(awk "/^## ${ver} /{ found=1; next } found && /^## /{ exit } found{ print }" RELEASES.md | sed '/^[[:space:]]*$/{ /./!d }')
+          release_notes=$(awk -v ver="$ver" 'BEGIN{f=0} $0=="## " ver " — " substr($0, length("## " ver " — ")+1) || ($0 ~ "^## " && index($0, "## " ver " ")>0){f=1;next} f && /^### /{exit} f && /^## /{exit} f{print}' RELEASES.md | sed '/^[[:space:]]*$/d')
           if [ -z "$release_notes" ]; then
-            release_notes="upstream @anthropic-ai/claude-code@${ver} 追従。実機検証済み。"
+            release_notes="upstream @anthropic-ai/claude-code@${ver} 追従。"
           fi
           release_body_file="$(mktemp)"
           {
