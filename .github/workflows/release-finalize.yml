@@ -1,0 +1,92 @@
+name: Release Finalize
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g. 2.1.157)"
+        required: true
+      release_notes:
+        description: "Public release summary (1-3 lines)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ github.token }}
+
+      - name: Verify npm publish exists
+        run: |
+          set -eu
+          ver="${{ inputs.version }}"
+          published=$(npm view "@bash0816/claude-code@${ver}" version 2>/dev/null || echo "")
+          if [ "$published" != "$ver" ]; then
+            echo "ERROR: @bash0816/claude-code@${ver} not published on npm" >&2
+            exit 1
+          fi
+          echo "Confirmed: @bash0816/claude-code@${ver} is published"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Update README recommended version
+        run: |
+          set -eu
+          ver="${{ inputs.version }}"
+          node scripts/update-readme-version-guidance.js "$ver" 2>/dev/null || \
+            sed -i "s|claude-code@[0-9]*\.[0-9]*\.[0-9]*|claude-code@${ver}|g" README.md
+          echo "README updated to $ver"
+
+      - name: Update RELEASES.md
+        run: |
+          set -eu
+          ver="${{ inputs.version }}"
+          date_str=$(date -u +%Y-%m-%d)
+          notes="${{ inputs.release_notes }}"
+          [ -z "$notes" ] && notes="upstream @anthropic-ai/claude-code@${ver} 追従。実機検証済み（install / launch / auth / update --dry-run 全通過）。"
+          entry="## ${ver} — ${date_str}\n\n${notes}\n\n### Install\n\n\`\`\`sh\nnpm install -g @bash0816/claude-code@${ver}\nclaude --version\n\`\`\`\n\n"
+          if grep -q "^## ${ver}" RELEASES.md; then
+            echo "RELEASES.md already has ${ver} entry, skipping"
+          else
+            sed -i "1s/^/${entry}/" RELEASES.md
+            echo "RELEASES.md updated with ${ver}"
+          fi
+
+      - name: Commit and push
+        run: |
+          set -eu
+          ver="${{ inputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md RELEASES.md packages/
+          git diff --cached --quiet && echo "No changes" || \
+            git commit -m "docs: update README and RELEASES for ${ver}"
+          git push
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          ver="${{ inputs.version }}"
+          tag="v${ver}"
+          notes="${{ inputs.release_notes }}"
+          [ -z "$notes" ] && notes="upstream @anthropic-ai/claude-code@${ver} 追従。実機検証済み。"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "Release $tag already exists, skipping"
+          else
+            gh release create "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "claude-code v${ver}" \
+              --notes "## claude-code v${ver}\n\n${notes}\n\n### Install\n\`\`\`sh\nnpm install -g @bash0816/claude-code@${ver}\n\`\`\`\n\n### Rollback\n\`\`\`sh\nnpm install -g @bash0816/claude-code@$(npm view @bash0816/claude-code dist-tags.previous 2>/dev/null || echo previous-version)\n\`\`\`" \
+              --latest
+            echo "Created release $tag"
+          fi
