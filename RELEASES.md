@@ -1,3 +1,14 @@
+## 2.1.157 — 2026-05-30
+
+upstream @anthropic-ai/claude-code@2.1.157 追従。Device B 実機検証済み（全7テスト通過：install / version / help / -p hello / auth status / update dry-run / rollback）。
+
+### Install
+
+```sh
+npm install -g @bash0816/claude-code@2.1.157
+claude --version
+```
+
 # Release Notes / リリースノート
 
 ## 2.1.156 — 2026-05-29
