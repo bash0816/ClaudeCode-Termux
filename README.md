@@ -53,31 +53,6 @@ Current quick examples:
 現在の quick example:
 
 ```sh
-npm install -g @bash0816/claude-code@2.1.150-1
-npm install -g @bash0816/claude-code@2.1.150-2
-npm install -g @bash0816/claude-code@2.1.150-3
-npm install -g @bash0816/claude-code@2.1.153-1
-npm install -g @bash0816/claude-code@2.1.153-2
-npm install -g @bash0816/claude-code@2.1.153-3
-npm install -g @bash0816/claude-code@2.1.153-4
-npm install -g @bash0816/claude-code@2.1.118
-npm install -g @bash0816/claude-code@2.1.119
-npm install -g @bash0816/claude-code@2.1.121
-npm install -g @bash0816/claude-code@2.1.122
-npm install -g @bash0816/claude-code@2.1.123
-npm install -g @bash0816/claude-code@2.1.126
-npm install -g @bash0816/claude-code@2.1.128
-npm install -g @bash0816/claude-code@2.1.136
-npm install -g @bash0816/claude-code@2.1.137
-npm install -g @bash0816/claude-code@2.1.138
-npm install -g @bash0816/claude-code@2.1.139
-npm install -g @bash0816/claude-code@2.1.140
-npm install -g @bash0816/claude-code@2.1.141
-npm install -g @bash0816/claude-code@2.1.142
-npm install -g @bash0816/claude-code@2.1.143
-npm install -g @bash0816/claude-code@2.1.144
-npm install -g @bash0816/claude-code@2.1.150
-npm install -g @bash0816/claude-code@2.1.153
 npm install -g @bash0816/claude-code@2.1.157
 ```
 
@@ -113,13 +88,6 @@ Only versions registered in the audited metadata can run.
 
 監査済み metadata に登録済みの version だけを実行します。
 
-- `2.1.150-1`
-- `2.1.150-2`
-- `2.1.150-3`
-- `2.1.153-1`
-- `2.1.153-2`
-- `2.1.153-3`
-- `2.1.153-4`
 - `2.1.118`
 - `2.1.119`
 - `2.1.121`
@@ -136,9 +104,34 @@ Only versions registered in the audited metadata can run.
 - `2.1.142`
 - `2.1.143`
 - `2.1.144`
-- `2.1.150`
-- `2.1.153`
-- `2.1.157`
+- `2.1.150` — ⚠️ **deprecated** — known interactive mode issues
+- `2.1.150` — ⚠️ **deprecated** — 対話モードに既知の問題あり
+- `2.1.150-1` — fixes interactive launch crash on Node v24 (see [RELEASES.md](RELEASES.md)) ⚠️ **deprecated** — known interactive mode issues
+- `2.1.150-1` — Node v24 での対話起動クラッシュを修正（[RELEASES.md](RELEASES.md) 参照）⚠️ **deprecated** — 対話モードに既知の問題あり
+- `2.1.150-2` — completes Bun shim (Terminal, YAML, Transpiler, semver.satisfies, spawn fixes) ⚠️ **deprecated** — known interactive mode issues
+- `2.1.150-2` — Bun shim 完全版（Terminal / YAML / Transpiler / semver.satisfies / spawn 修正）⚠️ **deprecated** — 対話モードに既知の問題あり
+- `2.1.150-3` — fixes Transpiler class, spawn stdio array, raises Node.js minimum to v20 (see [RELEASES.md](RELEASES.md)) ⚠️ **deprecated** — known interactive mode issues
+- `2.1.150-3` — Transpiler クラス化・spawn stdio 配列修正・Node.js 最小バージョン v20 に引き上げ（[RELEASES.md](RELEASES.md) 参照）⚠️ **deprecated** — 対話モードに既知の問題あり
+- `2.1.153` — upstream 2.1.153 (no new Bun APIs; same shim as 2.1.150-3) ⚠️ **deprecated** — known interactive mode issues
+- `2.1.153` — upstream 2.1.153（Bun API 追加なし；shim は 2.1.150-3 と同一）⚠️ **deprecated** — 対話モードに既知の問題あり
+- `2.1.153-1` — fixes TerminalShim.write() data callback regression (interactive mode silent exit on some devices) ⚠️ **deprecated** — root cause not yet fixed
+- `2.1.153-1` — TerminalShim.write() データコールバック regression 修正（一部端末で対話モードが即終了する問題）⚠️ **deprecated** — 根本原因は未修正
+- `2.1.153-2` — fixes compareVersions() for -N suffixed versions; fixes manifest_url pointing to wrong repo ⚠️ **deprecated** — root cause not yet fixed
+- `2.1.153-2` — compareVersions() の -N サフィックス対応修正；manifest_url が誤ったリポジトリを参照していた問題を修正 ⚠️ **deprecated** — 根本原因は未修正
+- `2.1.153-3` — fixes root cause of interactive mode silent exit: injects Bun into vm contexts created by Claude Code ⚠️ **deprecated** — globalThis.Bun cleanup bug causes Bun is not defined in vm contexts
+- `2.1.153-3` — 対話モード即終了の根本原因修正：Claude Code が作成する vm コンテキストに Bun を注入 ⚠️ **deprecated** — globalThis.Bun クリーンアップバグにより vm コンテキストで Bun is not defined が発生
+- `2.1.153-4` — fixes globalThis.Bun being cleared in finally after fn() resolves (interactive mode fix completion)
+- `2.1.153-4` — finally で globalThis.Bun が削除される問題を修正（対話モード修正の完成版）
+- `2.1.154` — upstream 2.1.154 tracking ⚠️ **deprecated** — Bun is not defined regression; use 2.1.154-2
+- `2.1.154` — upstream 2.1.154 追従 ⚠️ **deprecated** — Bun is not defined 退行のため 2.1.154-2 を使用してください
+- `2.1.154-1` — removes globalThis.Bun cleanup from finally block ⚠️ **deprecated** — Bun.YAML and Bun.semver are not implemented; use 2.1.154-2
+- `2.1.154-1` — finally ブロックの globalThis.Bun クリーンアップを削除 ⚠️ **deprecated** — Bun.YAML と Bun.semver が未実装のため 2.1.154-2 を使用してください
+- `2.1.154-2` — adds Bun.YAML, Bun.semver, Bun.gc, Bun.stdin, and Bun.embeddedFiles to BunShim
+- `2.1.154-2` — Bun.YAML / Bun.semver / Bun.gc / Bun.stdin / Bun.embeddedFiles を BunShim に追加
+- `2.1.156` — upstream 2.1.156 tracking; confirmed working with 2.1.154-2 shim, no additional fixes needed
+- `2.1.156` — upstream 2.1.156 追従・shim 追加修正なしで動作確認
+- `2.1.157` — upstream 2.1.157 tracking
+- `2.1.157` — upstream 2.1.157 追従
 
 The source of truth is the metadata files below.
 
