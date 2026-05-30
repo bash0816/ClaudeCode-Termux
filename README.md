@@ -130,8 +130,8 @@ Only versions registered in the audited metadata can run.
 - `2.1.154-2` — Bun.YAML / Bun.semver / Bun.gc / Bun.stdin / Bun.embeddedFiles を BunShim に追加
 - `2.1.156` — upstream 2.1.156 tracking; confirmed working with 2.1.154-2 shim, no additional fixes needed
 - `2.1.156` — upstream 2.1.156 追従・shim 追加修正なしで動作確認
-- `2.1.157` — upstream 2.1.157 tracking; confirmed working on Device B (all 7 tests passed)
-- `2.1.157` — upstream 2.1.157 追従・Device B 実機検証済み（全7テスト通過）
+- `2.1.157` — upstream 2.1.157 tracking
+- `2.1.157` — upstream 2.1.157 追従
 
 The source of truth is the metadata files below.
 
