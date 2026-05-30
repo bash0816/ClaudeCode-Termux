@@ -35,21 +35,57 @@ jobs:
           }
           echo "ver=$ver" >> "$GITHUB_OUTPUT"
 
+      - name: Verify npm publish exists
+        run: |
+          set -eu
+          ver="${{ steps.ver.outputs.ver }}"
+          published=$(npm view "@bash0816/claude-code@${ver}" version 2>/dev/null || echo "")
+          if [ "$published" != "$ver" ]; then
+            echo "ERROR: @bash0816/claude-code@${ver} not published on npm" >&2
+            exit 1
+          fi
+          echo "Confirmed: @bash0816/claude-code@${ver} is published"
+
+      - name: Resolve previous version
+        id: prev
+        run: |
+          set -eu
+          ver="${{ steps.ver.outputs.ver }}"
+          previous_ver="$(npm view @bash0816/claude-code dist-tags.previous 2>/dev/null || true)"
+          if [ -z "$previous_ver" ]; then
+            previous_ver="$(npm view @bash0816/claude-code versions --json 2>/dev/null \
+              | python3 -c "
+import sys, json
+vers = json.load(sys.stdin)
+target = '${ver}'
+idx = next((i for i,v in enumerate(vers) if v == target), None)
+print(vers[idx-1] if idx and idx > 0 else '')
+" 2>/dev/null || echo "")"
+          fi
+          if [ -z "$previous_ver" ]; then
+            echo "ERROR: Cannot determine previous version for rollback" >&2
+            exit 1
+          fi
+          echo "previous_ver=$previous_ver" >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         run: |
           set -eu
           ver="${{ steps.ver.outputs.ver }}"
+          previous_ver="${{ steps.prev.outputs.previous_ver }}"
           tag="v${ver}"
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             echo "Release $tag already exists, skipping"
             exit 0
           fi
-          previous_ver="$(npm view @bash0816/claude-code dist-tags.previous 2>/dev/null || true)"
-          [ -z "$previous_ver" ] && previous_ver="<previous-version>"
+          release_notes=$(awk "/^## ${ver} /{ found=1; next } found && /^## /{ exit } found{ print }" RELEASES.md | sed '/^[[:space:]]*$/{ /./!d }')
+          if [ -z "$release_notes" ]; then
+            release_notes="upstream @anthropic-ai/claude-code@${ver} 追従。実機検証済み。"
+          fi
           release_body_file="$(mktemp)"
           {
             printf "## claude-code v%s\n\n" "$ver"
-            printf "upstream @anthropic-ai/claude-code@%s 追従。実機検証済み。\n\n" "$ver"
+            printf "%s\n\n" "$release_notes"
             printf "### Install\n\`\`\`sh\nnpm install -g @bash0816/claude-code@%s\n\`\`\`\n\n" "$ver"
             printf "### Rollback\n\`\`\`sh\nnpm install -g @bash0816/claude-code@%s\n\`\`\`\n" "$previous_ver"
           } >"$release_body_file"
