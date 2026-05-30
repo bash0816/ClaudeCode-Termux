@@ -56,7 +56,9 @@ jobs:
           if grep -q "^## ${ver}" RELEASES.md; then
             echo "RELEASES.md already has ${ver} entry, skipping"
           else
-            sed -i "1s/^/${entry}/" RELEASES.md
+            printf "%b" "${entry}" > /tmp/new_entry.md
+            cat /tmp/new_entry.md RELEASES.md > /tmp/releases_new.md
+            mv /tmp/releases_new.md RELEASES.md
             echo "RELEASES.md updated with ${ver}"
           fi
 
