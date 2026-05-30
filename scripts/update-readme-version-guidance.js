@@ -89,7 +89,7 @@ function updateRootReadme(content, versions, latestAudited) {
     '',
     '現在の quick example:',
     '',
-    formatShellBlock(renderInstallCommands(versions)),
+    formatShellBlock(renderInstallCommands([latestAudited])),
     '',
   ].join('\n');
 
@@ -101,22 +101,6 @@ function updateRootReadme(content, versions, latestAudited) {
     'README.md install examples'
   );
 
-  const supportedBlock = [
-    renderVersionBullets(versions),
-    '',
-    'The source of truth is the metadata files below.',
-    '',
-    '正式な source of truth は、下の metadata files です。',
-    '',
-  ].join('\n');
-
-  content = replaceBetween(
-    content,
-    'Only versions registered in the audited metadata can run.\n\n監査済み metadata に登録済みの version だけを実行します。\n\n',
-    '\nMetadata files:\n',
-    supportedBlock,
-    'README.md supported versions'
-  );
 
   const expectedBlock = [
     formatTextBlock(['<installed_audited_version> (Claude Code)']),
