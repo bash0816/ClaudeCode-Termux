@@ -6,9 +6,13 @@ on:
     paths:
       - "config/claude-native-audited-versions.json"
       - "packages/claude-code/config/claude-native-audited-versions.json"
+      - "config/claude-termux-release-manifest.json"
+      - "packages/claude-code/config/claude-termux-release-manifest.json"
+      - "packages/claude-code/package.json"
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
   check-and-publish:
