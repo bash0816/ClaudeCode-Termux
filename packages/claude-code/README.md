@@ -43,31 +43,6 @@ Current quick examples:
 現在の quick example:
 
 ```sh
-npm install -g @bash0816/claude-code@2.1.150-1
-npm install -g @bash0816/claude-code@2.1.150-2
-npm install -g @bash0816/claude-code@2.1.150-3
-npm install -g @bash0816/claude-code@2.1.153-1
-npm install -g @bash0816/claude-code@2.1.153-2
-npm install -g @bash0816/claude-code@2.1.153-3
-npm install -g @bash0816/claude-code@2.1.153-4
-npm install -g @bash0816/claude-code@2.1.118
-npm install -g @bash0816/claude-code@2.1.119
-npm install -g @bash0816/claude-code@2.1.121
-npm install -g @bash0816/claude-code@2.1.122
-npm install -g @bash0816/claude-code@2.1.123
-npm install -g @bash0816/claude-code@2.1.126
-npm install -g @bash0816/claude-code@2.1.128
-npm install -g @bash0816/claude-code@2.1.136
-npm install -g @bash0816/claude-code@2.1.137
-npm install -g @bash0816/claude-code@2.1.138
-npm install -g @bash0816/claude-code@2.1.139
-npm install -g @bash0816/claude-code@2.1.140
-npm install -g @bash0816/claude-code@2.1.141
-npm install -g @bash0816/claude-code@2.1.142
-npm install -g @bash0816/claude-code@2.1.143
-npm install -g @bash0816/claude-code@2.1.144
-npm install -g @bash0816/claude-code@2.1.150
-npm install -g @bash0816/claude-code@2.1.153
 npm install -g @bash0816/claude-code@2.1.157
 ```
 

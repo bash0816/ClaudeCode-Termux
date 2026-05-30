@@ -122,14 +122,6 @@ Only versions registered in the audited metadata can run.
 - `2.1.153-3` — 対話モード即終了の根本原因修正：Claude Code が作成する vm コンテキストに Bun を注入 ⚠️ **deprecated** — globalThis.Bun クリーンアップバグにより vm コンテキストで Bun is not defined が発生
 - `2.1.153-4` — fixes globalThis.Bun being cleared in finally after fn() resolves (interactive mode fix completion)
 - `2.1.153-4` — finally で globalThis.Bun が削除される問題を修正（対話モード修正の完成版）
-- `2.1.154` — upstream 2.1.154 tracking ⚠️ **deprecated** — Bun is not defined regression; use 2.1.154-2
-- `2.1.154` — upstream 2.1.154 追従 ⚠️ **deprecated** — Bun is not defined 退行のため 2.1.154-2 を使用してください
-- `2.1.154-1` — removes globalThis.Bun cleanup from finally block ⚠️ **deprecated** — Bun.YAML and Bun.semver are not implemented; use 2.1.154-2
-- `2.1.154-1` — finally ブロックの globalThis.Bun クリーンアップを削除 ⚠️ **deprecated** — Bun.YAML と Bun.semver が未実装のため 2.1.154-2 を使用してください
-- `2.1.154-2` — adds Bun.YAML, Bun.semver, Bun.gc, Bun.stdin, and Bun.embeddedFiles to BunShim
-- `2.1.154-2` — Bun.YAML / Bun.semver / Bun.gc / Bun.stdin / Bun.embeddedFiles を BunShim に追加
-- `2.1.156` — upstream 2.1.156 tracking; confirmed working with 2.1.154-2 shim, no additional fixes needed
-- `2.1.156` — upstream 2.1.156 追従・shim 追加修正なしで動作確認
 - `2.1.157` — upstream 2.1.157 tracking
 - `2.1.157` — upstream 2.1.157 追従
 

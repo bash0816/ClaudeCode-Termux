@@ -136,13 +136,13 @@ function updateRootReadme(content, versions, latestAudited) {
   return content;
 }
 
-function updatePackageReadme(content, versions) {
+function updatePackageReadme(content, versions, latestAudited) {
   const installBlock = [
     'Current quick examples:',
     '',
     '現在の quick example:',
     '',
-    formatShellBlock(renderInstallCommands(versions)),
+    formatShellBlock(renderInstallCommands([latestAudited])),
     '',
   ].join('\n');
 
@@ -213,7 +213,7 @@ function main() {
   const packageReadme = fs.readFileSync(packageReadmeFile, 'utf8');
 
   fs.writeFileSync(rootReadmeFile, updateRootReadme(rootReadme, verifiedVersions, manifest.latest_audited_version));
-  fs.writeFileSync(packageReadmeFile, updatePackageReadme(packageReadme, verifiedVersions));
+  fs.writeFileSync(packageReadmeFile, updatePackageReadme(packageReadme, verifiedVersions, manifest.latest_audited_version));
 }
 
 try {
