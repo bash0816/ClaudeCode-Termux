@@ -76,7 +76,7 @@ jobs:
           git add README.md RELEASES.md packages/
           git diff --cached --quiet && echo "No changes to commit" && exit 0
           git commit -m "docs: update README and RELEASES for ${ver}"
-          git push origin "$branch"
+          git push --force origin "$branch"
           pr_url=$(gh pr create --base main --head "$branch" \
             --title "docs: update README and RELEASES for ${ver}" \
             --body "release-finalize による自動生成。@bash0816/claude-code@${ver} のリリースノート・README 更新。")
