@@ -1,0 +1,62 @@
+name: Create GitHub Release
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'automation/docs-')
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Extract and validate version
+        id: ver
+        run: |
+          set -eu
+          branch="${{ github.event.pull_request.head.ref }}"
+          ver="${branch#automation/docs-}"
+          echo "$ver" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9]+)?$' || {
+            echo "ERROR: Cannot extract valid version from branch: $branch" >&2
+            exit 1
+          }
+          echo "ver=$ver" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        run: |
+          set -eu
+          ver="${{ steps.ver.outputs.ver }}"
+          tag="v${ver}"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "Release $tag already exists, skipping"
+            exit 0
+          fi
+          previous_ver="$(npm view @bash0816/claude-code dist-tags.previous 2>/dev/null || true)"
+          [ -z "$previous_ver" ] && previous_ver="<previous-version>"
+          release_body_file="$(mktemp)"
+          {
+            printf "## claude-code v%s\n\n" "$ver"
+            printf "upstream @anthropic-ai/claude-code@%s 追従。実機検証済み。\n\n" "$ver"
+            printf "### Install\n\`\`\`sh\nnpm install -g @bash0816/claude-code@%s\n\`\`\`\n\n" "$ver"
+            printf "### Rollback\n\`\`\`sh\nnpm install -g @bash0816/claude-code@%s\n\`\`\`\n" "$previous_ver"
+          } >"$release_body_file"
+          gh release create "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "claude-code v${ver}" \
+            --notes-file "$release_body_file" \
+            --target main \
+            --latest
+          echo "Created release $tag"

@@ -18,48 +18,57 @@ permissions:
 jobs:
   finalize:
     runs-on: ubuntu-latest
+    env:
+      VER: ${{ inputs.version }}
+      NOTES: ${{ inputs.release_notes }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          token: ${{ github.token }}
-
-      - name: Verify npm publish exists
+      - name: Validate version format
         run: |
           set -eu
-          ver="${{ inputs.version }}"
-          published=$(npm view "@bash0816/claude-code@${ver}" version 2>/dev/null || echo "")
-          if [ "$published" != "$ver" ]; then
-            echo "ERROR: @bash0816/claude-code@${ver} not published on npm" >&2
+          echo "$VER" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9]+)?$' || {
+            echo "ERROR: Invalid version format: $VER" >&2
             exit 1
-          fi
-          echo "Confirmed: @bash0816/claude-code@${ver} is published"
+          }
+          echo "Version format OK: $VER"
 
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
 
+      - name: Verify npm publish exists
+        run: |
+          set -eu
+          published=$(npm view "@bash0816/claude-code@${VER}" version 2>/dev/null || echo "")
+          if [ "$published" != "$VER" ]; then
+            echo "ERROR: @bash0816/claude-code@${VER} not published on npm" >&2
+            exit 1
+          fi
+          echo "Confirmed: @bash0816/claude-code@${VER} is published"
+
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ github.token }}
+
       - name: Update README recommended version
         run: |
           set -eu
-          ver="${{ inputs.version }}"
-          node scripts/update-readme-version-guidance.js "$ver"
-          echo "README updated to $ver"
+          node scripts/update-readme-version-guidance.js "$VER"
+          echo "README updated to $VER"
 
       - name: Update RELEASES.md
         run: |
           set -eu
-          ver="${{ inputs.version }}"
           date_str=$(date -u +%Y-%m-%d)
-          notes="${{ inputs.release_notes }}"
-          [ -z "$notes" ] && notes="upstream @anthropic-ai/claude-code@${ver} 追従。実機検証済み（install / launch / auth / update --dry-run 全通過）。"
-          entry="## ${ver} — ${date_str}\n\n${notes}\n\n### Install\n\n\`\`\`sh\nnpm install -g @bash0816/claude-code@${ver}\nclaude --version\n\`\`\`\n\n"
-          if grep -q "^## ${ver}" RELEASES.md; then
-            echo "RELEASES.md already has ${ver} entry, skipping"
+          notes="$NOTES"
+          [ -z "$notes" ] && notes="upstream @anthropic-ai/claude-code@${VER} 追従。実機検証済み（install / launch / auth / update --dry-run 全通過）。"
+          entry="## ${VER} — ${date_str}\n\n${notes}\n\n### Install\n\n\`\`\`sh\nnpm install -g @bash0816/claude-code@${VER}\nclaude --version\n\`\`\`\n\n"
+          if grep -qF "## ${VER}" RELEASES.md; then
+            echo "RELEASES.md already has ${VER} entry, skipping"
           else
             printf "%b" "${entry}" > /tmp/new_entry.md
             cat /tmp/new_entry.md RELEASES.md > /tmp/releases_new.md
             mv /tmp/releases_new.md RELEASES.md
-            echo "RELEASES.md updated with ${ver}"
+            echo "RELEASES.md updated with ${VER}"
           fi
 
       - name: Commit and create PR
@@ -67,45 +76,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
-          ver="${{ inputs.version }}"
-          branch="automation/docs-${ver}"
+          branch="automation/docs-${VER}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
-          git add README.md RELEASES.md packages/
+          git add README.md RELEASES.md
           git diff --cached --quiet && echo "No changes to commit" && exit 0
-          git commit -m "docs: update README and RELEASES for ${ver}"
-          git push --force origin "$branch"
-          pr_url=$(gh pr create --base main --head "$branch" \
-            --title "docs: update README and RELEASES for ${ver}" \
-            --body "release-finalize による自動生成。@bash0816/claude-code@${ver} のリリースノート・README 更新。")
-          echo "PR created: $pr_url"
-
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -eu
-          ver="${{ inputs.version }}"
-          tag="v${ver}"
-          notes="${{ inputs.release_notes }}"
-          [ -z "$notes" ] && notes="upstream @anthropic-ai/claude-code@${ver} 追従。実機検証済み。"
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            echo "Release $tag already exists, skipping"
+          git commit -m "docs: update README and RELEASES for ${VER}"
+          git push --force-with-lease origin "$branch" || git push --force origin "$branch"
+          existing_pr=$(gh pr list --base main --head "$branch" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          if [ -n "$existing_pr" ]; then
+            echo "PR #${existing_pr} already exists for ${branch}"
           else
-            previous_ver="$(npm view @bash0816/claude-code dist-tags.previous 2>/dev/null || true)"
-            [ -z "$previous_ver" ] && previous_ver="<previous-version>"
-            release_body_file="$(mktemp)"
-            {
-              printf "## claude-code v%s\n\n" "$ver"
-              printf "%s\n\n" "$notes"
-              printf "### Install\n\`\`\`sh\nnpm install -g @bash0816/claude-code@%s\n\`\`\`\n\n" "$ver"
-              printf "### Rollback\n\`\`\`sh\nnpm install -g @bash0816/claude-code@%s\n\`\`\`\n" "$previous_ver"
-            } >"$release_body_file"
-            gh release create "$tag" \
-              --repo "$GITHUB_REPOSITORY" \
-              --title "claude-code v${ver}" \
-              --notes-file "$release_body_file" \
-              --latest
-            echo "Created release $tag"
+            pr_url=$(gh pr create --base main --head "$branch" \
+              --title "docs: update README and RELEASES for ${VER}" \
+              --body "release-finalize による自動生成。@bash0816/claude-code@${VER} のリリースノート・README 更新。")
+            echo "PR created: $pr_url"
           fi
