@@ -10,7 +10,7 @@ Current install and update paths are consolidated into npm.
 
 ## Important Notice / 重要な注意
 
-Use `2.1.156` or newer.
+Use `2.1.157` or newer.
 
 `2.1.150` through `2.1.153-2` have known interactive mode problems on Termux. Some older builds can also show an incorrect downgrade notice such as `2.1.153-1 -> 2.1.150` because of an update version comparison bug.
 
@@ -21,7 +21,7 @@ npm install -g @bash0816/claude-code@latest
 claude --version
 ```
 
-`2.1.156` 以上を使用してください。
+`2.1.157` 以上を使用してください。
 
 `2.1.150` から `2.1.153-2` には、Termux の interactive mode に既知の問題があります。一部の古い build では update version 比較バグにより、`2.1.153-1 -> 2.1.150` のような誤った downgrade 通知が出る場合もあります。
 
@@ -53,25 +53,6 @@ Current quick examples:
 現在の quick example:
 
 ```sh
-npm install -g @bash0816/claude-code@2.1.157
-npm install -g @bash0816/claude-code@2.1.157
-npm install -g @bash0816/claude-code@2.1.157
-npm install -g @bash0816/claude-code@2.1.157
-npm install -g @bash0816/claude-code@2.1.157
-npm install -g @bash0816/claude-code@2.1.157
-npm install -g @bash0816/claude-code@2.1.157
-npm install -g @bash0816/claude-code@2.1.157
-npm install -g @bash0816/claude-code@2.1.157
-npm install -g @bash0816/claude-code@2.1.157
-npm install -g @bash0816/claude-code@2.1.157
-npm install -g @bash0816/claude-code@2.1.157
-npm install -g @bash0816/claude-code@2.1.157
-npm install -g @bash0816/claude-code@2.1.157
-npm install -g @bash0816/claude-code@2.1.157
-npm install -g @bash0816/claude-code@2.1.157
-npm install -g @bash0816/claude-code@2.1.157-3
-npm install -g @bash0816/claude-code@2.1.157-4
-npm install -g @bash0816/claude-code@2.1.157-2
 npm install -g @bash0816/claude-code@2.1.157
 ```
 
@@ -149,6 +130,8 @@ Only versions registered in the audited metadata can run.
 - `2.1.154-2` — Bun.YAML / Bun.semver / Bun.gc / Bun.stdin / Bun.embeddedFiles を BunShim に追加
 - `2.1.156` — upstream 2.1.156 tracking; confirmed working with 2.1.154-2 shim, no additional fixes needed
 - `2.1.156` — upstream 2.1.156 追従・shim 追加修正なしで動作確認
+- `2.1.157` — upstream 2.1.157 tracking; confirmed working on Device B (all 7 tests passed)
+- `2.1.157` — upstream 2.1.157 追従・Device B 実機検証済み（全7テスト通過）
 
 The source of truth is the metadata files below.
 
