@@ -93,10 +93,11 @@ jobs:
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             echo "Release $tag already exists, skipping"
           else
+            release_body=$(printf "## claude-code v%s\n\n%s\n\n### Install\n\`\`\`sh\nnpm install -g @bash0816/claude-code@%s\n\`\`\`\n\n### Rollback\n\`\`\`sh\nnpm install -g @bash0816/claude-code@previous-version\n\`\`\`\n" "$ver" "$notes" "$ver")
             gh release create "$tag" \
               --repo "$GITHUB_REPOSITORY" \
               --title "claude-code v${ver}" \
-              --notes "## claude-code v${ver}\n\n${notes}\n\n### Install\n\`\`\`sh\nnpm install -g @bash0816/claude-code@${ver}\n\`\`\`\n\n### Rollback\n\`\`\`sh\nnpm install -g @bash0816/claude-code@$(npm view @bash0816/claude-code dist-tags.previous 2>/dev/null || echo previous-version)\n\`\`\`" \
+              --notes "$release_body" \
               --latest
             echo "Created release $tag"
           fi
