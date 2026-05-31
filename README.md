@@ -177,4 +177,3 @@ npm install -g @anthropic-ai/claude-code@latest
 This package launches through a Termux wrapper and audited native metadata.
 
 この package は Termux 用 wrapper と監査済み native metadata を通して起動します。
-<!-- test 2.1.157 workflow verification -->
