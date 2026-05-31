@@ -12,6 +12,22 @@ Current install and update paths are consolidated into npm.
 
 Use `2.1.157` or newer.
 
+### Known candidate issue: Claude Code 2.1.158 / 既知の candidate 不具合: 2.1.158
+
+`@bash0816/claude-code@2.1.158` is currently held as a candidate on Termux/arm64.
+Print mode (`claude -p "hello"`) hangs waiting for stdin to close.
+
+`@bash0816/claude-code@2.1.158` は現在 Termux/arm64 で candidate 保留中です。
+非対話モード（`claude -p "hello"`）が stdin が閉じるまでハングします。
+
+Use `2.1.157` for stable Termux usage until this candidate is cleared.
+
+この candidate が解消されるまで、安定版として `2.1.157` を使用してください。
+
+```sh
+npm install -g @bash0816/claude-code@2.1.157
+```
+
 `2.1.150` through `2.1.153-2` have known interactive mode problems on Termux. Some older builds can also show an incorrect downgrade notice such as `2.1.153-1 -> 2.1.150` because of an update version comparison bug.
 
 If you are on one of those versions, install the current package explicitly:
