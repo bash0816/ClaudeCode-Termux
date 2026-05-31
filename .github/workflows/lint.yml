@@ -1,0 +1,45 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/**"
+      - "**/*.sh"
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - "**/*.sh"
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install actionlint
+        run: |
+          set -eu
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          echo "actionlint version: $(./actionlint --version)"
+
+      - name: Run actionlint
+        run: |
+          set -eu
+          ./actionlint -color .github/workflows/*.yml
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Run shellcheck on shell scripts
+        run: |
+          set -eu
+          find . -name "*.sh" -not -path "./.git/*" -print0 | xargs -r -0 shellcheck --severity=warning
