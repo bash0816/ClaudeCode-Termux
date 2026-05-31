@@ -25,9 +25,11 @@ jobs:
 
       - name: Extract and validate version
         id: ver
+        env:
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: |
           set -eu
-          branch="${{ github.event.pull_request.head.ref }}"
+          branch="$PR_HEAD_REF"
           ver="${branch#automation/docs-}"
           echo "$ver" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9]+)?$' || {
             echo "ERROR: Cannot extract valid version from branch: $branch" >&2
