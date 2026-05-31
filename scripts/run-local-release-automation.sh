@@ -1,7 +1,9 @@
 #!/usr/bin/env sh
 set -eu
 
+# shellcheck disable=SC1007
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# shellcheck disable=SC1007
 REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
 ORIGIN_URL="${CLAUDE_TERMUX_AUTOMATION_ORIGIN_URL:-$(git -C "${REPO_ROOT}" config --get remote.origin.url 2>/dev/null || printf '%s' "${REPO_ROOT}")}"
 AUTOMATION_ROOT="${CLAUDE_TERMUX_AUTOMATION_ROOT:-${HOME}/.codex-release-cicd}"
@@ -141,7 +143,7 @@ if [ "${needs_verification}" != "true" ]; then
   if [ -n "${candidate_version}" ] && \
      [ "${needs_publish}" != "true" ] && \
      [ "${needs_legacy_sync}" != "true" ] && \
-     [ "${candidate_state_status}" = "promotion_dispatched" -o "${candidate_state_status}" = "publish_dispatched" ]; then
+     { [ "${candidate_state_status}" = "promotion_dispatched" ] || [ "${candidate_state_status}" = "publish_dispatched" ]; }; then
     if compare_versions "${audited_version}" "${candidate_version}" && compare_versions "${published_version}" "${audited_version}" && compare_versions "${audited_version}" "${latest_legacy_synced_version:-${audited_version}}"; then
       write_state "${candidate_version}" "complete"
       candidate_state_status="complete"
