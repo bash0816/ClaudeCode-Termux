@@ -53,14 +53,7 @@ jobs:
           ver="${{ steps.ver.outputs.ver }}"
           previous_ver="$(npm view @bash0816/claude-code dist-tags.previous 2>/dev/null || true)"
           if [ -z "$previous_ver" ]; then
-            previous_ver="$(npm view @bash0816/claude-code versions --json 2>/dev/null \
-              | python3 -c "
-import sys, json
-vers = json.load(sys.stdin)
-target = '${ver}'
-idx = next((i for i,v in enumerate(vers) if v == target), None)
-print(vers[idx-1] if idx and idx > 0 else '')
-" 2>/dev/null || echo "")"
+            previous_ver="$(npm view @bash0816/claude-code versions --json 2>/dev/null | python3 -c "import sys,json; vers=json.load(sys.stdin); t='${ver}'; idx=next((i for i,v in enumerate(vers) if v==t),None); print(vers[idx-1] if idx and idx>0 else '')" 2>/dev/null || echo "")"
           fi
           if [ -z "$previous_ver" ]; then
             echo "ERROR: Cannot determine previous version for rollback" >&2
