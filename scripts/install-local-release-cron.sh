@@ -1,7 +1,9 @@
 #!/usr/bin/env sh
 set -eu
 
+# shellcheck disable=SC1007
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# shellcheck disable=SC1007
 REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
 CRON_MINUTE="${1:-30}"
 DRY_RUN=0
