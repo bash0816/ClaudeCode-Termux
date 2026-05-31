@@ -90,6 +90,6 @@ jobs:
           else
             pr_url=$(gh pr create --base main --head "$branch" \
               --title "docs: update README and RELEASES for ${VER}" \
-              --body "release-finalize による自動生成。@bash0816/claude-code@${VER} のリリースノート・README 更新。\n\n> docs-only PR: automation/docs-* -> main は運用上の例外として許可（コード変更なし・README/RELEASES.md のみ）。")
+              --body "Automated docs update for @bash0816/claude-code@${VER}.")
             echo "PR created: $pr_url"
           fi
