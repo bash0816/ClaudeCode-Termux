@@ -3,8 +3,8 @@ set -eu
 
 # shellcheck disable=SC1007
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-CANONICAL_# shellcheck disable=SC1007
-REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
+# shellcheck disable=SC1007,SC2034
+CANONICAL_REPO_ROOT=$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)
 LEGACY_REPO_ROOT="${CLAUDE_TERMUX_LEGACY_REPO_ROOT:-${HOME}/CluadeCode-Termux-public}"
 LEGACY_REPO_SLUG="${CLAUDE_TERMUX_LEGACY_REPO_SLUG:-bash0816/CluadeCode-Termux}"
 CANONICAL_SOURCE_REF="${CLAUDE_TERMUX_CANONICAL_SOURCE_REF:-origin/main}"
@@ -246,6 +246,7 @@ ensure_pr_merged() {
   fi
 
   if [ -z "${number}" ]; then
+    # shellcheck disable=SC2034
     create_output=$(create_pr "${base}" "${effective_head}" "${title}" "${body}" || true)
     record=$(read_pr_record "${base}" "${effective_head}" || true)
     number=$(pr_number "${record}")
