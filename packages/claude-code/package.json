@@ -1,22 +1,28 @@
 {
   "name": "@bash0816/claude-code",
-  "version": "2.1.157",
-  "description": "Termux-native Claude Code wrapper with audited native replay",
+  "version": "2.1.159-2",
+  "description": "Unofficial Termux-native Claude Code wrapper with audited native replay",
   "license": "MIT",
   "bin": {
     "claude": "bin/claude"
   },
-  "scripts": {
-    "preinstall": "node lib/preinstall.js",
-    "postinstall": "node lib/postinstall.js"
-  },
+  "scripts": {},
   "files": [
-    "bin",
-    "lib",
-    "config",
+    "bin/",
+    "lib/",
+    "config/",
     "README.md"
   ],
   "engines": {
     "node": ">=18"
+  },
+  "keywords": [
+    "claude-code",
+    "termux",
+    "android",
+    "wrapper"
+  ],
+  "publishConfig": {
+    "access": "public"
   }
 }
