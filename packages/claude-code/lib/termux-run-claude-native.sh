@@ -226,7 +226,9 @@ NODE
   trap - EXIT HUP INT TERM
   exit "$_status"
 else
-  exec node - "$@" <<'NODE'
+  _bootstrap=$(mktemp "${TMPDIR:-/tmp}/claude-bootstrap.XXXXXX.js")
+  trap 'rm -f "$_bootstrap"' EXIT HUP INT TERM
+  cat <<'NODE' > "$_bootstrap"
 const fs = require('fs');
 const path = require('path');
 const {
@@ -395,4 +397,9 @@ main().catch(error => {
   process.exit(1);
 });
 NODE
+  node "$_bootstrap" "$@"
+  _status=$?
+  rm -f "$_bootstrap"
+  trap - EXIT HUP INT TERM
+  exit "$_status"
 fi
