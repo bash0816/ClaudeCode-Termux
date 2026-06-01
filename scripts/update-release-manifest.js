@@ -8,22 +8,12 @@ const repoRoot = path.resolve(__dirname, '..');
 const rootConfigFile = path.join(repoRoot, 'config', 'claude-native-audited-versions.json');
 const packageConfigFile = path.join(repoRoot, 'packages', 'claude-code', 'config', 'claude-native-audited-versions.json');
 const packageFile = path.join(repoRoot, 'packages', 'claude-code', 'package.json');
+const { compareVersions } = require('../packages/claude-code/lib/version-utils');
 const manifestFiles = [
   path.join(repoRoot, 'config', 'claude-termux-release-manifest.json'),
   path.join(repoRoot, 'packages', 'claude-code', 'config', 'claude-termux-release-manifest.json'),
 ];
 const manifestUrl = 'https://raw.githubusercontent.com/bash0816/ClaudeCode-Termux/main/config/claude-termux-release-manifest.json';
-
-function compareVersions(a, b) {
-  const aParts = String(a).split('.').map(Number);
-  const bParts = String(b).split('.').map(Number);
-  const len = Math.max(aParts.length, bParts.length);
-  for (let index = 0; index < len; index += 1) {
-    const diff = (aParts[index] || 0) - (bParts[index] || 0);
-    if (diff !== 0) return diff;
-  }
-  return 0;
-}
 
 function loadJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
