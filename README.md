@@ -24,43 +24,17 @@ Current install and update paths are consolidated into npm.
 
 ## Important Notice / 重要な注意
 
-Use `2.1.157` or newer.
+### Fixed issue: Claude Code 2.1.158 / 2.1.159 print mode hang / 修正済み: print mode ハング
 
-### Known issue: Claude Code 2.1.158+ / 既知の candidate 不具合: 2.1.158
+`@bash0816/claude-code@2.1.158` and `2.1.159` are affected by an upstream native binary regression on Termux/arm64. Print mode (`claude -p`) hangs, and the `< /dev/null` workaround does not help on Termux. This is fixed in `2.1.159-4`, which has passed Termux B-device full verification.
 
-`@bash0816/claude-code@2.1.158` and `2.1.159` are affected by a regression in the upstream native binary.
-Print mode (`claude -p "hello"`) hangs on Termux/arm64. The `< /dev/null` workaround does **not** help on Termux.
-
-`@bash0816/claude-code@2.1.158` および `2.1.159` は upstream native binary の regression により影響を受けています。
-非対話モード（`claude -p "hello"`）が Termux/arm64 でハングします。`< /dev/null` 回避策も効きません。
-
-Use `2.1.157` for stable Termux usage for stable Termux usage.
-
-この candidate が解消されるまで、安定版として `2.1.157` を使用してください。
-
-```sh
-npm install -g @bash0816/claude-code@2.1.157
-```
-
-`2.1.150` through `2.1.153-2` have known interactive mode problems on Termux. Some older builds can also show an incorrect downgrade notice such as `2.1.153-1 -> 2.1.150` because of an update version comparison bug.
-
-If you are on one of those versions, install the current package explicitly:
+`2.1.158` has been deprecated on npm. Until `2.1.159-4` is promoted to `latest`, use `2.1.157` for stable Termux usage:
 
 ```sh
 npm install -g @bash0816/claude-code@latest
-claude --version
 ```
 
-`2.1.157` 以上を使用してください。
-
-`2.1.150` から `2.1.153-2` には、Termux の interactive mode に既知の問題があります。一部の古い build では update version 比較バグにより、`2.1.153-1 -> 2.1.150` のような誤った downgrade 通知が出る場合もあります。
-
-該当 version を使用している場合は、現在の package を明示的に install してください:
-
-```sh
-npm install -g @bash0816/claude-code@latest
-claude --version
-```
+`@bash0816/claude-code@2.1.158` および `2.1.159` は Termux/arm64 で print mode がハングする upstream regression の影響を受けています。この問題は `2.1.159-4` で修正済み（B機全項目検証通過）。`2.1.158` は npm で deprecated です。`2.1.159-4` が `latest` に昇格するまでは安定版として `2.1.157` をご利用ください。
 
 ## Install / インストール
 
@@ -83,7 +57,7 @@ Current quick examples:
 現在の quick example:
 
 ```sh
-npm install -g @bash0816/claude-code@2.1.157
+npm install -g @bash0816/claude-code@2.1.159-4
 ```
 
 ## Update / 更新
@@ -191,7 +165,7 @@ Example:
 例:
 
 ```text
-2.1.157 (Claude Code)
+2.1.159-4 (Claude Code)
 ```
 
 ## Do Not Use / 非推奨

@@ -1,3 +1,35 @@
+---
+## 2.1.159-4 — 2026-06-01
+
+### Fix: Print mode (-p) hang on Claude Code 2.1.159 / Termux での print mode ハング修正
+
+**English**
+
+Fixes `claude -p` hanging indefinitely on Termux/arm64 with Claude Code 2.1.159 under Node.js.
+
+Root cause: After fn() execution, active handles (TLSSocket, StatWatcher, timers) remained un-unref()'d, preventing the Node.js event loop from exiting.
+
+Fix: Added `main().then(() => process.exit(process.exitCode ?? 0))` to both helper paths. Also restored missing Bun shim entries from 2.1.157 (`which`, `wrapAnsi`, `semver`, `YAML`, `BunProxy`).
+
+Device B full verification: all tests pass (-p: 1.9s, exit=0, no BunShim missing errors).
+
+To upgrade:
+```sh
+npm install -g @bash0816/claude-code@latest
+claude --version
+```
+
+**日本語**
+
+Termux/arm64 で Claude Code 2.1.159 の `claude -p`（print mode）が無限ハングする問題を修正しました。
+
+根本原因: fn() 実行後、アクティブハンドル（TLSSocket・StatWatcher・タイマー）が `unref()` されずに残存し、Node.js イベントループが終了できませんでした。
+
+修正: `main().then(() => process.exit(process.exitCode ?? 0))` を追加。また 2.1.157 から欠落していた Bun shim エントリ（`which`/`wrapAnsi`/`semver`/`YAML`/`BunProxy`）を復元しました。
+
+Device B 実機全項目検証済み（-p: 1.9秒・exit=0・BunShim エラーなし）。
+
+---
 ## 2.1.157 — 2026-05-30
 
 upstream @anthropic-ai/claude-code@2.1.157 追従。Device B 実機検証済み（全7テスト通過：install / version / help / -p hello / auth status / update dry-run / rollback）。
