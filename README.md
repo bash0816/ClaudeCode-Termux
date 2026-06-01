@@ -12,15 +12,15 @@ Current install and update paths are consolidated into npm.
 
 Use `2.1.157` or newer.
 
-### Known candidate issue: Claude Code 2.1.158 / 既知の candidate 不具合: 2.1.158
+### Known issue: Claude Code 2.1.158+ / 既知の candidate 不具合: 2.1.158
 
-`@bash0816/claude-code@2.1.158` is currently held as a candidate on Termux/arm64.
-Print mode (`claude -p "hello"`) hangs waiting for stdin to close.
+`@bash0816/claude-code@2.1.158` and `2.1.159` are affected by a regression in the upstream native binary.
+Print mode (`claude -p "hello"`) hangs on Termux/arm64. The `< /dev/null` workaround does **not** help on Termux.
 
-`@bash0816/claude-code@2.1.158` は現在 Termux/arm64 で candidate 保留中です。
-非対話モード（`claude -p "hello"`）が stdin が閉じるまでハングします。
+`@bash0816/claude-code@2.1.158` および `2.1.159` は upstream native binary の regression により影響を受けています。
+非対話モード（`claude -p "hello"`）が Termux/arm64 でハングします。`< /dev/null` 回避策も効きません。
 
-Use `2.1.157` for stable Termux usage until this candidate is cleared.
+Use `2.1.157` for stable Termux usage for stable Termux usage.
 
 この candidate が解消されるまで、安定版として `2.1.157` を使用してください。
 
