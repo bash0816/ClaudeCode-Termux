@@ -220,7 +220,11 @@ main().catch(error => {
   process.exit(1);
 });
 NODE
-  exec node "$_helper" "$@"
+  node "$_helper" "$@" </dev/null
+  _status=$?
+  rm -f "$_helper"
+  trap - EXIT HUP INT TERM
+  exit "$_status"
 else
   exec node - "$@" <<'NODE'
 const fs = require('fs');
