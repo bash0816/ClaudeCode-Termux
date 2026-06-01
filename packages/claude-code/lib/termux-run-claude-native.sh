@@ -216,6 +216,7 @@ async function main() {
       }
     } catch {}
     if (hadGlobalBun) globalThis.Bun = originalGlobalBun;
+    else delete globalThis.Bun;
   }
 }
 
