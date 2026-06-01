@@ -1,4 +1,18 @@
 # ClaudeCode-Termux
+---
+## Unofficial Termux Build
+
+このパッケージは Claude Code を Termux 向けに動作させるための unofficial build です。
+
+本パッケージは Anthropic によって開発、提供、承認、支援されているものではありません。
+Anthropic および Claude Code は Anthropic の商標または製品です。
+公式パッケージは @anthropic-ai/claude-code を参照してください。
+
+This package is an unofficial Termux-oriented build of Claude Code.
+It is not developed, sponsored, endorsed, or supported by Anthropic.
+For the official package, see @anthropic-ai/claude-code.
+---
+
 
 Claude Code native wrapper package for Termux.
 
