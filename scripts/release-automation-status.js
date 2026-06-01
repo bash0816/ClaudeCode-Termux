@@ -5,6 +5,7 @@ const cp = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { compareVersions } = require('../packages/claude-code/lib/version-utils');
 
 const repoRoot = path.resolve(__dirname, '..');
 const manifestPath = path.join(repoRoot, 'config', 'claude-termux-release-manifest.json');
@@ -12,17 +13,6 @@ const packageName = '@bash0816/claude-code';
 const legacyRepoRoot = process.env.CLAUDE_TERMUX_LEGACY_REPO_ROOT || path.join(os.homedir(), 'CluadeCode-Termux-public');
 const stateFile = process.env.CLAUDE_TERMUX_STATE_FILE || path.join(os.homedir(), '.codex-release-cicd', 'state', 'canonical-release-state.json');
 const jsonOnly = process.argv.includes('--json');
-
-function compareVersions(a, b) {
-  const aParts = String(a || '').split('.').map(Number);
-  const bParts = String(b || '').split('.').map(Number);
-  const len = Math.max(aParts.length, bParts.length);
-  for (let index = 0; index < len; index += 1) {
-    const diff = (aParts[index] || 0) - (bParts[index] || 0);
-    if (diff !== 0) return diff;
-  }
-  return 0;
-}
 
 function run(command, args, cwd = repoRoot, allowFailure = false) {
   const result = cp.spawnSync(command, args, {
