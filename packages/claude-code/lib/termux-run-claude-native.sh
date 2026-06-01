@@ -557,7 +557,9 @@ async function main() {
   }
 }
 
-main().catch(error => {
+main().then(() => {
+  process.exit(process.exitCode ?? 0);
+}).catch(error => {
   if (error && error.code === 'CLAUDE_TERMUX_OFFICIAL_UPDATE_BLOCKED') {
     console.error(BLOCK_MESSAGE);
     process.exit(error.status || 1);
@@ -1078,7 +1080,9 @@ async function main() {
   }
 }
 
-main().catch(error => {
+main().then(() => {
+  process.exit(process.exitCode ?? 0);
+}).catch(error => {
   if (error && error.code === 'CLAUDE_TERMUX_OFFICIAL_UPDATE_BLOCKED') {
     console.error(BLOCK_MESSAGE);
     process.exit(error.status || 1);
