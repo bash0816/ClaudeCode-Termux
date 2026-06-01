@@ -177,7 +177,16 @@ async function main() {
     process.once('uncaughtException', onAsyncError);
     process.once('unhandledRejection', onAsyncError);
     Object.defineProperty(process.versions, 'bun', { value: '1.1.8', configurable: true });
-    globalThis.Bun = { version: '1.1.8', stringWidth };
+    const _realChild = require('child_process');
+    globalThis.Bun = {
+      version: '1.1.8',
+      stringWidth,
+      which: (cmd) => {
+        try {
+          return _realChild.execFileSync('which', [String(cmd)], { encoding: 'utf8' }).trim() || null;
+        } catch { return null; }
+      },
+    };
     process.argv = ['node', extractedFile, ...argv];
     process.exit = code => {
       throw new RequestedExit(code);
@@ -207,7 +216,6 @@ async function main() {
       }
     } catch {}
     if (hadGlobalBun) globalThis.Bun = originalGlobalBun;
-    else delete globalThis.Bun;
   }
 }
 
@@ -354,7 +362,16 @@ async function main() {
     process.once('uncaughtException', onAsyncError);
     process.once('unhandledRejection', onAsyncError);
     Object.defineProperty(process.versions, 'bun', { value: '1.1.8', configurable: true });
-    globalThis.Bun = { version: '1.1.8', stringWidth };
+    const _realChild = require('child_process');
+    globalThis.Bun = {
+      version: '1.1.8',
+      stringWidth,
+      which: (cmd) => {
+        try {
+          return _realChild.execFileSync('which', [String(cmd)], { encoding: 'utf8' }).trim() || null;
+        } catch { return null; }
+      },
+    };
     process.argv = ['node', extractedFile, ...argv];
     process.exit = code => {
       throw new RequestedExit(code);
@@ -363,7 +380,8 @@ async function main() {
     const moduleLike = { exports: {} };
     const maybePromise = fn(moduleLike.exports, fakeRequire, moduleLike, extractedFile, workdir);
     if (maybePromise && typeof maybePromise.then === 'function') await maybePromise;
-    await new Promise(resolve => setTimeout(resolve, 200));
+    const _waitMs = process.stdin.isTTY ? 1200 : 200;
+    await new Promise(resolve => setTimeout(resolve, _waitMs));
     if (asyncErrors.length > 0) throw asyncErrors[0];
   } catch (error) {
     if (error instanceof RequestedExit) {
@@ -384,7 +402,6 @@ async function main() {
       }
     } catch {}
     if (hadGlobalBun) globalThis.Bun = originalGlobalBun;
-    else delete globalThis.Bun;
   }
 }
 
