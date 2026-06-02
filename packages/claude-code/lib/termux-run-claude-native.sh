@@ -413,23 +413,23 @@ async function main() {
   if (!globalThis.__claudeBunShim || typeof globalThis.__claudeBunShim !== 'object') {
     globalThis.__claudeBunShim = {};
   }
-  code = code.replace(
-    /^function\(exports, require, module, __filename, __dirname\) \{/,
-    'function(exports, require, module, __filename, __dirname) {const Bun = globalThis.__claudeBunShim;',
-  );
-  const patchedCode = code
+  code = code
     .replace(
-      /function t5q\(q\)\{return Bun\.YAML\.parse\(q\)\}/g,
+      /\btypeof Bun\b/g,
+      'typeof globalThis.__claudeBunShim',
+    )
+    .replace(
+      /\bBun\./g,
+      'globalThis.__claudeBunShim.',
+    )
+    .replace(
+      /function t5q\(q\)\{return globalThis\.__claudeBunShim\.YAML\.parse\(q\)\}/g,
       'function t5q(q){return globalThis.__claudeYaml.parse(q)}',
     )
     .replace(
-      /function VK6\(q\)\{return Bun\.YAML\.stringify\(q,null,2\)\+`/g,
+      /function VK6\(q\)\{return globalThis\.__claudeBunShim\.YAML\.stringify\(q,null,2\)\+`/g,
       'function VK6(q){return globalThis.__claudeYaml.stringify(q,null,2)+`',
     );
-  if (patchedCode !== code) {
-    fs.writeFileSync(extractedFile, patchedCode);
-  }
-  code = patchedCode;
   const fn = eval('(' + code);
 
   const originalArgv = process.argv.slice();
