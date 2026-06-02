@@ -10,6 +10,7 @@ const path = require('path');
 const packageDir = path.resolve(__dirname, '..');
 const pkg = require(path.join(packageDir, 'package.json'));
 const localManifest = require(path.join(packageDir, 'config', 'claude-termux-release-manifest.json'));
+const { compareVersions } = require('./version-utils');
 const mode = process.argv[2] || 'notify';
 const currentVersion = process.argv[3] || pkg.version;
 const dryRun = process.argv.includes('--dry-run');
@@ -19,17 +20,6 @@ const timeoutMs = Number(process.env.CLAUDE_TERMUX_UPDATE_TIMEOUT_MS || '1200');
 const ttlMs = Number(process.env.CLAUDE_TERMUX_UPDATE_CACHE_TTL_MS || String(24 * 60 * 60 * 1000));
 const skipCheck = process.env.CLAUDE_TERMUX_SKIP_UPDATE_CHECK === '1';
 const manifestUrl = process.env.CLAUDE_TERMUX_MANIFEST_URL || localManifest.manifest_url;
-
-function compareVersions(a, b) {
-  const aParts = String(a).split('.').map(Number);
-  const bParts = String(b).split('.').map(Number);
-  const len = Math.max(aParts.length, bParts.length);
-  for (let index = 0; index < len; index += 1) {
-    const diff = (aParts[index] || 0) - (bParts[index] || 0);
-    if (diff !== 0) return diff;
-  }
-  return 0;
-}
 
 function readCache() {
   try {

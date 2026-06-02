@@ -10,17 +10,7 @@ const packageConfigFile = path.join(repoRoot, 'packages', 'claude-code', 'config
 const manifestFile = path.join(repoRoot, 'config', 'claude-termux-release-manifest.json');
 const rootReadmeFile = path.join(repoRoot, 'README.md');
 const packageReadmeFile = path.join(repoRoot, 'packages', 'claude-code', 'README.md');
-
-function compareVersions(a, b) {
-  const aParts = String(a).split('.').map(Number);
-  const bParts = String(b).split('.').map(Number);
-  const len = Math.max(aParts.length, bParts.length);
-  for (let index = 0; index < len; index += 1) {
-    const diff = (aParts[index] || 0) - (bParts[index] || 0);
-    if (diff !== 0) return diff;
-  }
-  return 0;
-}
+const { compareVersions } = require('../packages/claude-code/lib/version-utils');
 
 function loadJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));

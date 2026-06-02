@@ -11,17 +11,7 @@ const legacyRepoRoot = process.env.CLAUDE_TERMUX_LEGACY_REPO_ROOT || path.join(o
 const canonicalSourceRef = process.env.CLAUDE_TERMUX_CANONICAL_SOURCE_REF || 'origin/main';
 const legacyRootConfigFile = path.join(legacyRepoRoot, 'config', 'claude-native-audited-versions.json');
 const legacyPackageConfigFile = path.join(legacyRepoRoot, 'packages', 'cluade-code', 'config', 'claude-native-audited-versions.json');
-
-function compareVersions(a, b) {
-  const aParts = String(a).split('.').map(Number);
-  const bParts = String(b).split('.').map(Number);
-  const len = Math.max(aParts.length, bParts.length);
-  for (let index = 0; index < len; index += 1) {
-    const diff = (aParts[index] || 0) - (bParts[index] || 0);
-    if (diff !== 0) return diff;
-  }
-  return 0;
-}
+const { compareVersions } = require('../packages/claude-code/lib/version-utils');
 
 function loadJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
