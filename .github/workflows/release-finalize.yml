@@ -45,7 +45,7 @@ jobs:
           fi
           echo "Confirmed: @bash0816/claude-code@${VER} is published"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           token: ${{ github.token }}
 
