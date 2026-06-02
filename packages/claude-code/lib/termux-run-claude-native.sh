@@ -177,7 +177,52 @@ async function main() {
     process.once('uncaughtException', onAsyncError);
     process.once('unhandledRejection', onAsyncError);
     Object.defineProperty(process.versions, 'bun', { value: '1.1.8', configurable: true });
-    globalThis.Bun = { version: '1.1.8', stringWidth };
+    const _realChild = require('child_process');
+    globalThis.Bun = {
+      version: '1.1.8',
+      stringWidth,
+      which: (cmd) => {
+        try {
+          return _realChild.execFileSync('which', [String(cmd)], { encoding: 'utf8' }).trim() || null;
+        } catch { return null; }
+      },
+      semver: (() => {
+        const _cmp = (a, b) => {
+          const pa = String(a).replace(/[^0-9.]/g,'').split('.').map(Number);
+          const pb = String(b).replace(/[^0-9.]/g,'').split('.').map(Number);
+          for (let i = 0; i < 3; i++) { const d = (pa[i]||0)-(pb[i]||0); if (d) return d > 0 ? 1 : -1; }
+          return 0;
+        };
+        const _satisfies = (ver, range) => {
+          const s = String(range).trim();
+          const m = s.match(/^([><=!]{1,2})\s*([\d]+(?:\.[\d]+){0,2})$/);
+          if (m) {
+            const op = m[1], c = _cmp(ver, m[2]);
+            if (op === '>') return c > 0;
+            if (op === '>=') return c >= 0;
+            if (op === '<') return c < 0;
+            if (op === '<=') return c <= 0;
+            if (op === '=' || op === '==') return c === 0;
+            if (op === '!=') return c !== 0;
+          }
+          if (/^[\d]+(?:\.[\d]+){0,2}$/.test(s)) return _cmp(ver, s) === 0;
+          return false;
+        };
+        return {
+          order: (a, b) => _cmp(a, b),
+          compare: (a, b) => _cmp(a, b),
+          satisfies: (ver, range) => _satisfies(ver, range),
+          gt: (a, b) => _cmp(a, b) > 0,
+          gte: (a, b) => _cmp(a, b) >= 0,
+          lt: (a, b) => _cmp(a, b) < 0,
+          lte: (a, b) => _cmp(a, b) <= 0,
+        };
+      })(),
+      YAML: {
+        parse: () => undefined,
+        stringify: (obj) => (typeof obj === 'string' ? obj : ''),
+      },
+    };
     process.argv = ['node', extractedFile, ...argv];
     process.exit = code => {
       throw new RequestedExit(code);
@@ -220,13 +265,18 @@ main().catch(error => {
   process.exit(1);
 });
 NODE
+  export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="${CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:-1}"
+  export ENABLE_CLAUDEAI_MCP_SERVERS="${ENABLE_CLAUDEAI_MCP_SERVERS:-0}"
+  export CLAUDE_CODE_SIMPLE="${CLAUDE_CODE_SIMPLE:-1}"
   node "$_helper" "$@" </dev/null
   _status=$?
   rm -f "$_helper"
   trap - EXIT HUP INT TERM
   exit "$_status"
 else
-  exec node - "$@" <<'NODE'
+  _bootstrap=$(mktemp "${TMPDIR:-/tmp}/claude-bootstrap.XXXXXX.js")
+  trap 'rm -f "$_bootstrap"' EXIT HUP INT TERM
+  cat <<'NODE' > "$_bootstrap"
 const fs = require('fs');
 const path = require('path');
 const {
@@ -352,7 +402,48 @@ async function main() {
     process.once('uncaughtException', onAsyncError);
     process.once('unhandledRejection', onAsyncError);
     Object.defineProperty(process.versions, 'bun', { value: '1.1.8', configurable: true });
-    globalThis.Bun = { version: '1.1.8', stringWidth };
+    const _realChild = require('child_process');
+    globalThis.Bun = {
+      version: '1.1.8',
+      stringWidth,
+      which: (cmd) => {
+        try {
+          return _realChild.execFileSync('which', [String(cmd)], { encoding: 'utf8' }).trim() || null;
+        } catch { return null; }
+      },
+      semver: (() => {
+        const _cmp = (a, b) => {
+          const pa = String(a).replace(/[^0-9.]/g,'').split('.').map(Number);
+          const pb = String(b).replace(/[^0-9.]/g,'').split('.').map(Number);
+          for (let i = 0; i < 3; i++) { const d = (pa[i]||0)-(pb[i]||0); if (d) return d > 0 ? 1 : -1; }
+          return 0;
+        };
+        const _satisfies = (ver, range) => {
+          const s = String(range).trim();
+          const m = s.match(/^([><=!]{1,2})\s*([\d]+(?:\.[\d]+){0,2})$/);
+          if (m) {
+            const op = m[1], c = _cmp(ver, m[2]);
+            if (op === '>') return c > 0;
+            if (op === '>=') return c >= 0;
+            if (op === '<') return c < 0;
+            if (op === '<=') return c <= 0;
+            if (op === '=' || op === '==') return c === 0;
+            if (op === '!=') return c !== 0;
+          }
+          if (/^[\d]+(?:\.[\d]+){0,2}$/.test(s)) return _cmp(ver, s) === 0;
+          return false;
+        };
+        return {
+          order: (a, b) => _cmp(a, b),
+          compare: (a, b) => _cmp(a, b),
+          satisfies: (ver, range) => _satisfies(ver, range),
+          gt: (a, b) => _cmp(a, b) > 0,
+          gte: (a, b) => _cmp(a, b) >= 0,
+          lt: (a, b) => _cmp(a, b) < 0,
+          lte: (a, b) => _cmp(a, b) <= 0,
+        };
+      })(),
+    };
     process.argv = ['node', extractedFile, ...argv];
     process.exit = code => {
       throw new RequestedExit(code);
@@ -361,7 +452,8 @@ async function main() {
     const moduleLike = { exports: {} };
     const maybePromise = fn(moduleLike.exports, fakeRequire, moduleLike, extractedFile, workdir);
     if (maybePromise && typeof maybePromise.then === 'function') await maybePromise;
-    await new Promise(resolve => setTimeout(resolve, 200));
+    const _waitMs = process.stdin.isTTY ? 1200 : 200;
+    await new Promise(resolve => setTimeout(resolve, _waitMs));
     if (asyncErrors.length > 0) throw asyncErrors[0];
   } catch (error) {
     if (error instanceof RequestedExit) {
@@ -382,7 +474,6 @@ async function main() {
       }
     } catch {}
     if (hadGlobalBun) globalThis.Bun = originalGlobalBun;
-    else delete globalThis.Bun;
   }
 }
 
@@ -395,4 +486,11 @@ main().catch(error => {
   process.exit(1);
 });
 NODE
+  export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="${CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:-1}"
+  export ENABLE_CLAUDEAI_MCP_SERVERS="${ENABLE_CLAUDEAI_MCP_SERVERS:-0}"
+  node "$_bootstrap" "$@"
+  _status=$?
+  rm -f "$_bootstrap"
+  trap - EXIT HUP INT TERM
+  exit "$_status"
 fi
