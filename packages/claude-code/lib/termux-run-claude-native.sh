@@ -271,10 +271,12 @@ function loadNativeUpdateGuard() {
   }
 }
 
+const _nativeUpdateGuard = loadNativeUpdateGuard();
+
 function createFakeRequire(realRequire) {
   const realChild = realRequire('child_process');
   const realVm = realRequire('vm');
-  const guard = loadNativeUpdateGuard();
+  const guard = _nativeUpdateGuard;
 
   function injectBunIntoContext(context) {
     if (!context || typeof context !== 'object') return context;
@@ -475,9 +477,8 @@ async function main() {
     await new Promise(resolve => setTimeout(resolve, Number(process.env.CLAUDE_TERMUX_PRINT_WAIT_MS || 1000)));
     if (asyncErrors.length > 0) throw asyncErrors[0];
   } catch (error) {
-    const guard = loadNativeUpdateGuard();
-    if (guard && error && error.code === 'CLAUDE_TERMUX_OFFICIAL_UPDATE_BLOCKED') {
-      console.error(guard.BLOCK_MESSAGE);
+    if (_nativeUpdateGuard && error && error.code === 'CLAUDE_TERMUX_OFFICIAL_UPDATE_BLOCKED') {
+      console.error(_nativeUpdateGuard.BLOCK_MESSAGE);
       process.exit(error.status || 1);
     }
     if (error instanceof RequestedExit) {
