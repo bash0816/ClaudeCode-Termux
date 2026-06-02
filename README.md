@@ -22,20 +22,6 @@ Current install and update paths are consolidated into npm.
 
 現在の導入・更新手順は npm package に一本化しています。
 
-## Important Notice / 重要な注意
-
-### Fixed issue: Claude Code 2.1.158 / 2.1.159 print mode hang / 修正済み: print mode ハング
-
-`@bash0816/claude-code@2.1.158` and `2.1.159` are affected by an upstream native binary regression on Termux/arm64. Print mode (`claude -p`) hangs, and the `< /dev/null` workaround does not help on Termux. This is fixed in `2.1.159-4`, which has passed Termux B-device full verification.
-
-`2.1.158` has been deprecated on npm. Until `2.1.159-4` is promoted to `latest`, use `2.1.157` for stable Termux usage:
-
-```sh
-npm install -g @bash0816/claude-code@latest
-```
-
-`@bash0816/claude-code@2.1.158` および `2.1.159` は Termux/arm64 で print mode がハングする upstream regression の影響を受けています。この問題は `2.1.159-4` で修正済み（B機全項目検証通過）。`2.1.158` は npm で deprecated です。`2.1.159-4` が `latest` に昇格するまでは安定版として `2.1.157` をご利用ください。
-
 ## Install / インストール
 
 ```sh
@@ -48,16 +34,10 @@ Existing users on older installs should keep using `claude update` to migrate on
 
 旧 install 利用者は、現行 package 系へ移行するため `claude update` を使ってください。
 
-Install a specific audited version.
-
-監査済みの固定 version を入れる場合:
-
-Current quick examples:
-
-現在の quick example:
+Latest stable version / 最新安定版:
 
 ```sh
-npm install -g @bash0816/claude-code@2.1.159-8
+npm install -g @bash0816/claude-code@2.1.157
 ```
 
 ## Update / 更新
@@ -84,50 +64,20 @@ On normal launch, the wrapper also checks the same manifest with a short timeout
 
 ## Supported Versions / 対応バージョン
 
-Registration in the audited metadata means the wrapper can identify and launch that version. It does not mean every historical version is recommended for new installs.
-
-監査済み metadata への登録は、その version を wrapper が識別・起動できるという意味です。過去 version すべてを新規 install に推奨する意味ではありません。
-
 Only versions registered in the audited metadata can run.
 
 監査済み metadata に登録済みの version だけを実行します。
 
-- `2.1.118`
-- `2.1.119`
-- `2.1.121`
-- `2.1.122`
-- `2.1.123`
-- `2.1.126`
-- `2.1.128`
-- `2.1.136`
-- `2.1.137`
-- `2.1.138`
-- `2.1.139`
-- `2.1.140`
-- `2.1.141`
-- `2.1.142`
-- `2.1.143`
-- `2.1.144`
-- `2.1.150` — ⚠️ **deprecated** — known interactive mode issues
-- `2.1.150` — ⚠️ **deprecated** — 対話モードに既知の問題あり
-- `2.1.150-1` — fixes interactive launch crash on Node v24 (see [RELEASES.md](RELEASES.md)) ⚠️ **deprecated** — known interactive mode issues
-- `2.1.150-1` — Node v24 での対話起動クラッシュを修正（[RELEASES.md](RELEASES.md) 参照）⚠️ **deprecated** — 対話モードに既知の問題あり
-- `2.1.150-2` — completes Bun shim (Terminal, YAML, Transpiler, semver.satisfies, spawn fixes) ⚠️ **deprecated** — known interactive mode issues
-- `2.1.150-2` — Bun shim 完全版（Terminal / YAML / Transpiler / semver.satisfies / spawn 修正）⚠️ **deprecated** — 対話モードに既知の問題あり
-- `2.1.150-3` — fixes Transpiler class, spawn stdio array, raises Node.js minimum to v20 (see [RELEASES.md](RELEASES.md)) ⚠️ **deprecated** — known interactive mode issues
-- `2.1.150-3` — Transpiler クラス化・spawn stdio 配列修正・Node.js 最小バージョン v20 に引き上げ（[RELEASES.md](RELEASES.md) 参照）⚠️ **deprecated** — 対話モードに既知の問題あり
-- `2.1.153` — upstream 2.1.153 (no new Bun APIs; same shim as 2.1.150-3) ⚠️ **deprecated** — known interactive mode issues
-- `2.1.153` — upstream 2.1.153（Bun API 追加なし；shim は 2.1.150-3 と同一）⚠️ **deprecated** — 対話モードに既知の問題あり
-- `2.1.153-1` — fixes TerminalShim.write() data callback regression (interactive mode silent exit on some devices) ⚠️ **deprecated** — root cause not yet fixed
-- `2.1.153-1` — TerminalShim.write() データコールバック regression 修正（一部端末で対話モードが即終了する問題）⚠️ **deprecated** — 根本原因は未修正
-- `2.1.153-2` — fixes compareVersions() for -N suffixed versions; fixes manifest_url pointing to wrong repo ⚠️ **deprecated** — root cause not yet fixed
-- `2.1.153-2` — compareVersions() の -N サフィックス対応修正；manifest_url が誤ったリポジトリを参照していた問題を修正 ⚠️ **deprecated** — 根本原因は未修正
-- `2.1.153-3` — fixes root cause of interactive mode silent exit: injects Bun into vm contexts created by Claude Code ⚠️ **deprecated** — globalThis.Bun cleanup bug causes Bun is not defined in vm contexts
-- `2.1.153-3` — 対話モード即終了の根本原因修正：Claude Code が作成する vm コンテキストに Bun を注入 ⚠️ **deprecated** — globalThis.Bun クリーンアップバグにより vm コンテキストで Bun is not defined が発生
-- `2.1.153-4` — fixes globalThis.Bun being cleared in finally after fn() resolves (interactive mode fix completion)
-- `2.1.153-4` — finally で globalThis.Bun が削除される問題を修正（対話モード修正の完成版）
-- `2.1.157` — upstream 2.1.157 tracking
-- `2.1.157` — upstream 2.1.157 追従
+| Version | Status |
+|---------|--------|
+| `2.1.157` | ✅ **Recommended / 推奨** — Termux verified |
+| `2.1.153-4` | stable / rollback candidate |
+| `2.1.159` 系 | ❌ Reverted — 動作不良のため取り下げ |
+| `2.1.153-3` and earlier | historical — not recommended for new installs |
+
+For the full version history, see [RELEASES.md](RELEASES.md).
+
+全バージョン履歴は [RELEASES.md](RELEASES.md) を参照してください。
 
 The source of truth is the metadata files below.
 
@@ -165,7 +115,7 @@ Example:
 例:
 
 ```text
-2.1.159-8 (Claude Code)
+2.1.157 (Claude Code)
 ```
 
 ## Do Not Use / 非推奨
