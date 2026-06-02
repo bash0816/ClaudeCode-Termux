@@ -1,3 +1,14 @@
+## 2.1.159-8 — 2026-06-02
+
+upstream @anthropic-ai/claude-code@2.1.159-8 追従。
+
+### Install
+
+```sh
+npm install -g @bash0816/claude-code@2.1.159-8
+claude --version
+```
+
 ---
 ## 2.1.159-4 — 2026-06-01
 
