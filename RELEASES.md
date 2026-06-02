@@ -1,16 +1,23 @@
-## 2.1.159-8 — 2026-06-02
+## 2.1.157 — 2026-06-02 ✅ Current stable / 現在の推奨版
 
-upstream @anthropic-ai/claude-code@2.1.159-8 追従。
-
-### Install
+> **2.1.159 系はすべて取り下げました。** 動作不良（Node v24 環境でのクラッシュ）が確認されたため、2.1.157 を現行安定版に差し戻しています。
 
 ```sh
-npm install -g @bash0816/claude-code@2.1.159-8
-claude --version
+npm install -g @bash0816/claude-code@2.1.157
 ```
 
 ---
-## 2.1.159-4 — 2026-06-01
+
+## 2.1.159-8 — 2026-06-02 ❌ Reverted / 取り下げ
+
+> **取り下げ済み。** Node v24 環境で起動クラッシュが確認されたため unpublish。2.1.157 を使用してください。
+
+~~upstream @anthropic-ai/claude-code@2.1.159-8 追従。~~
+
+---
+## 2.1.159-4 — 2026-06-01 ❌ Reverted / 取り下げ
+
+> **取り下げ済み。** 2.1.159 系全体が reverted のため deprecated。2.1.157 を使用してください。
 
 ### Fix: Print mode (-p) hang on Claude Code 2.1.159 / Termux での print mode ハング修正
 

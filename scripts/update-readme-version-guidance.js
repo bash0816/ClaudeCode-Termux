@@ -75,17 +75,13 @@ function renderOverrideCommands(versions) {
 
 function updateRootReadme(content, versions, latestAudited) {
   const installBlock = [
-    'Current quick examples:',
-    '',
-    '現在の quick example:',
-    '',
     formatShellBlock(renderInstallCommands([latestAudited])),
     '',
   ].join('\n');
 
   content = replaceBetween(
     content,
-    'Install a specific audited version.\n\n監査済みの固定 version を入れる場合:\n\n',
+    'Latest stable version / 最新安定版:\n\n',
     '\n## Update / 更新\n',
     installBlock,
     'README.md install examples'
@@ -128,17 +124,13 @@ function updateRootReadme(content, versions, latestAudited) {
 
 function updatePackageReadme(content, versions, latestAudited) {
   const installBlock = [
-    'Current quick examples:',
-    '',
-    '現在の quick example:',
-    '',
     formatShellBlock(renderInstallCommands([latestAudited])),
     '',
   ].join('\n');
 
   content = replaceBetween(
     content,
-    'Specific audited versions:\n\n監査済みの固定 version:\n\n',
+    'Latest stable version / 最新安定版:\n\n',
     '\n## Update / 更新\n',
     installBlock,
     'packages/claude-code/README.md install examples'
@@ -159,8 +151,8 @@ function updatePackageReadme(content, versions, latestAudited) {
   const policySection = [
     '- Only audited versions in `config/claude-native-audited-versions.json` can run.',
     '- `config/claude-native-audited-versions.json` にある監査済み version だけを実行できます。',
-    `- ${versions.map(version => `\`${version}\``).join(', ')} are included in the package metadata.`,
-    `- ${versions.map(version => `\`${version}\``).join('、')} を package metadata に含めています。`,
+    '- See `config/claude-native-audited-versions.json` for the full list of included versions.',
+    '- 含まれるバージョンの全リストは `config/claude-native-audited-versions.json` を参照してください。',
     '- The metadata file is the source of truth for the currently audited set.',
     '- 現在の監査済み version 集合の source of truth は metadata file です。',
     '- Native artifacts are cached under `${HOME}/.claude-termux-native-package`.',
