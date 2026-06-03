@@ -38,6 +38,9 @@ export WORKDIR
 export ENTRY_JS_OFFSET
 export ENTRY_END_OFFSET
 export CURRENT_CLAUDE_VERSION
+export CLAUDE_TERMUX_PACKAGE_DIR="${CLAUDE_TERMUX_PACKAGE_DIR:-}"
+export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="${CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:-1}"
+export ENABLE_CLAUDEAI_MCP_SERVERS="${ENABLE_CLAUDEAI_MCP_SERVERS:-0}"
 
 node - "$@" <<'NODE'
 const fs = require('fs');
@@ -48,6 +51,17 @@ const workdir = process.env.WORKDIR;
 const entryJsOffset = Number(process.env.ENTRY_JS_OFFSET);
 const entryEndOffset = Number(process.env.ENTRY_END_OFFSET);
 const argv = process.argv.slice(2);
+const packageDir = process.env.CLAUDE_TERMUX_PACKAGE_DIR || "";
+function loadNativeUpdateGuard() {
+  if (!packageDir) return null;
+  const guardPath = path.join(packageDir, 'lib', 'native-update-guard.js');
+  if (!fs.existsSync(guardPath)) return null;
+  try { return require(guardPath); } catch (e) {
+    process.stderr.write('[termux] native-update-guard load failed: ' + e.message + '\n');
+    return null;
+  }
+}
+const _nativeUpdateGuard = loadNativeUpdateGuard();
 
 class RequestedExit extends Error {
   constructor(code) {
@@ -258,6 +272,23 @@ function createYamlShim() {
 function createFakeRequire(realRequire) {
   const realChild = realRequire('child_process');
   const realVm = realRequire('vm');
+  function rewriteArgs(args) {
+    if (Array.isArray(args) && args[0] === 'xdg-open' && Array.isArray(args[1]) && typeof args[1][0] === 'string') {
+      return ['termux-open-url', [args[1][0]], ...args.slice(2)];
+    }
+    return args;
+  }
+  const _baseChild = {
+    spawn: (...args) => realChild.spawn(...rewriteArgs(args)),
+    execFile: (...args) => realChild.execFile(...args),
+    exec: (...args) => realChild.exec(...args),
+    spawnSync: (...args) => realChild.spawnSync(...rewriteArgs(args)),
+    execFileSync: (...args) => realChild.execFileSync(...args),
+    execSync: (...args) => realChild.execSync(...args),
+  };
+  const guardedChild = _nativeUpdateGuard
+    ? _nativeUpdateGuard.createGuardedChildProcess(_baseChild, v => process.stderr.write(v))
+    : _baseChild;
 
   function injectBunIntoContext(context) {
     if (!context || typeof context !== 'object') return context;
@@ -306,18 +337,6 @@ function createFakeRequire(realRequire) {
     return context;
   }
 
-  function rewriteArgs(args) {
-    if (
-      Array.isArray(args) &&
-      args[0] === 'xdg-open' &&
-      Array.isArray(args[1]) &&
-      typeof args[1][0] === 'string'
-    ) {
-      return ['termux-open-url', [args[1][0]], ...args.slice(2)];
-    }
-    return args;
-  }
-
   return function fakeRequire(id) {
     if (id === 'ws') {
       class WS {
@@ -362,25 +381,11 @@ function createFakeRequire(realRequire) {
     }
 
     if (id === 'child_process') {
-      return {
-        spawn: (...args) => realChild.spawn(...rewriteArgs(args)),
-        execFile: (...args) => realChild.execFile(...args),
-        exec: (...args) => realChild.exec(...args),
-        spawnSync: (...args) => realChild.spawnSync(...rewriteArgs(args)),
-        execFileSync: (...args) => realChild.execFileSync(...args),
-        execSync: (...args) => realChild.execSync(...args),
-      };
+      return guardedChild;
     }
 
     if (id === 'node:child_process') {
-      return {
-        spawn: (...args) => realChild.spawn(...rewriteArgs(args)),
-        execFile: (...args) => realChild.execFile(...args),
-        exec: (...args) => realChild.exec(...args),
-        spawnSync: (...args) => realChild.spawnSync(...rewriteArgs(args)),
-        execFileSync: (...args) => realChild.execFileSync(...args),
-        execSync: (...args) => realChild.execSync(...args),
-      };
+      return guardedChild;
     }
 
     if (id === 'yaml' || id === 'yamljs' || id === 'js-yaml') {
@@ -474,6 +479,11 @@ async function main() {
     await new Promise(resolve => setTimeout(resolve, Number(process.env.CLAUDE_TERMUX_PRINT_WAIT_MS || 1000)));
     if (asyncErrors.length > 0) throw asyncErrors[0];
   } catch (error) {
+    if (_nativeUpdateGuard && error && error.code === 'CLAUDE_TERMUX_OFFICIAL_UPDATE_BLOCKED') {
+      console.error(_nativeUpdateGuard.BLOCK_MESSAGE);
+      process.exitCode = error.status || 1;
+      return;
+    }
     if (error instanceof RequestedExit) {
       process.exitCode = error.code;
       return;
