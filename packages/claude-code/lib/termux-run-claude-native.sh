@@ -6,7 +6,6 @@ WORKDIR="${WORKDIR:-${HOME}/.claude-termux-native-package/launcher-workdir}"
 ENTRY_JS_OFFSET="${ENTRY_JS_OFFSET:?ENTRY_JS_OFFSET is required}"
 ENTRY_END_OFFSET="${ENTRY_END_OFFSET:?ENTRY_END_OFFSET is required}"
 CURRENT_CLAUDE_VERSION="${CURRENT_CLAUDE_VERSION:?CURRENT_CLAUDE_VERSION is required}"
-CLAUDE_TERMUX_PACKAGE_DIR="${CLAUDE_TERMUX_PACKAGE_DIR:-}"
 TERMUX_TMPDIR="${TMPDIR:-/data/data/com.termux/files/usr/tmp}"
 SSL_CERT_DIR="${SSL_CERT_DIR:-/data/data/com.termux/files/usr/etc/tls}"
 SSL_CERT_FILE="${SSL_CERT_FILE:-/data/data/com.termux/files/usr/etc/tls/cert.pem}"
@@ -39,9 +38,6 @@ export WORKDIR
 export ENTRY_JS_OFFSET
 export ENTRY_END_OFFSET
 export CURRENT_CLAUDE_VERSION
-export CLAUDE_TERMUX_PACKAGE_DIR
-export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="${CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:-1}"
-export ENABLE_CLAUDEAI_MCP_SERVERS="${ENABLE_CLAUDEAI_MCP_SERVERS:-0}"
 
 node - "$@" <<'NODE'
 const fs = require('fs');
@@ -52,7 +48,6 @@ const workdir = process.env.WORKDIR;
 const entryJsOffset = Number(process.env.ENTRY_JS_OFFSET);
 const entryEndOffset = Number(process.env.ENTRY_END_OFFSET);
 const argv = process.argv.slice(2);
-const packageDir = process.env.CLAUDE_TERMUX_PACKAGE_DIR || '';
 
 class RequestedExit extends Error {
   constructor(code) {
@@ -90,7 +85,7 @@ function stringWidth(value) {
 }
 
 function stripANSI(text) {
-  return String(text ?? '').replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -\/]*[@-~]|\][^\x07\x1B]*(?:\x07|\x1B\\))/g, '');
+  return String(text ?? '').replace(/\u001B\[[0-9;]*m/g, '');
 }
 
 function wrapAnsi(text, columns) {
@@ -260,23 +255,9 @@ function createYamlShim() {
   return yaml;
 }
 
-function loadNativeUpdateGuard() {
-  if (!packageDir) return null;
-  const guardPath = path.join(packageDir, 'lib', 'native-update-guard.js');
-  if (!fs.existsSync(guardPath)) return null;
-  try {
-    return require(guardPath);
-  } catch {
-    return null;
-  }
-}
-
-const _nativeUpdateGuard = loadNativeUpdateGuard();
-
 function createFakeRequire(realRequire) {
   const realChild = realRequire('child_process');
   const realVm = realRequire('vm');
-  const guard = _nativeUpdateGuard;
 
   function injectBunIntoContext(context) {
     if (!context || typeof context !== 'object') return context;
@@ -296,7 +277,7 @@ function createFakeRequire(realRequire) {
         });
       }
       if (Object.prototype.hasOwnProperty.call(context, 'Bun')) {
-        if (!context.Bun || typeof context.Bun !== 'object' || context.Bun !== globalThis.Bun) {
+        if (context.Bun && typeof context.Bun === 'object' && context.Bun !== globalThis.Bun) {
           try {
             context.Bun = globalThis.Bun;
           } catch {
@@ -306,6 +287,13 @@ function createFakeRequire(realRequire) {
               writable: true,
             });
           }
+        }
+        if (!context.Bun || typeof context.Bun !== 'object') {
+          Object.defineProperty(context, 'Bun', {
+            value: globalThis.Bun,
+            configurable: true,
+            writable: true,
+          });
         }
       } else {
         Object.defineProperty(context, 'Bun', {
@@ -329,21 +317,6 @@ function createFakeRequire(realRequire) {
     }
     return args;
   }
-
-  function makeChildProxy(base) {
-    return {
-      spawn: (...args) => base.spawn(...rewriteArgs(args)),
-      execFile: (...args) => base.execFile(...args),
-      exec: (...args) => base.exec(...args),
-      spawnSync: (...args) => base.spawnSync(...rewriteArgs(args)),
-      execFileSync: (...args) => base.execFileSync(...args),
-      execSync: (...args) => base.execSync(...args),
-    };
-  }
-
-  const guardedChild = guard
-    ? guard.createGuardedChildProcess(makeChildProxy(realChild), v => process.stderr.write(v))
-    : makeChildProxy(realChild);
 
   return function fakeRequire(id) {
     if (id === 'ws') {
@@ -371,13 +344,15 @@ function createFakeRequire(realRequire) {
 
         if (ScriptProto && !ScriptProto.__bunShimPatched) {
           const originalRunInContext = ScriptProto.runInContext;
-          const origRunInNew = ScriptProto.runInNewContext;
+          const originalRunInNewContext = ScriptProto.runInNewContext;
+
           ScriptProto.runInContext = function (contextObject, ...rest) {
             return originalRunInContext.call(this, injectBunIntoContext(contextObject), ...rest);
           };
           ScriptProto.runInNewContext = function (contextObject, ...rest) {
-            return origRunInNew.call(this, injectBunIntoContext(contextObject), ...rest);
+            return originalRunInNewContext.call(this, injectBunIntoContext(contextObject), ...rest);
           };
+
           Object.defineProperty(ScriptProto, '__bunShimPatched', { value: true });
         }
 
@@ -386,16 +361,34 @@ function createFakeRequire(realRequire) {
       return realVm;
     }
 
-    if (id === 'node:vm') {
-      return realVm;
+    if (id === 'child_process') {
+      return {
+        spawn: (...args) => realChild.spawn(...rewriteArgs(args)),
+        execFile: (...args) => realChild.execFile(...args),
+        exec: (...args) => realChild.exec(...args),
+        spawnSync: (...args) => realChild.spawnSync(...rewriteArgs(args)),
+        execFileSync: (...args) => realChild.execFileSync(...args),
+        execSync: (...args) => realChild.execSync(...args),
+      };
     }
 
-    if (id === 'child_process' || id === 'node:child_process') {
-      return guardedChild;
+    if (id === 'node:child_process') {
+      return {
+        spawn: (...args) => realChild.spawn(...rewriteArgs(args)),
+        execFile: (...args) => realChild.execFile(...args),
+        exec: (...args) => realChild.exec(...args),
+        spawnSync: (...args) => realChild.spawnSync(...rewriteArgs(args)),
+        execFileSync: (...args) => realChild.execFileSync(...args),
+        execSync: (...args) => realChild.execSync(...args),
+      };
     }
 
     if (id === 'yaml' || id === 'yamljs' || id === 'js-yaml') {
       return createYamlShim();
+    }
+
+    if (id === 'vm' || id === 'node:vm') {
+      return realVm;
     }
 
     if (id.startsWith('/$bunfs/root/')) {
@@ -407,29 +400,31 @@ function createFakeRequire(realRequire) {
 }
 
 async function main() {
+  let bunShim;
   const extractedFile = ensureEntryFile();
   let code = fs.readFileSync(extractedFile, 'utf8');
   globalThis.__claudeYaml = createYamlShim();
   if (!globalThis.__claudeBunShim || typeof globalThis.__claudeBunShim !== 'object') {
     globalThis.__claudeBunShim = {};
   }
-  code = code
-    .replace(
-      /\btypeof Bun\b/g,
-      'typeof globalThis.__claudeBunShim',
-    )
-    .replace(
-      /\bBun\./g,
-      'globalThis.__claudeBunShim.',
-    )
-    .replace(
-      /function t5q\(q\)\{return globalThis\.__claudeBunShim\.YAML\.parse\(q\)\}/g,
-      'function t5q(q){return globalThis.__claudeYaml.parse(q)}',
-    )
-    .replace(
-      /function VK6\(q\)\{return globalThis\.__claudeBunShim\.YAML\.stringify\(q,null,2\)\+`/g,
-      'function VK6(q){return globalThis.__claudeYaml.stringify(q,null,2)+`',
-    );
+  code = code.replace(
+    /^function\(exports, require, module, __filename, __dirname\) \{/,
+    'function(exports, require, module, __filename, __dirname) {var __claudeBun = globalThis.__claudeBunShim;',
+  );
+  const patchedCode = code.replace(
+    /\btypeof Bun\b/g,
+    'typeof __claudeBun',
+  ).replace(
+    /\bBun\./g,
+    '__claudeBun.',
+  ).replace(
+    /function t5q\(q\)\{return Bun\.YAML\.parse\(q\)\}/g,
+    'function t5q(q){return globalThis.__claudeYaml.parse(q)}',
+  ).replace(
+    /function VK6\(q\)\{return Bun\.YAML\.stringify\(q,null,2\)\+`/g,
+    'function VK6(q){return globalThis.__claudeYaml.stringify(q,null,2)+`',
+  );
+  code = patchedCode;
   const fn = eval('(' + code);
 
   const originalArgv = process.argv.slice();
@@ -450,6 +445,7 @@ async function main() {
     Object.defineProperty(process.versions, 'bun', { value: '1.1.8', configurable: true });
     globalThis.Bun = {
       version: '1.1.8',
+      gc: () => {},
       hash,
       stripANSI,
       YAML: createYamlShim(),
@@ -466,6 +462,7 @@ async function main() {
     };
     Object.assign(globalThis.__claudeBunShim, globalThis.Bun);
     globalThis.Bun = globalThis.__claudeBunShim;
+    bunShim = globalThis.Bun;
     process.argv = ['node', extractedFile, ...argv];
     process.exit = code => {
       throw new RequestedExit(code);
@@ -477,10 +474,6 @@ async function main() {
     await new Promise(resolve => setTimeout(resolve, Number(process.env.CLAUDE_TERMUX_PRINT_WAIT_MS || 1000)));
     if (asyncErrors.length > 0) throw asyncErrors[0];
   } catch (error) {
-    if (_nativeUpdateGuard && error && error.code === 'CLAUDE_TERMUX_OFFICIAL_UPDATE_BLOCKED') {
-      console.error(_nativeUpdateGuard.BLOCK_MESSAGE);
-      process.exit(error.status || 1);
-    }
     if (error instanceof RequestedExit) {
       process.exitCode = error.code;
       return;
