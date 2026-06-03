@@ -57,7 +57,7 @@ Current quick examples:
 現在の quick example:
 
 ```sh
-npm install -g @bash0816/claude-code@2.1.159-10
+npm install -g @bash0816/claude-code@2.1.159-13
 ```
 
 ## Update / 更新
@@ -165,7 +165,7 @@ Example:
 例:
 
 ```text
-2.1.159-10 (Claude Code)
+2.1.159-13 (Claude Code)
 ```
 
 ## Do Not Use / 非推奨
