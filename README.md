@@ -18,8 +18,9 @@ Claude Code native wrapper package for Termux.
 
 Termux 向け Claude Code native wrapper package です。
 
-This typo repo is frozen, so Dependabot-based automatic dependency updates are disabled.
-この typo repo は frozen なので、Dependabot による自動依存更新は行いません。
+This repository tracks the canonical Termux wrapper package line.
+
+この repository は canonical な Termux wrapper package 系を追跡します。
 
 Current install and update paths are consolidated into npm.
 
@@ -37,10 +38,10 @@ Existing users on older installs should keep using `claude update` to migrate on
 
 旧 install 利用者は、現行 package 系へ移行するため `claude update` を使ってください。
 
-Latest stable version / 最新安定版:
+Latest audited version / 最新監査済み版:
 
 ```sh
-npm install -g @bash0816/claude-code@2.1.157
+npm install -g @bash0816/claude-code@2.1.159-13
 ```
 
 ## Update / 更新
@@ -73,9 +74,10 @@ Only versions registered in the audited metadata can run.
 
 | Version | Status |
 |---------|--------|
-| `2.1.157` | ✅ **Recommended / 推奨** — Termux verified |
+| `2.1.159-13` | ✅ **Recommended / 推奨** — Termux verified |
 | `2.1.153-4` | stable / rollback candidate |
-| `2.1.159` 系 | ❌ Reverted — 動作不良のため取り下げ |
+| `2.1.159-8` | ❌ Reverted — 動作不良のため取り下げ |
+| `2.1.157` | historical — rollback candidate |
 | `2.1.153-3` and earlier | historical — not recommended for new installs |
 
 For the full version history, see [RELEASES.md](RELEASES.md).
@@ -118,7 +120,7 @@ Example:
 例:
 
 ```text
-2.1.157 (Claude Code)
+2.1.159 (Claude Code)
 ```
 
 ## Do Not Use / 非推奨

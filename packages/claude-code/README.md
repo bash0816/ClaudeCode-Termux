@@ -34,10 +34,10 @@ After npm owns the `claude` bin link, normal `npm install -g` updates work.
 
 npm が `claude` bin link を管理する状態になれば、通常の `npm install -g` 更新が使えます。
 
-Latest stable version / 最新安定版:
+Latest audited version / 最新監査済み版:
 
 ```sh
-npm install -g @bash0816/claude-code@2.1.159-8
+npm install -g @bash0816/claude-code@2.1.159-13
 ```
 
 ## Update / 更新
