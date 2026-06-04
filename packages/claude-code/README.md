@@ -40,6 +40,10 @@ Latest audited version / 最新監査済み版:
 npm install -g @bash0816/claude-code@2.1.159-13
 ```
 
+`claude --version` shows the audited launcher version as `2.1.159 (Claude Code)`.
+
+`claude --version` は監査済み launcher の version を `2.1.159 (Claude Code)` と表示します。
+
 ## Update / 更新
 
 ```sh
