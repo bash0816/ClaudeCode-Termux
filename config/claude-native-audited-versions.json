@@ -233,9 +233,9 @@
       "native_spec": "@anthropic-ai/claude-code-linux-arm64@2.1.161",
       "entry_js_offset": 225551924,
       "entry_end_offset": 241503454,
-      "tarball_integrity": "sha512-oIvrWjDjmmaxnUNd3m0u64U1nbJnojWUU7tVMeGVf7GeunQKAnMwCey27dWE02gw82JKDpVXlqsghlx6f4kQVYQ==",
-      "tarball_sha256": "33df18a8f552f1d9f399a5afeff341e2abdecdfbf72aba67813abc23cc16e843",
-      "tarball_size": 14955,
+      "tarball_integrity": "sha512-rLEzd8/q4UnTLDSAd3eYgog+G0iZ8y6K8yh0gSxf82d7uOkypYaBUkbmFENuHuzIzCIf9Yy/utCJfp6kQFjUow==",
+      "tarball_sha256": "e87d973bbe58593e06c101196f6417f7d950bf777cb9f1a8ff002ebf987ea066",
+      "tarball_size": 74314760,
       "status": "termux_verified"
     }
   }
