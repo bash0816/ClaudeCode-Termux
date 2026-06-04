@@ -18,6 +18,9 @@ Claude Code native wrapper package for Termux.
 
 Termux 向け Claude Code native wrapper package です。
 
+This typo repo is frozen, so Dependabot-based automatic dependency updates are disabled.
+この typo repo は frozen なので、Dependabot による自動依存更新は行いません。
+
 Current install and update paths are consolidated into npm.
 
 現在の導入・更新手順は npm package に一本化しています。
