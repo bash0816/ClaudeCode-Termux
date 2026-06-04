@@ -2,7 +2,7 @@
   "name": "@bash0816/claude-code",
   "version": "2.1.161",
   "description": "Unofficial Termux-native Claude Code wrapper with audited native replay",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "bin": {
     "claude": "bin/claude"
   },
@@ -11,7 +11,8 @@
     "bin/",
     "lib/",
     "config/",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=18"
