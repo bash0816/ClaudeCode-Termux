@@ -75,8 +75,6 @@ class RequestedExit extends Error {
 
 function ensureEntryFile() {
   const extractedFile = path.join(workdir, `cli.${entryJsOffset}.${entryEndOffset}.bare-path.js`);
-  if (fs.existsSync(extractedFile)) return extractedFile;
-
   const len = entryEndOffset - entryJsOffset;
   if (!(len > 0)) throw new Error('invalid replay offsets');
 
@@ -100,8 +98,155 @@ function stringWidth(value) {
   return Array.from(text).length;
 }
 
+function parseScalar(value) {
+  const text = String(value ?? '').trim();
+  if (text === '') return '';
+  if (text === 'true') return true;
+  if (text === 'false') return false;
+  if (text === 'null' || text === '~') return null;
+  if (/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/.test(text)) return Number(text);
+  if (
+    (text.startsWith('"') && text.endsWith('"')) ||
+    (text.startsWith("'") && text.endsWith("'"))
+  ) {
+    return text.slice(1, -1);
+  }
+  return text;
+}
+
+function parseInlineArray(value) {
+  const inner = String(value ?? '').trim().slice(1, -1).trim();
+  if (inner === '') return [];
+  const items = [];
+  let current = '';
+  let quote = null;
+
+  for (let i = 0; i < inner.length; i += 1) {
+    const ch = inner[i];
+    if (quote) {
+      if (ch === quote && inner[i - 1] !== '\\') quote = null;
+      current += ch;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === ',') {
+      items.push(parseScalar(current));
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+
+  if (current !== '') items.push(parseScalar(current));
+  return items;
+}
+
+function yamlParse(text) {
+  const source = String(text ?? '');
+  const result = {};
+  for (const rawLine of source.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const idx = line.indexOf(':');
+    if (idx < 0) continue;
+    const key = line.slice(0, idx).trim();
+    const rawValue = line.slice(idx + 1).trim();
+    if (!key) continue;
+    result[key] = rawValue.startsWith('[') && rawValue.endsWith(']')
+      ? parseInlineArray(rawValue)
+      : parseScalar(rawValue);
+  }
+  return result;
+}
+
+function yamlStringify(value) {
+  if (!value || typeof value !== 'object') return String(value ?? '');
+  const lines = [];
+  for (const [key, raw] of Object.entries(value)) {
+    if (Array.isArray(raw)) {
+      lines.push(`${key}: [${raw.map(item => JSON.stringify(String(item))).join(', ')}]`);
+    } else if (raw === null) {
+      lines.push(`${key}: null`);
+    } else if (typeof raw === 'string') {
+      lines.push(`${key}: ${JSON.stringify(raw)}`);
+    } else {
+      lines.push(`${key}: ${String(raw)}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+function createYamlShim() {
+  const yaml = {
+    parse: yamlParse,
+    stringify: yamlStringify,
+  };
+  yaml.YAML = yaml;
+  yaml.default = yaml;
+  return yaml;
+}
+
 function createFakeRequire(realRequire) {
   const realChild = realRequire('child_process');
+  const realVm = realRequire('vm');
+
+  function injectBunIntoContext(context) {
+    if (!context || typeof context !== 'object') return context;
+    try {
+      if (!Object.prototype.hasOwnProperty.call(context, '__claudeYaml')) {
+        Object.defineProperty(context, '__claudeYaml', {
+          value: globalThis.__claudeYaml,
+          configurable: true,
+          writable: true,
+        });
+      }
+      if (!Object.prototype.hasOwnProperty.call(context, '__claudeBunShim')) {
+        Object.defineProperty(context, '__claudeBunShim', {
+          value: globalThis.__claudeBunShim,
+          configurable: true,
+          writable: true,
+        });
+      }
+      if (!Object.prototype.hasOwnProperty.call(context, '__claudeBun')) {
+        Object.defineProperty(context, '__claudeBun', {
+          value: globalThis.__claudeBunShim,
+          configurable: true,
+          writable: true,
+        });
+      }
+      if (Object.prototype.hasOwnProperty.call(context, 'Bun')) {
+        if (context.Bun && typeof context.Bun === 'object' && context.Bun !== globalThis.Bun) {
+          try {
+            context.Bun = globalThis.Bun;
+          } catch {
+            Object.defineProperty(context, 'Bun', {
+              value: globalThis.Bun,
+              configurable: true,
+              writable: true,
+            });
+          }
+        }
+        if (!context.Bun || typeof context.Bun !== 'object') {
+          Object.defineProperty(context, 'Bun', {
+            value: globalThis.Bun,
+            configurable: true,
+            writable: true,
+          });
+        }
+      } else {
+        Object.defineProperty(context, 'Bun', {
+          value: globalThis.Bun,
+          configurable: true,
+          writable: true,
+        });
+      }
+    } catch {}
+    return context;
+  }
 
   function rewriteArgs(args) {
     if (
@@ -140,6 +285,49 @@ function createFakeRequire(realRequire) {
       return { default: WS, WebSocket: WS };
     }
 
+    if (id === 'vm' || id === 'node:vm') {
+      if (!realVm.__claudeBunShimPatched) {
+        const originalCreateContext = realVm.createContext.bind(realVm);
+        const originalRunInNewContext = realVm.runInNewContext.bind(realVm);
+        const originalRunInContext = realVm.runInContext.bind(realVm);
+        const originalRunInThisContext = realVm.runInThisContext && realVm.runInThisContext.bind(realVm);
+        const scriptProto = realVm.Script && realVm.Script.prototype;
+
+        realVm.createContext = (contextObject, ...rest) =>
+          originalCreateContext(injectBunIntoContext(contextObject), ...rest);
+        realVm.runInNewContext = (code, contextObject, ...rest) =>
+          originalRunInNewContext(code, injectBunIntoContext(contextObject), ...rest);
+        realVm.runInContext = (code, contextObject, ...rest) =>
+          originalRunInContext(code, injectBunIntoContext(contextObject), ...rest);
+        if (originalRunInThisContext) {
+          realVm.runInThisContext = (code, ...rest) => originalRunInThisContext(code, ...rest);
+        }
+
+        if (scriptProto && !scriptProto.__claudeBunShimPatched) {
+          const originalScriptRunInContext = scriptProto.runInContext;
+          const originalScriptRunInNewContext = scriptProto.runInNewContext;
+          const originalScriptRunInThisContext = scriptProto.runInThisContext;
+
+          scriptProto.runInContext = function (contextObject, ...rest) {
+            return originalScriptRunInContext.call(this, injectBunIntoContext(contextObject), ...rest);
+          };
+          scriptProto.runInNewContext = function (contextObject, ...rest) {
+            return originalScriptRunInNewContext.call(this, injectBunIntoContext(contextObject), ...rest);
+          };
+          if (originalScriptRunInThisContext) {
+            scriptProto.runInThisContext = function (...rest) {
+              return originalScriptRunInThisContext.call(this, ...rest);
+            };
+          }
+
+          Object.defineProperty(scriptProto, '__claudeBunShimPatched', { value: true });
+        }
+
+        Object.defineProperty(realVm, '__claudeBunShimPatched', { value: true });
+      }
+      return realVm;
+    }
+
     if (id === 'child_process') {
       return guardedChild;
     }
@@ -159,7 +347,23 @@ function createFakeRequire(realRequire) {
 async function main() {
   const extractedFile = ensureEntryFile();
   const code = fs.readFileSync(extractedFile, 'utf8');
-  const fn = eval('(' + code);
+  const patchedCode = code.replace(
+    /^function\(exports, require, module, __filename, __dirname\) \{/,
+    'function(exports, require, module, __filename, __dirname) {var __claudeBun = globalThis.__claudeBunShim;',
+  ).replace(
+    /\btypeof Bun\b/g,
+    'typeof __claudeBun',
+  ).replace(
+    /\bBun\./g,
+    '__claudeBun.',
+  ).replace(
+    /function t5q\(q\)\{return Bun\.YAML\.parse\(q\)\}/g,
+    'function t5q(q){return globalThis.__claudeYaml.parse(q)}',
+  ).replace(
+    /function VK6\(q\)\{return Bun\.YAML\.stringify\(q,null,2\)\+`/g,
+    'function VK6(q){return globalThis.__claudeYaml.stringify(q,null,2)+`',
+  );
+  const fn = eval('(' + patchedCode.replace(/\)\s*$/, '') + ')');
 
   const originalArgv = process.argv.slice();
   const originalExit = process.exit;
@@ -168,6 +372,10 @@ async function main() {
   const originalGlobalBun = globalThis.Bun;
   const asyncErrors = [];
 
+  globalThis.__claudeYaml = createYamlShim();
+  if (!globalThis.__claudeBunShim || typeof globalThis.__claudeBunShim !== 'object') {
+    globalThis.__claudeBunShim = {};
+  }
   const fakeRequire = createFakeRequire(require);
   function onAsyncError(error) {
     asyncErrors.push(error);
@@ -218,11 +426,14 @@ async function main() {
           lte: (a, b) => _cmp(a, b) <= 0,
         };
       })(),
-      YAML: {
-        parse: () => undefined,
-        stringify: (obj) => (typeof obj === 'string' ? obj : ''),
-      },
+      YAML: globalThis.__claudeYaml,
     };
+    Object.assign(globalThis.__claudeBunShim, globalThis.Bun);
+    if (typeof globalThis.__claudeBunShim.gc !== 'function') {
+      globalThis.__claudeBunShim.gc = () => {};
+    }
+    globalThis.__claudeBun = globalThis.__claudeBunShim;
+    globalThis.Bun = globalThis.__claudeBunShim;
     process.argv = ['node', extractedFile, ...argv];
     process.exit = code => {
       throw new RequestedExit(code);
@@ -231,7 +442,7 @@ async function main() {
     const moduleLike = { exports: {} };
     const maybePromise = fn(moduleLike.exports, fakeRequire, moduleLike, extractedFile, workdir);
     if (maybePromise && typeof maybePromise.then === 'function') await maybePromise;
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await new Promise(resolve => setTimeout(resolve, 5000));
     if (asyncErrors.length > 0) throw asyncErrors[0];
   } catch (error) {
     if (error instanceof RequestedExit) {
@@ -251,6 +462,9 @@ async function main() {
         Object.defineProperty(process.versions, 'bun', { value: originalBun, configurable: true });
       }
     } catch {}
+    delete globalThis.__claudeYaml;
+    delete globalThis.__claudeBunShim;
+    delete globalThis.__claudeBun;
     if (hadGlobalBun) globalThis.Bun = originalGlobalBun;
     else delete globalThis.Bun;
   }
@@ -267,7 +481,7 @@ main().catch(error => {
 NODE
   export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="${CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:-1}"
   export ENABLE_CLAUDEAI_MCP_SERVERS="${ENABLE_CLAUDEAI_MCP_SERVERS:-0}"
-  export CLAUDE_CODE_SIMPLE="${CLAUDE_CODE_SIMPLE:-1}"
+  export CLAUDE_CODE_SIMPLE="${CLAUDE_CODE_SIMPLE:-0}"
   node "$_helper" "$@" </dev/null
   _status=$?
   rm -f "$_helper"
@@ -300,8 +514,6 @@ class RequestedExit extends Error {
 
 function ensureEntryFile() {
   const extractedFile = path.join(workdir, `cli.${entryJsOffset}.${entryEndOffset}.bare-path.js`);
-  if (fs.existsSync(extractedFile)) return extractedFile;
-
   const len = entryEndOffset - entryJsOffset;
   if (!(len > 0)) throw new Error('invalid replay offsets');
 
@@ -325,8 +537,101 @@ function stringWidth(value) {
   return Array.from(text).length;
 }
 
+function parseScalar(value) {
+  const text = String(value ?? '').trim();
+  if (text === '') return '';
+  if (text === 'true') return true;
+  if (text === 'false') return false;
+  if (text === 'null' || text === '~') return null;
+  if (/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/.test(text)) return Number(text);
+  if (
+    (text.startsWith('"') && text.endsWith('"')) ||
+    (text.startsWith("'") && text.endsWith("'"))
+  ) {
+    return text.slice(1, -1);
+  }
+  return text;
+}
+
+function parseInlineArray(value) {
+  const inner = String(value ?? '').trim().slice(1, -1).trim();
+  if (inner === '') return [];
+  const items = [];
+  let current = '';
+  let quote = null;
+
+  for (let i = 0; i < inner.length; i += 1) {
+    const ch = inner[i];
+    if (quote) {
+      if (ch === quote && inner[i - 1] !== '\\') quote = null;
+      current += ch;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === ',') {
+      items.push(parseScalar(current));
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+
+  if (current !== '') items.push(parseScalar(current));
+  return items;
+}
+
+function yamlParse(text) {
+  const source = String(text ?? '');
+  const result = {};
+  for (const rawLine of source.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) continue;
+    const idx = line.indexOf(':');
+    if (idx < 0) continue;
+    const key = line.slice(0, idx).trim();
+    const rawValue = line.slice(idx + 1).trim();
+    if (!key) continue;
+    result[key] = rawValue.startsWith('[') && rawValue.endsWith(']')
+      ? parseInlineArray(rawValue)
+      : parseScalar(rawValue);
+  }
+  return result;
+}
+
+function yamlStringify(value) {
+  if (!value || typeof value !== 'object') return String(value ?? '');
+  const lines = [];
+  for (const [key, raw] of Object.entries(value)) {
+    if (Array.isArray(raw)) {
+      lines.push(`${key}: [${raw.map(item => JSON.stringify(String(item))).join(', ')}]`);
+    } else if (raw === null) {
+      lines.push(`${key}: null`);
+    } else if (typeof raw === 'string') {
+      lines.push(`${key}: ${JSON.stringify(raw)}`);
+    } else {
+      lines.push(`${key}: ${String(raw)}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+function createYamlShim() {
+  const yaml = {
+    parse: yamlParse,
+    stringify: yamlStringify,
+  };
+  yaml.YAML = yaml;
+  yaml.default = yaml;
+  return yaml;
+}
+
 function createFakeRequire(realRequire) {
   const realChild = realRequire('child_process');
+  const realVm = realRequire('vm');
 
   function rewriteArgs(args) {
     if (
@@ -365,6 +670,49 @@ function createFakeRequire(realRequire) {
       return { default: WS, WebSocket: WS };
     }
 
+    if (id === 'vm' || id === 'node:vm') {
+      if (!realVm.__claudeBunShimPatched) {
+        const originalCreateContext = realVm.createContext.bind(realVm);
+        const originalRunInNewContext = realVm.runInNewContext.bind(realVm);
+        const originalRunInContext = realVm.runInContext.bind(realVm);
+        const originalRunInThisContext = realVm.runInThisContext && realVm.runInThisContext.bind(realVm);
+        const scriptProto = realVm.Script && realVm.Script.prototype;
+
+        realVm.createContext = (contextObject, ...rest) =>
+          originalCreateContext(injectBunIntoContext(contextObject), ...rest);
+        realVm.runInNewContext = (code, contextObject, ...rest) =>
+          originalRunInNewContext(code, injectBunIntoContext(contextObject), ...rest);
+        realVm.runInContext = (code, contextObject, ...rest) =>
+          originalRunInContext(code, injectBunIntoContext(contextObject), ...rest);
+        if (originalRunInThisContext) {
+          realVm.runInThisContext = (code, ...rest) => originalRunInThisContext(code, ...rest);
+        }
+
+        if (scriptProto && !scriptProto.__claudeBunShimPatched) {
+          const originalScriptRunInContext = scriptProto.runInContext;
+          const originalScriptRunInNewContext = scriptProto.runInNewContext;
+          const originalScriptRunInThisContext = scriptProto.runInThisContext;
+
+          scriptProto.runInContext = function (contextObject, ...rest) {
+            return originalScriptRunInContext.call(this, injectBunIntoContext(contextObject), ...rest);
+          };
+          scriptProto.runInNewContext = function (contextObject, ...rest) {
+            return originalScriptRunInNewContext.call(this, injectBunIntoContext(contextObject), ...rest);
+          };
+          if (originalScriptRunInThisContext) {
+            scriptProto.runInThisContext = function (...rest) {
+              return originalScriptRunInThisContext.call(this, ...rest);
+            };
+          }
+
+          Object.defineProperty(scriptProto, '__claudeBunShimPatched', { value: true });
+        }
+
+        Object.defineProperty(realVm, '__claudeBunShimPatched', { value: true });
+      }
+      return realVm;
+    }
+
     if (id === 'child_process') {
       return guardedChild;
     }
@@ -384,7 +732,23 @@ function createFakeRequire(realRequire) {
 async function main() {
   const extractedFile = ensureEntryFile();
   const code = fs.readFileSync(extractedFile, 'utf8');
-  const fn = eval('(' + code);
+  const patchedCode = code.replace(
+    /^function\(exports, require, module, __filename, __dirname\) \{/,
+    'function(exports, require, module, __filename, __dirname) {var __claudeBun = globalThis.__claudeBunShim;',
+  ).replace(
+    /\btypeof Bun\b/g,
+    'typeof __claudeBun',
+  ).replace(
+    /\bBun\./g,
+    '__claudeBun.',
+  ).replace(
+    /function t5q\(q\)\{return Bun\.YAML\.parse\(q\)\}/g,
+    'function t5q(q){return globalThis.__claudeYaml.parse(q)}',
+  ).replace(
+    /function VK6\(q\)\{return Bun\.YAML\.stringify\(q,null,2\)\+`/g,
+    'function VK6(q){return globalThis.__claudeYaml.stringify(q,null,2)+`',
+  );
+  const fn = eval('(' + patchedCode.replace(/\)\s*$/, '') + ')');
 
   const originalArgv = process.argv.slice();
   const originalExit = process.exit;
@@ -393,6 +757,10 @@ async function main() {
   const originalGlobalBun = globalThis.Bun;
   const asyncErrors = [];
 
+  globalThis.__claudeYaml = createYamlShim();
+  if (!globalThis.__claudeBunShim || typeof globalThis.__claudeBunShim !== 'object') {
+    globalThis.__claudeBunShim = {};
+  }
   const fakeRequire = createFakeRequire(require);
   function onAsyncError(error) {
     asyncErrors.push(error);
@@ -443,7 +811,14 @@ async function main() {
           lte: (a, b) => _cmp(a, b) <= 0,
         };
       })(),
+      YAML: globalThis.__claudeYaml,
     };
+    Object.assign(globalThis.__claudeBunShim, globalThis.Bun);
+    if (typeof globalThis.__claudeBunShim.gc !== 'function') {
+      globalThis.__claudeBunShim.gc = () => {};
+    }
+    globalThis.__claudeBun = globalThis.__claudeBunShim;
+    globalThis.Bun = globalThis.__claudeBunShim;
     process.argv = ['node', extractedFile, ...argv];
     process.exit = code => {
       throw new RequestedExit(code);
@@ -452,7 +827,7 @@ async function main() {
     const moduleLike = { exports: {} };
     const maybePromise = fn(moduleLike.exports, fakeRequire, moduleLike, extractedFile, workdir);
     if (maybePromise && typeof maybePromise.then === 'function') await maybePromise;
-    const _waitMs = process.stdin.isTTY ? 1200 : 200;
+    const _waitMs = Number(process.env.CLAUDE_TERMUX_PRINT_WAIT_MS || 200);
     await new Promise(resolve => setTimeout(resolve, _waitMs));
     if (asyncErrors.length > 0) throw asyncErrors[0];
   } catch (error) {
@@ -473,6 +848,9 @@ async function main() {
         Object.defineProperty(process.versions, 'bun', { value: originalBun, configurable: true });
       }
     } catch {}
+    delete globalThis.__claudeYaml;
+    delete globalThis.__claudeBunShim;
+    delete globalThis.__claudeBun;
     if (hadGlobalBun) globalThis.Bun = originalGlobalBun;
   }
 }
