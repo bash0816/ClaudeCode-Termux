@@ -91,14 +91,21 @@ function fetchNativeTarball(spec, packDir) {
   } catch (error) {
     console.error(`Direct tarball fetch failed for ${spec}; falling back to npm pack.`);
     console.error(error && error.message ? error.message : String(error));
+    fs.rmSync(directTarball, { force: true });
   }
 
-  run('npm', ['pack', spec, '--pack-destination', packDir]);
-  const tgz = fs.readdirSync(packDir).find(name => name.endsWith('.tgz'));
-  if (!tgz) {
+  const packJson = runCapture('npm', ['pack', spec, '--pack-destination', packDir, '--json']);
+  let packEntries;
+  try {
+    packEntries = JSON.parse(packJson);
+  } catch (error) {
+    throw new Error(`npm pack did not return valid JSON for ${spec}`);
+  }
+  const packEntry = Array.isArray(packEntries) ? packEntries.find(entry => entry && entry.filename) : null;
+  if (!packEntry || !packEntry.filename) {
     throw new Error('npm pack did not produce a tgz');
   }
-  return path.join(packDir, tgz);
+  return path.join(packDir, packEntry.filename);
 }
 
 function verifyTarball(file, audited) {

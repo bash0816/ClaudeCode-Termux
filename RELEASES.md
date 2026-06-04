@@ -20,7 +20,7 @@ npm install -g @bash0816/claude-code@2.1.159-13
 
 ## 2.1.157 — 2026-06-02 ✅ Historical stable / 旧推奨版
 
-> **2.1.159-8 は取り下げ済みです。** 動作不良（Node v24 環境でのクラッシュ）が確認されたため unpublish。現在は 2.1.161 を使用してください。
+> **2.1.159-8 は取り下げ済みです。** 動作不良（Node v24 環境でのクラッシュ）が確認されたため unpublish。現在は 2.1.161 を使用してください。2.1.159-13 は rollback / historical reference です。
 
 ```sh
 npm install -g @bash0816/claude-code@2.1.157
