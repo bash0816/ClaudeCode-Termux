@@ -2,6 +2,7 @@
 'use strict';
 
 const cp = require('child_process');
+const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -35,6 +36,7 @@ const packDir = fs.mkdtempSync(path.join(os.tmpdir(), `claude-code-${version}-`)
 
 try {
   const tgzPath = fetchNativeTarball(item.native_spec, packDir);
+  verifyTarball(tgzPath, item);
 
   const extractDir = path.join(packDir, 'native');
   fs.mkdirSync(extractDir, { recursive: true });
@@ -97,6 +99,25 @@ function fetchNativeTarball(spec, packDir) {
     throw new Error('npm pack did not produce a tgz');
   }
   return path.join(packDir, tgz);
+}
+
+function verifyTarball(file, audited) {
+  const buf = fs.readFileSync(file);
+  if (audited.tarball_sha256) {
+    const sha256 = crypto.createHash('sha256').update(buf).digest('hex');
+    if (sha256 !== audited.tarball_sha256) {
+      throw new Error(`tarball sha256 mismatch for ${version}`);
+    }
+  }
+  if (audited.tarball_integrity) {
+    const sha512 = `sha512-${crypto.createHash('sha512').update(buf).digest('base64')}`;
+    if (sha512 !== audited.tarball_integrity) {
+      throw new Error(`tarball integrity mismatch for ${version}`);
+    }
+  }
+  if (audited.tarball_size !== undefined && Number(audited.tarball_size) !== buf.length) {
+    throw new Error(`tarball size mismatch for ${version}`);
+  }
 }
 
 function validateOffsets(file, audited) {

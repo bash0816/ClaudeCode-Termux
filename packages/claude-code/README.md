@@ -37,12 +37,12 @@ npm が `claude` bin link を管理する状態になれば、通常の `npm ins
 Latest audited version / 最新監査済み版:
 
 ```sh
-npm install -g @bash0816/claude-code@2.1.159-13
+npm install -g @bash0816/claude-code@2.1.161
 ```
 
-`claude --version` shows the audited launcher version as `2.1.159 (Claude Code)`.
+`claude --version` shows the audited launcher version as `2.1.161 (Claude Code)`.
 
-`claude --version` は監査済み launcher の version を `2.1.159 (Claude Code)` と表示します。
+`claude --version` は監査済み launcher の version を `2.1.161 (Claude Code)` と表示します。
 
 ## Update / 更新
 

@@ -41,12 +41,12 @@ Existing users on older installs should keep using `claude update` to migrate on
 Latest audited version / 最新監査済み版:
 
 ```sh
-npm install -g @bash0816/claude-code@2.1.159-13
+npm install -g @bash0816/claude-code@2.1.161
 ```
 
-`claude --version` shows the audited launcher version as `2.1.159 (Claude Code)`.
+`claude --version` shows the audited launcher version as `2.1.161 (Claude Code)`.
 
-`claude --version` は監査済み launcher の version を `2.1.159 (Claude Code)` と表示します。
+`claude --version` は監査済み launcher の version を `2.1.161 (Claude Code)` と表示します。
 
 ## Update / 更新
 
@@ -78,8 +78,8 @@ Only versions registered in the audited metadata can run.
 
 | Version | Status |
 |---------|--------|
-| `2.1.159-13` | ✅ **Recommended / 推奨** — Termux verified |
-| `2.1.153-4` | stable / rollback candidate |
+| `2.1.161` | ✅ **Recommended / 推奨** — Termux verified |
+| `2.1.159-13` | stable / rollback candidate |
 | `2.1.159-8` | ❌ Reverted — 動作不良のため取り下げ |
 | `2.1.157` | historical — rollback candidate |
 | `2.1.153-3` and earlier | historical — not recommended for new installs |
@@ -124,7 +124,7 @@ Example:
 例:
 
 ```text
-2.1.159 (Claude Code)
+2.1.161 (Claude Code)
 ```
 
 ## Do Not Use / 非推奨

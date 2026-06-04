@@ -1,6 +1,16 @@
-## 2.1.159-13 — 2026-06-04 ✅ Current audited / 現在の監査済み版
+## 2.1.161 — 2026-06-04 ✅ Current audited / 現在の監査済み版
 
-> **Termux verified.** Device B 実機検証で `claude auth status`、`claude -p "hello"`、debug 実行を通過しました。`claude update --dry-run` は `Already on latest audited version: 2.1.159-13` を返します。
+> **Termux verified.** Device B 実機検証で `claude auth status`、`claude -p "hello"`、`claude update --dry-run`、debug 実行を通過しました。`claude update --dry-run` は `Already on latest audited version: 2.1.161` を返します。
+
+```sh
+npm install -g @bash0816/claude-code@2.1.161
+```
+
+---
+
+## 2.1.159-13 — 2026-06-04 ✅ Historical stable / 旧推奨版
+
+> **Previous audited release.** 161 に昇格する前の audited 版です。rollback / historical reference として残します。
 
 ```sh
 npm install -g @bash0816/claude-code@2.1.159-13
@@ -10,7 +20,7 @@ npm install -g @bash0816/claude-code@2.1.159-13
 
 ## 2.1.157 — 2026-06-02 ✅ Historical stable / 旧推奨版
 
-> **2.1.159-8 は取り下げ済みです。** 動作不良（Node v24 環境でのクラッシュ）が確認されたため、2.1.157 を一時的な安定版として案内していました。
+> **2.1.159-8 は取り下げ済みです。** 動作不良（Node v24 環境でのクラッシュ）が確認されたため unpublish。現在は 2.1.161 を使用してください。
 
 ```sh
 npm install -g @bash0816/claude-code@2.1.157
