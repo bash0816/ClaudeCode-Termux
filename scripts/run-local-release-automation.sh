@@ -261,8 +261,11 @@ Task:
    - merge candidate PR when state is OPEN, not draft, merge state is acceptable, and all visible checks are completed without failure
    - promote ${BASE_BRANCH} -> staging by using a versioned temp branch named automation/promote-dev-to-staging-${candidate_version}
    - promote staging -> main by using a versioned temp branch named automation/promote-staging-to-main-${candidate_version}
-   - after origin/main reaches ${candidate_version}, dispatch npm-package.yml with publish=true and npm_tag=latest
+   - after origin/main reaches ${candidate_version}, dispatch npm-package.yml with release_action=publish_candidate
    - wait for the workflow_dispatch run of Npm Package on main to succeed
+   - verify npm dist-tag ls @bash0816/claude-code shows candidate=${candidate_version} while latest still points to the pre-promotion stable version
+   - after Device A verification passes, dispatch npm-package.yml with release_action=promote_latest
+   - wait for the latest promotion run of Npm Package on main to succeed
    - verify npm view @bash0816/claude-code version reaches ${candidate_version}
    - if legacy sync is still needed, run sh scripts/sync-legacy-metadata.sh ${candidate_version}
 5. Hard-stop instead of guessing when:
@@ -273,7 +276,7 @@ Task:
    - npm published version does not advance
 6. Final answer must be JSON matching the provided schema.
 7. Set promotion_dispatched=true only when promotion moved beyond candidate verification into PR merge / branch promotion / publish follow-up.
-8. Set publish_dispatched=true only when the publish workflow was dispatched and confirmed successful.
+8. Set publish_dispatched=true only when candidate publish and latest promotion follow-up were both dispatched and confirmed successful.
 EOF
 
 if [ "${DRY_RUN}" -eq 1 ]; then
