@@ -81,7 +81,7 @@ function updateRootReadme(content, versions, latestAudited) {
 
   content = replaceBetween(
     content,
-    'Latest stable version / 最新安定版:\n\n',
+    'Latest audited version / 最新監査済み版:\n\n',
     '\n## Update / 更新\n',
     installBlock,
     'README.md install examples'
@@ -130,7 +130,7 @@ function updatePackageReadme(content, versions, latestAudited) {
 
   content = replaceBetween(
     content,
-    'Latest stable version / 最新安定版:\n\n',
+    'Latest audited version / 最新監査済み版:\n\n',
     '\n## Update / 更新\n',
     installBlock,
     'packages/claude-code/README.md install examples'
