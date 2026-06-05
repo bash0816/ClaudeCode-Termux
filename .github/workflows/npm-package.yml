@@ -143,7 +143,7 @@ jobs:
           const unexpected = [];
           for (const file of files) {
             const path = String(file.path || '').replace(/^\.\//, '');
-            if (path === 'package.json' || path === 'README.md') continue;
+            if (path === 'package.json' || path === 'README.md' || path === 'LICENSE') continue;
             if (path.startsWith('bin/') || path.startsWith('lib/') || path.startsWith('config/')) continue;
             unexpected.push(path);
           }
