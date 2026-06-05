@@ -2,8 +2,6 @@
 
 > **Termux verified.** Device B 実機検証で `claude auth status`、`claude -p "hello"`、`claude update --dry-run`、debug 実行を通過しました。`claude update --dry-run` は `Already on latest audited version: 2.1.161` を返します。
 
-> **Upstream note.** `@anthropic-ai/claude-code` の npm latest は 2.1.165 ですが、この repo の audited line は 2.1.161 のままです。
-
 ```sh
 npm install -g @bash0816/claude-code@2.1.161
 ```
