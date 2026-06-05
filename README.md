@@ -6,11 +6,11 @@
 
 本パッケージは Anthropic によって開発、提供、承認、支援されているものではありません。
 Anthropic および Claude Code は Anthropic の商標または製品です。
-公式パッケージは @anthropic-ai/claude-code を参照してください。
+公式パッケージは @anthropic-ai/claude-code を参照してください。2026-06-05 時点の npm dist-tag は `latest=2.1.165` / `stable=2.1.153` です。
 
 This package is an unofficial Termux-oriented build of Claude Code.
 It is not developed, sponsored, endorsed, or supported by Anthropic.
-For the official package, see @anthropic-ai/claude-code.
+For the official package, see @anthropic-ai/claude-code. As of 2026-06-05, its npm dist-tags are `latest=2.1.165` and `stable=2.1.153`.
 ---
 
 
@@ -25,6 +25,10 @@ This repository tracks the canonical Termux wrapper package line.
 Current install and update paths are consolidated into npm.
 
 現在の導入・更新手順は npm package に一本化しています。
+
+## Release Process
+
+リリースの完了条件と candidate -> latest の昇格手順は [docs/release-process.md](docs/release-process.md) を参照してください。
 
 ## Install / インストール
 
