@@ -82,7 +82,7 @@ Only versions registered in the audited metadata can run.
 | `2.1.159-13` | stable / rollback candidate |
 | `2.1.159-8` | ❌ Reverted — 動作不良のため取り下げ |
 | `2.1.157` | historical — rollback candidate |
-| `2.1.153-4` and earlier | historical — not recommended for new installs |
+| `2.1.153-3` and earlier | historical — not recommended for new installs |
 
 For the full version history, see [RELEASES.md](RELEASES.md).
 
