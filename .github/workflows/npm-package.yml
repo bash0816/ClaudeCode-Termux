@@ -1,7 +1,7 @@
 name: Npm Package
 
-# This workflow verifies on PRs and pushes, and can either publish a candidate
-# release or promote latest on workflow_dispatch when explicitly requested.
+# This workflow verifies on PRs and pushes, and can publish on workflow_dispatch
+# when explicitly requested.
 
 on:
   pull_request:
@@ -26,15 +26,18 @@ on:
       - ".github/workflows/npm-package.yml"
   workflow_dispatch:
     inputs:
-      release_action:
-        description: "Release action"
+      publish:
+        description: "Publish @bash0816/claude-code to npm"
         required: true
-        default: "verify_only"
+        default: "false"
         type: choice
         options:
-          - "verify_only"
-          - "publish_candidate"
-          - "promote_latest"
+          - "false"
+          - "true"
+      npm_tag:
+        description: "npm dist-tag to use when publishing"
+        required: false
+        default: "latest"
 
 permissions:
   contents: read
@@ -95,7 +98,7 @@ jobs:
         run: npm pack --dry-run
 
   publish:
-    if: github.event_name == 'workflow_dispatch' && inputs.release_action != 'verify_only'
+    if: github.event_name == 'workflow_dispatch' && inputs.publish == 'true'
     needs: verify
     runs-on: ubuntu-latest
     environment: npm-publish
@@ -114,15 +117,12 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       - name: Publish guard
-        env:
-          RELEASE_ACTION: ${{ inputs.release_action }}
         run: |
           set -euo pipefail
           node - <<'NODE'
           const fs = require('fs');
           const { execSync } = require('child_process');
 
-          const releaseAction = process.env.RELEASE_ACTION || 'publish_candidate';
           const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
           const config = JSON.parse(fs.readFileSync('config/claude-native-audited-versions.json', 'utf8'));
           const manifest = JSON.parse(fs.readFileSync('config/claude-termux-release-manifest.json', 'utf8'));
@@ -135,10 +135,6 @@ jobs:
           if (!latest) throw new Error(`missing audited metadata for ${latestVersion}`);
           if (latest.status !== 'termux_verified') {
             throw new Error(`latest audited version ${latestVersion} is not termux_verified`);
-          }
-
-          if (releaseAction === 'promote_latest') {
-            execSync(`npm view "${pkg.name}@${pkg.version}" version`, { stdio: 'pipe' });
           }
 
           const packInfo = JSON.parse(execSync('npm pack --dry-run --json', { encoding: 'utf8' }));
@@ -159,13 +155,7 @@ jobs:
       - name: Publish package
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          RELEASE_ACTION: ${{ inputs.release_action }}
+          NPM_TAG: ${{ inputs.npm_tag || 'latest' }}
         run: |
           set -euo pipefail
-          package_name="$(node -p "require('./package.json').name")"
-          package_version="$(node -p "require('./package.json').version")"
-          if [ "${RELEASE_ACTION}" = "promote_latest" ]; then
-            npm dist-tag add "${package_name}@${package_version}" latest
-          else
-            npm publish --access public --tag candidate
-          fi
+          npm publish --access public --tag "${NPM_TAG}"
