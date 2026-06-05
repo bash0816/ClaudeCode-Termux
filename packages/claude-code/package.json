@@ -1,6 +1,6 @@
 {
   "name": "@bash0816/claude-code",
-  "version": "2.1.161",
+  "version": "2.1.165",
   "description": "Unofficial Termux-native Claude Code wrapper with audited native replay",
   "license": "Apache-2.0",
   "bin": {
