@@ -84,10 +84,16 @@ jobs:
             printf "### Install\n\`\`\`sh\nnpm install -g @bash0816/claude-code@%s\n\`\`\`\n\n" "$ver"
             printf "### Rollback\n\`\`\`sh\nnpm install -g @bash0816/claude-code@%s\n\`\`\`\n" "$previous_ver"
           } >"$release_body_file"
+          npm_latest=$(npm view @bash0816/claude-code dist-tags.latest 2>/dev/null || echo "")
+          if [ "$ver" = "$npm_latest" ]; then
+            latest_flag="--latest"
+          else
+            latest_flag="--latest=false"
+          fi
           gh release create "$tag" \
             --repo "$GITHUB_REPOSITORY" \
             --title "claude-code v${ver}" \
             --notes-file "$release_body_file" \
             --target main \
-            --latest
+            $latest_flag
           echo "Created release $tag"

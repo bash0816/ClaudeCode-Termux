@@ -41,6 +41,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
   verify:
@@ -159,3 +160,28 @@ jobs:
         run: |
           set -euo pipefail
           npm publish --access public --tag "${NPM_TAG}"
+
+      - name: Verify registry and dispatch finalize
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          VER=$(node -p "require('./package.json').version")
+          # Retry up to 4 times (15s intervals) for npm registry propagation
+          for i in 1 2 3 4; do
+            published=$(npm view "@bash0816/claude-code@${VER}" version 2>/dev/null || echo "")
+            if [ "$published" = "$VER" ]; then
+              echo "npm registry confirmed: $VER"
+              break
+            fi
+            if [ "$i" -eq 4 ]; then
+              echo "ERROR: npm registry did not reflect $VER after retries" >&2
+              exit 1
+            fi
+            echo "Attempt $i: registry not yet updated, retrying in 15s..."
+            sleep 15
+          done
+          gh workflow run release-finalize.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --field version="$VER"
+          echo "Dispatched release-finalize for $VER"
