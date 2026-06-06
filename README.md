@@ -44,6 +44,17 @@ Latest audited version / 最新監査済み版:
 npm install -g @bash0816/claude-code@2.1.165
 ```
 
+If you already have `2.1.161` installed, do not accept an automatic upgrade to
+`2.1.165` until the fixed guidance is published.
+
+`2.1.161` をすでに入れている端末では、修正版の案内が出るまで `2.1.165` への自動更新を受けないでください。
+
+If your terminal is already on `2.1.161`, do not run `claude update`.
+Keep that terminal pinned to `2.1.161` until the revised release note is published.
+
+`2.1.161` を当てた端末では `claude update` を実行しないでください。
+修正版の release note が出るまで `2.1.161` に固定してください。
+
 ## Update / 更新
 
 ```sh
@@ -53,6 +64,11 @@ claude update
 `claude update` installs the latest audited package version.
 
 `claude update` は最新の監査済み package version を install します。
+
+Exception: terminals already on `2.1.161` must stay pinned until the fixed
+guidance is published.
+
+例外: `2.1.161` を当てた端末は、修正版の案内が出るまで固定のままにしてください。
 
 If an older version shows a downgrade notice, do not follow it. Install the latest package explicitly with npm.
 
@@ -75,10 +91,15 @@ Only versions registered in the audited metadata can run.
 | Version | Status |
 |---------|--------|
 | `2.1.165` | ✅ **Recommended / 推奨** — Termux verified |
-| `2.1.161` | stable / rollback candidate |
+| `2.1.161` | rollback candidate / 要注意 |
 | `2.1.159-13` | ❌ Reverted — 動作不良のため取り下げ |
 | `2.1.157` | historical — rollback candidate |
 | `2.1.153-4` and earlier | historical — not recommended for new installs |
+
+If your terminal is already on `2.1.161`, do not update it to `2.1.165`
+until the revised release note is published.
+
+`2.1.161` を当てた端末は、修正版の release note が出るまで `2.1.165` へ更新しないでください。
 
 For the full version history, see [RELEASES.md](RELEASES.md).
 
