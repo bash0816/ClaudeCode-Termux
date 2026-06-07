@@ -28,7 +28,15 @@ on:
     inputs:
       publish:
         description: "Publish @bash0816/claude-code to npm"
-        required: true
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      retag_latest:
+        description: "Update npm latest dist-tag without publishing a new package"
+        required: false
         default: "false"
         type: choice
         options:
@@ -153,9 +161,21 @@ jobs:
           NODE
 
       - name: Publish package
+        if: github.event_name == 'workflow_dispatch' && inputs.publish == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_TAG: ${{ inputs.npm_tag || 'latest' }}
         run: |
           set -euo pipefail
           npm publish --access public --tag "${NPM_TAG}"
+
+      - name: Retag latest
+        if: github.event_name == 'workflow_dispatch' && inputs.retag_latest == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TAG: ${{ inputs.npm_tag || 'latest' }}
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          npm dist-tag add "@bash0816/claude-code@${version}" "${NPM_TAG}"
+          npm dist-tag ls @bash0816/claude-code

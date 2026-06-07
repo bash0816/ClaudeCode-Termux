@@ -1,9 +1,9 @@
-## 2.1.165 — 2026-06-05 ✅ Current audited / 現在の監査済み版
+## 2.1.159-13 — 2026-06-04 ✅ Current audited / 現在の監査済み版
 
-> **Termux verified.** Device B 実機検証で `claude auth status`、`claude -p "hello"`、`claude update --dry-run`、debug 実行を通過しました。`claude update --dry-run` は `Already on latest audited version: 2.1.165` を返します。
+> **Termux verified.** Device B 実機検証で `claude auth status`、`claude -p "hello"`、`claude update --dry-run`、debug 実行を通過しました。`claude update --dry-run` は `Already on latest audited version: 2.1.159-13` を返します。
 
 ```sh
-npm install -g @bash0816/claude-code@2.1.165
+npm install -g @bash0816/claude-code@2.1.159-13
 ```
 
 ---
@@ -18,12 +18,12 @@ npm install -g @bash0816/claude-code@2.1.161
 
 ---
 
-## 2.1.159-13 — 2026-06-04 ✅ Historical stable / 旧推奨版
+## 2.1.165 — 2026-06-05 ✅ Historical upstream reference / 公式 upstream 参照版
 
-> **Previous audited release.** 161 に昇格する前の audited 版です。rollback / historical reference として残します。
+> **Upstream reference.** This entry is kept as the official upstream reference and is not this repo's published latest audited release.
 
 ```sh
-npm install -g @bash0816/claude-code@2.1.159-13
+npm install -g @bash0816/claude-code@2.1.165
 ```
 
 ---
