@@ -238,6 +238,16 @@
       "tarball_size": 74314760,
       "status": "offset_discovered"
     },
+    "2.1.161-1": {
+      "wrapper_spec": "@anthropic-ai/claude-code@2.1.161",
+      "native_spec": "@anthropic-ai/claude-code-linux-arm64@2.1.161",
+      "entry_js_offset": 225551924,
+      "entry_end_offset": 241503454,
+      "tarball_integrity": "sha512-rLEzd8/q4UnTLDSAd3eYgog+G0iZ8y6K8yh0gSxf82d7uOkypYaBUkbmFENuHuzIzCIf9Yy/utCJfp6kQFjUow==",
+      "tarball_sha256": "e87d973bbe58593e06c101196f6417f7d950bf777cb9f1a8ff002ebf987ea066",
+      "tarball_size": 74314760,
+      "status": "termux_verified"
+    },
     "2.1.165": {
       "wrapper_spec": "@anthropic-ai/claude-code@2.1.165",
       "native_spec": "@anthropic-ai/claude-code-linux-arm64@2.1.165",
