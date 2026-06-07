@@ -1,4 +1,14 @@
-## 2.1.159-13 — 2026-06-04 ✅ Current audited / 現在の監査済み版
+## 2.1.161-1 — 2026-06-07 ✅ Current audited / 現在の監査済み版
+
+> **Checklist.** `claude update --dry-run` の更新先が `@bash0816/claude-code@2.1.161-1` であることを確認する。もし `@anthropic-ai/claude-code@latest` に戻っていたら、更新経路の巻き戻りとして扱う。
+
+```sh
+npm install -g @bash0816/claude-code@2.1.161-1
+```
+
+---
+
+## 2.1.159-13 — 2026-06-04 ✅ Historical stable / 旧推奨版
 
 > **Termux verified.** Device B 実機検証で `claude auth status`、`claude -p "hello"`、`claude update --dry-run`、debug 実行を通過しました。`claude update --dry-run` は `Already on latest audited version: 2.1.159-13` を返します。
 
