@@ -106,7 +106,7 @@ jobs:
         run: npm pack --dry-run
 
   publish:
-    if: github.event_name == 'workflow_dispatch' && inputs.publish == 'true'
+    if: github.event_name == 'workflow_dispatch' && (inputs.publish == 'true' || inputs.retag_latest == 'true')
     needs: verify
     runs-on: ubuntu-latest
     environment: npm-publish
