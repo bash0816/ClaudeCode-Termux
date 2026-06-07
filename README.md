@@ -41,19 +41,8 @@ Existing users on older installs should keep using `claude update` to migrate on
 Latest audited version / 最新監査済み版:
 
 ```sh
-npm install -g @bash0816/claude-code@2.1.165
+npm install -g @bash0816/claude-code@2.1.159-13
 ```
-
-If you already have `2.1.161` installed, do not accept an automatic upgrade to
-`2.1.165` until the fixed guidance is published.
-
-`2.1.161` をすでに入れている端末では、修正版の案内が出るまで `2.1.165` への自動更新を受けないでください。
-
-If your terminal is already on `2.1.161`, do not run `claude update`.
-Keep that terminal pinned to `2.1.161` until the revised release note is published.
-
-`2.1.161` を当てた端末では `claude update` を実行しないでください。
-修正版の release note が出るまで `2.1.161` に固定してください。
 
 ## Update / 更新
 
@@ -65,10 +54,13 @@ claude update
 
 `claude update` は最新の監査済み package version を install します。
 
-Exception: terminals already on `2.1.161` must stay pinned until the fixed
-guidance is published.
+If you already have `2.1.165` or `2.1.161` installed, install `2.1.159-13`
+explicitly. `claude update` will not roll a newer installed terminal back to
+this repo's current audited release.
 
-例外: `2.1.161` を当てた端末は、修正版の案内が出るまで固定のままにしてください。
+`2.1.165` または `2.1.161` をすでに入れている端末では、
+`2.1.159-13` を明示 install してください。
+`claude update` だけでは、より新しい端末をこの repo の現在の audited release に戻しません。
 
 If an older version shows a downgrade notice, do not follow it. Install the latest package explicitly with npm.
 
@@ -90,16 +82,22 @@ Only versions registered in the audited metadata can run.
 
 | Version | Status |
 |---------|--------|
-| `2.1.165` | ✅ **Recommended / 推奨** — Termux verified |
-| `2.1.161` | rollback candidate / 要注意 |
-| `2.1.159-13` | ❌ Reverted — 動作不良のため取り下げ |
+| `2.1.159-13` | ✅ **Recommended / 推奨** — current audited release |
+| `2.1.161` | reverted — do not keep using this line |
 | `2.1.157` | historical — rollback candidate |
 | `2.1.153-4` and earlier | historical — not recommended for new installs |
 
-If your terminal is already on `2.1.161`, do not update it to `2.1.165`
-until the revised release note is published.
+Official upstream Claude Code may be newer. This repo's published latest audited
+release is `2.1.159-13`.
 
-`2.1.161` を当てた端末は、修正版の release note が出るまで `2.1.165` へ更新しないでください。
+公式 upstream の Claude Code は別で更新されることがあります。この repo の公開 latest audited release は `2.1.159-13` です。
+
+If your terminal is already on `2.1.165` or `2.1.161`, do not rely on
+`claude update` to move it to the current release. Install `2.1.159-13`
+explicitly instead.
+
+`2.1.165` または `2.1.161` を当てた端末では `claude update` に頼らず、
+`2.1.159-13` を明示 install してください。
 
 For the full version history, see [RELEASES.md](RELEASES.md).
 
@@ -141,7 +139,7 @@ Example:
 例:
 
 ```text
-2.1.165 (Claude Code)
+2.1.159-13 (Claude Code)
 ```
 
 ## Do Not Use / 非推奨
