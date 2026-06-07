@@ -41,7 +41,7 @@ Existing users on older installs should keep using `claude update` to migrate on
 Latest audited version / 最新監査済み版:
 
 ```sh
-npm install -g @bash0816/claude-code@2.1.161-1
+npm install -g @bash0816/claude-code@2.1.159-13
 ```
 
 ## Update / 更新
@@ -146,7 +146,7 @@ Example:
 例:
 
 ```text
-2.1.161-1 (Claude Code)
+2.1.159-13 (Claude Code)
 ```
 
 ## Do Not Use / 非推奨
