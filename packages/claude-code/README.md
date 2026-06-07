@@ -54,12 +54,12 @@ claude update
 npm install -g @bash0816/claude-code@<latest_audited_version>
 ```
 
-If you already have `2.1.165` or `2.1.161` installed, install `2.1.159-13`
-explicitly. `claude update` will not roll a newer installed terminal back to
-this repo's current audited release.
+If you already have the repo's `2.1.161` release or the official upstream
+`2.1.165` installed, install `2.1.159-13` explicitly. `claude update` will not
+roll a newer installed terminal back to this repo's current audited release.
 
-`2.1.165` または `2.1.161` をすでに入れている端末では、
-`2.1.159-13` を明示 install してください。
+この repo の `2.1.161` release または official upstream の `2.1.165` を
+すでに入れている端末では、`2.1.159-13` を明示 install してください。
 `claude update` だけでは、より新しい端末をこの repo の現在の audited release に戻しません。
 
 Normal launch also checks the same manifest with a short timeout and prints a notice when a newer audited version is available.
