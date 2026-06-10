@@ -21,7 +21,7 @@ function writeFakeNpm(binDir, options = {}) {
   const logFile = path.join(path.dirname(binDir), 'npm-calls.log');
   const stateFile = path.join(path.dirname(binDir), 'npm-state.json');
   const scriptFile = path.join(binDir, 'npm');
-  const currentTags = options.currentTags || { latest: '2.1.159-13', candidate: '2.1.161-3' };
+  const currentTags = options.currentTags || { latest: '2.1.159-13', candidate: '2.1.161-2' };
   const failOnAddCall = options.failOnAddCall || 0;
 
   fs.mkdirSync(binDir, { recursive: true });
@@ -123,7 +123,7 @@ test('retag latest swaps dist-tags in the expected order', () => {
   assert.equal(result.status, 0);
   assert.deepEqual(result.log, [
     'npm view @bash0816/claude-code dist-tags --json',
-    'npm dist-tag add @bash0816/claude-code@2.1.161-3 latest',
+    'npm dist-tag add @bash0816/claude-code@2.1.161-2 latest',
     'npm dist-tag add @bash0816/claude-code@2.1.159-13 candidate',
     'npm dist-tag ls @bash0816/claude-code',
   ]);
@@ -135,16 +135,16 @@ test('retag latest restores previous dist-tags when the promotion fails', () => 
   assert.equal(result.status, 1);
   assert.deepEqual(result.log, [
     'npm view @bash0816/claude-code dist-tags --json',
-    'npm dist-tag add @bash0816/claude-code@2.1.161-3 latest',
+    'npm dist-tag add @bash0816/claude-code@2.1.161-2 latest',
     'npm dist-tag add @bash0816/claude-code@2.1.159-13 candidate',
     'npm dist-tag add @bash0816/claude-code@2.1.159-13 latest',
-    'npm dist-tag add @bash0816/claude-code@2.1.161-3 candidate',
+    'npm dist-tag add @bash0816/claude-code@2.1.161-2 candidate',
   ]);
 });
 
 test('retag latest aborts when the registry tags drift', () => {
   const result = runRetagTest({
-    currentTags: { latest: '2.1.165', candidate: '2.1.161-3' },
+    currentTags: { latest: '2.1.165', candidate: '2.1.161-2' },
   });
 
   assert.equal(result.status, 1);
