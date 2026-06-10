@@ -49,7 +49,7 @@ for _a in "$@"; do
 done
 
 if [ "$_pf" = "1" ] && [ "${CLAUDE_TERMUX_STDIN:-}" != "inherit" ]; then
-  _helper=$(mktemp "${TMPDIR:-/tmp}/claude-helper.XXXXXX.js")
+  _helper=$(mktemp "${TERMUX_TMPDIR}/claude-helper.XXXXXX.js")
   trap 'rm -f "$_helper"' EXIT HUP INT TERM
   cat <<'NODE' > "$_helper"
 const fs = require('fs');
@@ -491,7 +491,7 @@ NODE
   trap - EXIT HUP INT TERM
   exit "$_status"
 else
-  _bootstrap=$(mktemp "${TMPDIR:-/tmp}/claude-bootstrap.XXXXXX.js")
+  _bootstrap=$(mktemp "${TERMUX_TMPDIR}/claude-bootstrap.XXXXXX.js")
   trap 'rm -f "$_bootstrap"' EXIT HUP INT TERM
   cat <<'NODE' > "$_bootstrap"
 const fs = require('fs');
