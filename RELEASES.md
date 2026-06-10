@@ -1,6 +1,7 @@
 ## 2.1.159-13 — 2026-06-04 ✅ Current audited / 現在の監査済み版
 
 > **Termux verified.** Device B 実機検証で `claude auth status`、`claude -p "hello"`、`claude update --dry-run`、debug 実行を通過しました。`claude update --dry-run` は `Already on latest audited version: 2.1.159-13` を返します。
+> **Release flow.** 新版はまず `candidate` で公開し、実機検証が終わったら `latest` と `candidate` を入れ替えます。検証前に `latest` を先に動かしません。
 
 ```sh
 npm install -g @bash0816/claude-code@2.1.159-13

@@ -60,11 +60,11 @@ Checklist:
 - `@anthropic-ai/claude-code@latest` に戻っていた場合は、更新経路の巻き戻りとして扱ってください。
 
 If you already have the repo's `2.1.161` release or the official upstream
-`2.1.165` installed, install `2.1.161-1` explicitly. `claude update` will not
+`2.1.165` installed, install `2.1.159-13` explicitly. `claude update` will not
 roll a newer installed terminal back to this repo's current audited release.
 
 この repo の `2.1.161` release または official upstream の `2.1.165` を
-すでに入れている端末では、`2.1.161-1` を明示 install してください。
+すでに入れている端末では、`2.1.159-13` を明示 install してください。
 `claude update` だけでは、より新しい端末をこの repo の現在の audited release に戻しません。
 
 If an older version shows a downgrade notice, do not follow it. Install the latest package explicitly with npm.
@@ -87,23 +87,23 @@ Only versions registered in the audited metadata can run.
 
 | Version | Status |
 |---------|--------|
-| `2.1.161-1` | ✅ **Recommended / 推奨** — current audited release |
+| `2.1.159-13` | ✅ **Recommended / 推奨** — current audited release |
+| `2.1.161-1` | reverted — do not keep using this line |
 | `2.1.161` | reverted — do not keep using this line |
-| `2.1.159-13` | historical — rollback candidate |
 | `2.1.157` | historical — rollback candidate |
 | `2.1.153-4` and earlier | historical — not recommended for new installs |
 
 Official upstream Claude Code may be newer. This repo's published latest audited
-release is `2.1.161-1`.
+release is `2.1.159-13`.
 
-公式 upstream の Claude Code は別で更新されることがあります。この repo の公開 latest audited release は `2.1.161-1` です。
+公式 upstream の Claude Code は別で更新されることがあります。この repo の公開 latest audited release は `2.1.159-13` です。
 
 If your terminal is already on the repo's `2.1.161` release or the official
 upstream `2.1.165`, do not rely on `claude update` to move it to the current
-release. Install `2.1.161-1` explicitly instead.
+release. Install `2.1.159-13` explicitly instead.
 
 この repo の `2.1.161` release または official upstream の `2.1.165` を
-当てた端末では `claude update` に頼らず、`2.1.161-1` を明示 install
+当てた端末では `claude update` に頼らず、`2.1.159-13` を明示 install
 してください。
 
 For the full version history, see [RELEASES.md](RELEASES.md).
