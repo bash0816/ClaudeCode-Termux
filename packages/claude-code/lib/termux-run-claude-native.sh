@@ -244,6 +244,9 @@ function createFakeRequire(realRequire) {
           writable: true,
         });
       }
+      if (context.Bun && globalThis.__claudeYaml) {
+        context.Bun.YAML = globalThis.__claudeYaml;
+      }
     } catch {}
     return context;
   }
@@ -424,9 +427,9 @@ async function main() {
           gte: (a, b) => _cmp(a, b) >= 0,
           lt: (a, b) => _cmp(a, b) < 0,
           lte: (a, b) => _cmp(a, b) <= 0,
-        };
-      })(),
-      YAML: globalThis.__claudeYaml,
+          };
+        })(),
+        YAML: globalThis.__claudeYaml,
     };
     Object.assign(globalThis.__claudeBunShim, globalThis.Bun);
     if (typeof globalThis.__claudeBunShim.gc !== 'function') {
@@ -810,8 +813,8 @@ async function main() {
           lt: (a, b) => _cmp(a, b) < 0,
           lte: (a, b) => _cmp(a, b) <= 0,
         };
-      })(),
-      YAML: globalThis.__claudeYaml,
+        })(),
+        YAML: globalThis.__claudeYaml,
     };
     Object.assign(globalThis.__claudeBunShim, globalThis.Bun);
     if (typeof globalThis.__claudeBunShim.gc !== 'function') {

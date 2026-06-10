@@ -1,18 +1,24 @@
-# claude-code 2.1.159 実機検証チェックリスト
+# claude-code 2.1.161-2 実機検証チェックリスト
 
 作成日: 2026-06-01
 
 ## 目的
 
-`@bash0816/claude-code@2.1.159` の candidate を Termux 実機で検証し、
+`@bash0816/claude-code@2.1.161-2` の candidate を Termux 実機で検証し、
 latest 昇格前の前提条件を満たしているか確認する。
+
+配布手順は次の通り。
+
+1. まず `candidate` dist-tag で npm に公開する
+2. 実機検証を行う
+3. 検証完了後に `latest` へ昇格し、必要なら前回の安定版を `candidate` に戻してタグを入れ替える
 
 主な修正内容: `-p` (print mode) 時の stdin ハング修正
 （`node - "$@" <<'NODE'` → 一時ファイル経由 `node "$_helper" "$@" </dev/null`）
 
 ## 検証対象
 
-- `TARGET_VERSION`: `2.1.159`
+- `TARGET_VERSION`: `2.1.161-2`
 - `PREV_STABLE_VERSION`: `2.1.157`
 - パッケージ名: `@bash0816/claude-code`
 - 実行コマンド: `claude`
@@ -20,7 +26,7 @@ latest 昇格前の前提条件を満たしているか確認する。
 
 ## 事前条件
 
-- [ ] `npm view @bash0816/claude-code@2.1.159 version` で candidate の存在を確認済み
+- [ ] `npm view @bash0816/claude-code@candidate version` で candidate の存在を確認済み（`2.1.161-2` を想定）
 - [ ] 実機のネットワークが安定している
 - [ ] `claude auth status` で認証済みであること
 - [ ] 検証ログの保存先を決めている
@@ -29,9 +35,9 @@ latest 昇格前の前提条件を満たしているか確認する。
 
 | Step | コマンド | 期待値 | 補足 |
 | --- | --- | --- | --- |
-| 1. preflight | `npm view @bash0816/claude-code@2.1.159 version` | `2.1.159` が返ること | candidate の存在確認 |
-| 2. install 前後確認 | `npm list -g @bash0816/claude-code --depth=0` → `npm install -g @bash0816/claude-code@2.1.159` → `npm list -g @bash0816/claude-code --depth=0` | install 前後で 2.1.159 が解決されること | |
-| 3. version 確認 | `claude --version` | `2.1.159` が出力されること | 起動確認を兼ねる |
+| 1. preflight | `npm view @bash0816/claude-code@candidate version` | `2.1.161-2` が返ること | candidate の存在確認 |
+| 2. install 前後確認 | `npm list -g @bash0816/claude-code --depth=0` → `npm install -g @bash0816/claude-code@candidate` → `npm list -g @bash0816/claude-code --depth=0` | install 前後で `2.1.161-2` が解決されること | |
+| 3. version 確認 | `claude --version` | `2.1.161-2` が出力されること | 起動確認を兼ねる |
 | 4. 認証確認 | `claude auth status` | exit code 0 かつ認証状態が確認できること | auth フローが壊れていないこと |
 | 5. print mode（修正確認・空 stdin） | `claude -p "hello" </dev/null` | 30秒以内に応答が返り、ハングしないこと | 今回の主要修正の確認 |
 | 6. print mode（パイプ入力） | `printf 'こんにちは\n' | claude -p "上記を英訳して"` | 30秒以内に応答が返り、ハングしないこと | パイプ経由の stdin 確認 |
@@ -94,5 +100,8 @@ latest 昇格前の前提条件を満たしているか確認する。
 
 ```sh
 npm dist-tag ls @bash0816/claude-code
-npm dist-tag add @bash0816/claude-code@2.1.157 latest
+npm dist-tag add @bash0816/claude-code@<new_version> latest
+npm dist-tag add @bash0816/claude-code@<previous_latest> candidate
 ```
+
+`latest` を動かしたら、`candidate` も前回の安定版に戻して役割を入れ替える。

@@ -7,6 +7,7 @@ on:
   pull_request:
     paths:
       - "README.md"
+      - "RELEASES.md"
       - "packages/claude-code/**"
       - "packages/claude-code/README.md"
       - "config/**"
@@ -19,6 +20,7 @@ on:
       - staging
     paths:
       - "README.md"
+      - "RELEASES.md"
       - "packages/claude-code/**"
       - "packages/claude-code/README.md"
       - "config/**"
@@ -42,10 +44,11 @@ on:
         options:
           - "false"
           - "true"
-      npm_tag:
-        description: "npm dist-tag to use when publishing"
+      previous_audited_version:
+        description: "Previous audited version to restore to candidate during retag"
         required: false
-        default: "latest"
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -75,6 +78,8 @@ jobs:
           node --check ../../scripts/update-readme-version-guidance.js
           node --check ../../scripts/update-release-manifest.js
           node --check ../../scripts/promote-verified-version.js
+          node --check ../../scripts/retag-latest-dist-tags.js
+          node --test ../../scripts/retag-latest-dist-tags.test.js
 
       - name: Verify audited metadata
         run: |
@@ -84,14 +89,24 @@ jobs:
           const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
           const config = JSON.parse(fs.readFileSync('config/claude-native-audited-versions.json', 'utf8'));
           const manifest = JSON.parse(fs.readFileSync('config/claude-termux-release-manifest.json', 'utf8'));
+          const auditedVersion = manifest.latest_audited_version;
+          const candidateVersion = manifest.latest_candidate_version || '';
+          const packageVersion = pkg.version;
+          const audited = config.versions[auditedVersion];
+          const candidate = candidateVersion ? config.versions[candidateVersion] : null;
           if (pkg.name !== '@bash0816/claude-code') throw new Error('unexpected package name');
-          if (pkg.version !== manifest.latest_audited_version) {
-            throw new Error(`package version ${pkg.version} does not match manifest latest audited ${manifest.latest_audited_version}`);
-          }
-          const latest = config.versions[manifest.latest_audited_version];
-          if (!latest) throw new Error(`missing audited metadata for ${manifest.latest_audited_version}`);
-          if (latest.status !== 'termux_verified') {
-            throw new Error(`latest audited version ${manifest.latest_audited_version} is not termux_verified`);
+          if (packageVersion === auditedVersion) {
+            if (!audited) throw new Error(`missing audited metadata for ${auditedVersion}`);
+            if (audited.status !== 'termux_verified') {
+              throw new Error(`latest audited version ${auditedVersion} is not termux_verified`);
+            }
+          } else if (packageVersion === candidateVersion) {
+            if (!candidate) throw new Error(`missing candidate metadata for ${candidateVersion}`);
+            if (!['offset_discovered', 'termux_verified'].includes(candidate.status)) {
+              throw new Error(`latest candidate version ${candidateVersion} has unsupported status ${candidate.status}`);
+            }
+          } else {
+            throw new Error(`package version ${packageVersion} does not match audited ${auditedVersion} or candidate ${candidateVersion}`);
           }
           NODE
 
@@ -124,6 +139,25 @@ jobs:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
 
+      - name: Validate dispatch mode
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const publish = process.env.INPUT_PUBLISH === 'true';
+          const retagLatest = process.env.INPUT_RETAG_LATEST === 'true';
+          if (publish && retagLatest) {
+            throw new Error('publish and retag_latest cannot both be true');
+          }
+          if (retagLatest && !process.env.INPUT_PREVIOUS_AUDITED_VERSION) {
+            throw new Error('previous_audited_version is required when retag_latest is true');
+          }
+          NODE
+        env:
+          INPUT_PUBLISH: ${{ inputs.publish }}
+          INPUT_RETAG_LATEST: ${{ inputs.retag_latest }}
+          INPUT_PREVIOUS_AUDITED_VERSION: ${{ inputs.previous_audited_version }}
+
       - name: Publish guard
         run: |
           set -euo pipefail
@@ -134,15 +168,23 @@ jobs:
           const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
           const config = JSON.parse(fs.readFileSync('config/claude-native-audited-versions.json', 'utf8'));
           const manifest = JSON.parse(fs.readFileSync('config/claude-termux-release-manifest.json', 'utf8'));
-          const latestVersion = manifest.latest_audited_version;
-          const latest = config.versions[latestVersion];
+          const auditedVersion = manifest.latest_audited_version;
+          const candidateVersion = manifest.latest_candidate_version || '';
+          const audited = config.versions[auditedVersion];
+          const candidate = candidateVersion ? config.versions[candidateVersion] : null;
           if (pkg.name !== '@bash0816/claude-code') throw new Error('unexpected package name');
-          if (pkg.version !== latestVersion) {
-            throw new Error(`package version ${pkg.version} does not match manifest latest audited ${latestVersion}`);
-          }
-          if (!latest) throw new Error(`missing audited metadata for ${latestVersion}`);
-          if (latest.status !== 'termux_verified') {
-            throw new Error(`latest audited version ${latestVersion} is not termux_verified`);
+          if (pkg.version === auditedVersion) {
+            if (!audited) throw new Error(`missing audited metadata for ${auditedVersion}`);
+            if (audited.status !== 'termux_verified') {
+              throw new Error(`latest audited version ${auditedVersion} is not termux_verified`);
+            }
+          } else if (pkg.version === candidateVersion) {
+            if (!candidate) throw new Error(`missing candidate metadata for ${candidateVersion}`);
+            if (!['offset_discovered', 'termux_verified'].includes(candidate.status)) {
+              throw new Error(`latest candidate version ${candidateVersion} has unsupported status ${candidate.status}`);
+            }
+          } else {
+            throw new Error(`package version ${pkg.version} does not match audited ${auditedVersion} or candidate ${candidateVersion}`);
           }
 
           const packInfo = JSON.parse(execSync('npm pack --dry-run --json', { encoding: 'utf8' }));
@@ -164,18 +206,66 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.publish == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_TAG: ${{ inputs.npm_tag || 'latest' }}
         run: |
           set -euo pipefail
-          npm publish --access public --tag "${NPM_TAG}"
+          npm_tag="$(node - <<'NODE'
+          const fs = require('fs');
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const manifest = JSON.parse(fs.readFileSync('config/claude-termux-release-manifest.json', 'utf8'));
+          const auditedVersion = manifest.latest_audited_version;
+          const candidateVersion = manifest.latest_candidate_version || '';
+          if (pkg.version === candidateVersion) {
+            process.stdout.write('candidate');
+          } else if (pkg.version === auditedVersion) {
+            process.stdout.write('latest');
+          } else {
+            throw new Error(`package version ${pkg.version} does not match audited ${auditedVersion} or candidate ${candidateVersion}`);
+          }
+NODE
+          )"
+          npm publish --access public --tag "${npm_tag}"
+
+      - name: Retag guard
+        if: github.event_name == 'workflow_dispatch' && inputs.retag_latest == 'true'
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs = require('fs');
+
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const config = JSON.parse(fs.readFileSync('config/claude-native-audited-versions.json', 'utf8'));
+          const manifest = JSON.parse(fs.readFileSync('config/claude-termux-release-manifest.json', 'utf8'));
+          const expectedPreviousAuditedVersion = process.env.CLAUDE_TERMUX_EXPECTED_PREVIOUS_AUDITED_VERSION || '';
+          const candidateVersion = manifest.latest_candidate_version || '';
+          const previousLatest = JSON.parse(require('child_process').execSync('npm view @bash0816/claude-code dist-tags --json', { encoding: 'utf8' })).latest || '';
+          const previousCandidate = JSON.parse(require('child_process').execSync('npm view @bash0816/claude-code dist-tags --json', { encoding: 'utf8' })).candidate || '';
+          const candidate = candidateVersion ? config.versions[candidateVersion] : null;
+          if (!expectedPreviousAuditedVersion) {
+            throw new Error('missing expected previous audited version');
+          }
+          if (previousLatest !== expectedPreviousAuditedVersion) {
+            throw new Error(`registry latest ${previousLatest} does not match expected previous audited ${expectedPreviousAuditedVersion}`);
+          }
+          if (pkg.version !== candidateVersion) {
+            throw new Error(`package version ${pkg.version} does not match candidate ${candidateVersion}`);
+          }
+          if (previousCandidate !== pkg.version) {
+            throw new Error(`registry candidate ${previousCandidate} does not match package ${pkg.version}`);
+          }
+          if (!candidate) {
+            throw new Error(`missing candidate metadata for ${candidateVersion}`);
+          }
+          if (candidate.status !== 'termux_verified') {
+            throw new Error(`candidate version ${candidateVersion} is not termux_verified`);
+          }
+          NODE
+        env:
+          CLAUDE_TERMUX_EXPECTED_PREVIOUS_AUDITED_VERSION: ${{ inputs.previous_audited_version }}
 
       - name: Retag latest
         if: github.event_name == 'workflow_dispatch' && inputs.retag_latest == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_TAG: ${{ inputs.npm_tag || 'latest' }}
+          CLAUDE_TERMUX_EXPECTED_PREVIOUS_AUDITED_VERSION: ${{ inputs.previous_audited_version }}
         run: |
-          set -euo pipefail
-          version="$(node -p "require('./package.json').version")"
-          npm dist-tag add "@bash0816/claude-code@${version}" "${NPM_TAG}"
-          npm dist-tag ls @bash0816/claude-code
+          node ../../scripts/retag-latest-dist-tags.js

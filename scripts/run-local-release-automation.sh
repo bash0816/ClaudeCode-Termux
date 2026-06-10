@@ -239,7 +239,6 @@ Task:
    - use a temp prefix under /data/data/com.termux/files/usr/tmp
    - for the install-path check, use the local package path ./packages/claude-code and never the bare spec packages/claude-code
 3. If and only if all checks pass, run:
-   node scripts/promote-verified-version.js ${candidate_version}
    node scripts/update-release-manifest.js
    node scripts/update-readme-version-guidance.js
    git add README.md config/claude-native-audited-versions.json config/claude-termux-release-manifest.json packages/claude-code/README.md packages/claude-code/config/claude-native-audited-versions.json packages/claude-code/config/claude-termux-release-manifest.json packages/claude-code/package.json
@@ -261,9 +260,17 @@ Task:
    - merge candidate PR when state is OPEN, not draft, merge state is acceptable, and all visible checks are completed without failure
    - promote ${BASE_BRANCH} -> staging by using a versioned temp branch named automation/promote-dev-to-staging-${candidate_version}
    - promote staging -> main by using a versioned temp branch named automation/promote-staging-to-main-${candidate_version}
-   - after origin/main reaches ${candidate_version}, dispatch npm-package.yml with publish=true and npm_tag=latest
+   - after origin/main reaches ${candidate_version}, dispatch npm-package.yml with publish=true
    - wait for the workflow_dispatch run of Npm Package on main to succeed
-   - verify npm view @bash0816/claude-code version reaches ${candidate_version}
+   - verify npm view @bash0816/claude-code dist-tags.candidate reaches ${candidate_version}
+   - run the device verification against the candidate tag
+   - only after device verification succeeds, run node scripts/promote-verified-version.js ${candidate_version}
+   - rerun node scripts/update-release-manifest.js
+   - if needed, commit and push the audited manifest update onto ${BASE_BRANCH} before retagging
+   - only after device verification succeeds, dispatch npm-package.yml with retag_latest=true and previous_audited_version=${audited_version}
+   - wait for the retag_latest workflow_dispatch run to succeed; it swaps latest and candidate in one run
+   - verify npm view @bash0816/claude-code dist-tags.latest reaches ${candidate_version}
+   - verify npm view @bash0816/claude-code dist-tags.candidate reaches ${audited_version}
    - if legacy sync is still needed, run sh scripts/sync-legacy-metadata.sh ${candidate_version}
 5. Hard-stop instead of guessing when:
    - merge conflict
