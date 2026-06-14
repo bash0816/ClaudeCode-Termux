@@ -38,9 +38,9 @@ npm install -g @bash0816/claude-code@2.1.161-1
 
 ---
 
-## 2.1.161 — 2026-06-04 ✅ Historical stable / 旧推奨版
+## 2.1.161 — 2026-06-04 ❌ Reverted / 取り下げ
 
-> **Previous audited release.** 165 に昇格する前の audited 版です。rollback / historical reference として残します。
+> **取り下げ済み。** `termux_verified` に到達せず取り下げ。`2.1.161-2` を使用してください。
 
 ```sh
 npm install -g @bash0816/claude-code@2.1.161
