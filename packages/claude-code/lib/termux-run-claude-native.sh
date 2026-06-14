@@ -565,7 +565,7 @@ function rewriteNativeChunkSource(source) {
     /\bBun\./g,
     '__claudeBun.',
     'Bun property access',
-    31,
+    33,
   );
   return patched;
 }
@@ -1227,7 +1227,7 @@ function rewriteNativeChunkSource(source) {
     /\bBun\./g,
     '__claudeBun.',
     'Bun property access',
-    31,
+    33,
   );
   return patched;
 }
