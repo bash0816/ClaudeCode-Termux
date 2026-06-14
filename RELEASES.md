@@ -1,7 +1,26 @@
-## 2.1.159-13 — 2026-06-04 ✅ Current audited / 現在の監査済み版
+## 2.1.161-2 — 2026-06-14 ✅ Current audited / 現在の監査済み版
 
-> **Termux verified.** Device B 実機検証で `claude auth status`、`claude -p "hello"`、`claude update --dry-run`、debug 実行を通過しました。`claude update --dry-run` は `Already on latest audited version: 2.1.159-13` を返します。
+> **Termux verified.** Device A・Device B 実機検証で `claude auth status`、`claude -p "hello"`、`claude update --dry-run`、TUI 対話を通過しました。
 > **Release flow.** 新版はまず `candidate` で公開し、実機検証が終わったら `latest` と `candidate` を入れ替えます。検証前に `latest` を先に動かしません。
+
+**English**
+
+Fix `wrapAnsi()` behavior when `wordWrap:false` — previously text was returned as-is; now wraps by grapheme (same as `hard:true`). Also fixes `trim:true` to skip leading whitespace at line start. Adds `cleanupStaleEntryFiles()` to remove stale `cli.*.bare-path.js` extraction files older than 24 hours on each launch. Reviewed by GPT-5.5 and Opus (both Go, no findings).
+
+**日本語**
+
+`wrapAnsi()` の `wordWrap:false` 挙動を修正しました（以前はテキストをそのまま返していた→グラフェム単位で折り返す `hard:true` と同等の挙動に変更）。`trim:true` の先頭空白除去も修正。`cleanupStaleEntryFiles()` を追加し、起動ごとに24時間以上古い `cli.*.bare-path.js` 抽出ファイルを自動削除します。GPT-5.5・Opus 両モデルレビュー済み（Go / findings なし）。
+
+```sh
+npm install -g @bash0816/claude-code@2.1.161-2
+claude --version
+```
+
+---
+
+## 2.1.159-13 — 2026-06-04 ✅ Historical stable / 旧推奨版
+
+> **Previous audited release.** rollback / historical reference として残します。`claude update --dry-run` は `Already on latest audited version: 2.1.161-2` を返します。
 
 ```sh
 npm install -g @bash0816/claude-code@2.1.159-13
