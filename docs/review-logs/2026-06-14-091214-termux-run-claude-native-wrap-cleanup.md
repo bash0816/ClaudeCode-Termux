@@ -2,8 +2,8 @@
 
 - 対象 diff hash: `e5a92f1799ca43ef5da218cb516840515510fb6e8b5a135ee42a85aea5dcd7ad`
 - レビュー完了時刻: `2026-06-14 09:12:14 JST`
-- レビューしたモデル名: `gpt-5.5`
-- 判定: `Go`
+- レビューしたモデル名: `gpt-5.5`、`claude-opus-4-5`
+- 判定: `Go`（両モデル一致）
 - TUI 開始時刻: `未実施`
 
 ## 確認内容
@@ -24,7 +24,10 @@
 - `claude --version`
 - `claude -p --version`
 
-## 残余リスク
+## 残余リスク（Opus 追加確認済み）
 
-- `wrapAnsi` の `wordWrap:false` は、実 bundle の呼び出し条件に合わせて newline 発生のみを検証している。個別の改行位置は追加検証余地がある。
-- `cleanupStaleEntryFiles` は 24 時間より新しい抽出物は残すため、極端に長時間残る実行中プロセスの整理は対象外。
+- `wrapAnsi` の `wordWrap:false` は newline 発生のみを検証。個別の改行位置は追加検証余地がある。
+- `cleanupStaleEntryFiles` は 24h 未満のファイルは残すため、極端に長時間稼働するプロセスは対象外。
+- `mtimeMs` が NaN のケースは `Number.isFinite` ガードで安全にスキップ（Opus 確認済み）。
+- 権限不足での削除失敗は try-catch で無視し次回リトライ（Opus 確認済み）。
+- TUI モードの長時間対話は `wrapAnsi` がステートレスなため低リスクだが実機確認は推奨。
