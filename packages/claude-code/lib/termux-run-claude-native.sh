@@ -567,6 +567,13 @@ function rewriteNativeChunkSource(source) {
     'Bun property access',
     33,
   );
+  patched = replaceRequired(
+    patched,
+    /\bnpmInstallDeprecated:!0\b/g,
+    'npmInstallDeprecated:!1',
+    'npmInstallDeprecated flag',
+    1,
+  );
   return patched;
 }
 
@@ -1228,6 +1235,13 @@ function rewriteNativeChunkSource(source) {
     '__claudeBun.',
     'Bun property access',
     33,
+  );
+  patched = replaceRequired(
+    patched,
+    /\bnpmInstallDeprecated:!0\b/g,
+    'npmInstallDeprecated:!1',
+    'npmInstallDeprecated flag',
+    1,
   );
   return patched;
 }
