@@ -221,7 +221,7 @@ jobs:
           } else {
             throw new Error(`package version ${pkg.version} does not match audited ${auditedVersion} or candidate ${candidateVersion}`);
           }
-NODE
+          NODE
           )"
           npm publish --access public --tag "${npm_tag}"
 
