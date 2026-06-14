@@ -61,10 +61,6 @@ function formatTextBlock(lines) {
   return `\`\`\`text\n${lines.join('\n')}\n\`\`\``;
 }
 
-function renderVersionBullets(versions) {
-  return versions.map(version => `- \`${version}\``).join('\n');
-}
-
 function renderInstallCommands(versions) {
   return versions.map(version => `npm install -g @bash0816/claude-code@${version}`);
 }
@@ -73,7 +69,35 @@ function renderOverrideCommands(versions) {
   return versions.map(version => `CLAUDE_TERMUX_CLAUDE_VERSION=${version} claude --version`);
 }
 
-function updateRootReadme(content, versions, latestAudited) {
+function updateSupportedVersionsTable(content, latestAudited, previousStable) {
+  // Update Recommended row between comment markers
+  const tableStart = '<!-- SUPPORTED_VERSIONS_TABLE_START -->\n';
+  const tableEnd = '\n<!-- SUPPORTED_VERSIONS_TABLE_END -->';
+  const startIdx = content.indexOf(tableStart);
+  const endIdx = content.indexOf(tableEnd, startIdx);
+  if (startIdx === -1 || endIdx === -1) return content;
+
+  let tableSection = content.slice(startIdx + tableStart.length, endIdx);
+
+  // Replace the Recommended row version
+  tableSection = tableSection.replace(
+    /\| `[^`]+` \| ✅ \*\*Recommended \/ 推奨\*\* — current audited release \|/,
+    `| \`${latestAudited}\` | ✅ **Recommended / 推奨** — current audited release |`
+  );
+
+  // Replace the rollback candidate row version
+  if (previousStable) {
+    tableSection = tableSection.replace(
+      /\| `[^`]+` \| ✅ historical stable — rollback candidate \|/,
+      `| \`${previousStable}\` | ✅ historical stable — rollback candidate |`
+    );
+  }
+
+  return content.slice(0, startIdx + tableStart.length) + tableSection + content.slice(endIdx);
+}
+
+function updateRootReadme(content, versions, latestAudited, previousStable) {
+  // Install command
   const installBlock = [
     formatShellBlock(renderInstallCommands([latestAudited])),
     '',
@@ -87,7 +111,20 @@ function updateRootReadme(content, versions, latestAudited) {
     'README.md install examples'
   );
 
+  // Supported Versions table (between comment markers)
+  content = updateSupportedVersionsTable(content, latestAudited, previousStable);
 
+  // Text references to latest audited version
+  content = content.replace(
+    /This repo's published latest audited\nrelease is `[^`]+`\./,
+    `This repo's published latest audited\nrelease is \`${latestAudited}\`.`
+  );
+  content = content.replace(
+    /この repo の公開 latest audited release は `[^`]+` です。/,
+    `この repo の公開 latest audited release は \`${latestAudited}\` です。`
+  );
+
+  // Expected output example
   const expectedBlock = [
     formatTextBlock(['<installed_audited_version> (Claude Code)']),
     '',
@@ -107,6 +144,7 @@ function updateRootReadme(content, versions, latestAudited) {
     'README.md expected output'
   );
 
+  // Optional: development override section
   const overrideBlock = [
     formatShellBlock(renderOverrideCommands(versions)),
     '',
@@ -194,7 +232,7 @@ function main() {
   const rootReadme = fs.readFileSync(rootReadmeFile, 'utf8');
   const packageReadme = fs.readFileSync(packageReadmeFile, 'utf8');
 
-  fs.writeFileSync(rootReadmeFile, updateRootReadme(rootReadme, verifiedVersions, manifest.latest_audited_version));
+  fs.writeFileSync(rootReadmeFile, updateRootReadme(rootReadme, verifiedVersions, manifest.latest_audited_version, manifest.previous_stable_version));
   fs.writeFileSync(packageReadmeFile, updatePackageReadme(packageReadme, verifiedVersions, manifest.latest_audited_version));
 }
 

@@ -81,19 +81,22 @@ Only versions registered in the audited metadata can run.
 
 監査済み metadata に登録済みの version だけを実行します。
 
+<!-- SUPPORTED_VERSIONS_TABLE_START -->
 | Version | Status |
 |---------|--------|
-| `2.1.161-2` | ✅ **Recommended / 推奨** — current audited release |
-| `2.1.159-13` | ✅ historical stable — rollback candidate |
+| `2.1.177-1` | ✅ **Recommended / 推奨** — current audited release |
+| `2.1.161-2` | ✅ historical stable — rollback candidate |
+| `2.1.159-13` | ✅ historical stable |
 | `2.1.161-1` | reverted — do not keep using this line |
 | `2.1.161` | reverted — do not keep using this line |
 | `2.1.157` | historical — not recommended for new installs |
 | `2.1.153-4` and earlier | historical — not recommended for new installs |
+<!-- SUPPORTED_VERSIONS_TABLE_END -->
 
 Official upstream Claude Code may be newer. This repo's published latest audited
-release is `2.1.161-2`.
+release is `2.1.177-1`.
 
-公式 upstream の Claude Code は別で更新されることがあります。この repo の公開 latest audited release は `2.1.161-2` です。
+公式 upstream の Claude Code は別で更新されることがあります。この repo の公開 latest audited release は `2.1.177-1` です。
 
 For the full version history, see [RELEASES.md](RELEASES.md).
 
