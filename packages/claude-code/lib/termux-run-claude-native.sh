@@ -73,8 +73,39 @@ class RequestedExit extends Error {
   }
 }
 
+function cleanupStaleEntryFiles(currentWorkdir = workdir, currentEntryJsOffset = entryJsOffset, currentEntryEndOffset = entryEndOffset, now = Date.now()) {
+  const prefix = `cli.${currentEntryJsOffset}.${currentEntryEndOffset}.`;
+  const suffix = '.bare-path.js';
+  const maxAgeMs = 24 * 60 * 60 * 1000;
+  let entries;
+  try {
+    entries = fs.readdirSync(currentWorkdir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (!entry.isFile() && !entry.isSymbolicLink()) continue;
+    if (!entry.name.startsWith(prefix) || !entry.name.endsWith(suffix)) continue;
+    const filePath = path.join(currentWorkdir, entry.name);
+    let stats;
+    try {
+      stats = fs.statSync(filePath);
+    } catch {
+      continue;
+    }
+    if (Number.isFinite(stats.mtimeMs) && now - stats.mtimeMs < maxAgeMs) continue;
+    try {
+      fs.rmSync(filePath, { force: true });
+    } catch {}
+  }
+}
+
 function ensureEntryFile() {
-  const extractedFile = path.join(workdir, `cli.${entryJsOffset}.${entryEndOffset}.bare-path.js`);
+  cleanupStaleEntryFiles();
+  const extractedFile = path.join(
+    workdir,
+    `cli.${entryJsOffset}.${entryEndOffset}.${process.pid}.${Date.now().toString(36)}.${Math.random().toString(36).slice(2)}.bare-path.js`,
+  );
   const len = entryEndOffset - entryJsOffset;
   if (!(len > 0)) throw new Error('invalid replay offsets');
 
@@ -87,15 +118,165 @@ function ensureEntryFile() {
   return extractedFile;
 }
 
+function isFullWidthCodePoint(codePoint) {
+  return Number.isFinite(codePoint) && (
+    codePoint >= 0x1100 && (
+      codePoint <= 0x115f ||
+      codePoint === 0x2329 ||
+      codePoint === 0x232a ||
+      (codePoint >= 0x2e80 && codePoint <= 0xa4cf && codePoint !== 0x303f) ||
+      (codePoint >= 0xac00 && codePoint <= 0xd7a3) ||
+      (codePoint >= 0xf900 && codePoint <= 0xfaff) ||
+      (codePoint >= 0xfe10 && codePoint <= 0xfe19) ||
+      (codePoint >= 0xfe30 && codePoint <= 0xfe6f) ||
+      (codePoint >= 0xff00 && codePoint <= 0xff60) ||
+      (codePoint >= 0xffe0 && codePoint <= 0xffe6) ||
+      (codePoint >= 0x1f300 && codePoint <= 0x1f6ff) ||
+      (codePoint >= 0x1fa70 && codePoint <= 0x1faff) ||
+      (codePoint >= 0x1f900 && codePoint <= 0x1f9ff) ||
+      (codePoint >= 0x20000 && codePoint <= 0x3fffd)
+    )
+  );
+}
+
+function graphemeWidth(grapheme) {
+  let width = 0;
+  const symbols = Array.from(String(grapheme ?? ''));
+  const codePoints = symbols.map(symbol => symbol.codePointAt(0)).filter(codePoint => Number.isFinite(codePoint));
+  if (codePoints.length === 0) return 0;
+  if (codePoints.length > 1 && codePoints.every(codePoint => codePoint >= 0x1f1e6 && codePoint <= 0x1f1ff)) {
+    return 2;
+  }
+  if (codePoints.includes(0x20e3) || codePoints.includes(0x200d)) {
+    return 2;
+  }
+  if (codePoints.includes(0xfe0f) || codePoints.some(codePoint => codePoint >= 0x2600 && codePoint <= 0x27bf)) {
+    return 2;
+  }
+  for (const symbol of symbols) {
+    const codePoint = symbol.codePointAt(0);
+    if (codePoint === undefined || codePoint === 0) continue;
+    if (codePoint < 32 || (codePoint >= 0x7f && codePoint < 0xa0)) continue;
+    if (codePoint === 0x200d || codePoint === 0xfe0f) continue;
+    if (/\p{M}/u.test(symbol)) continue;
+    if (isFullWidthCodePoint(codePoint)) return 2;
+    width = 1;
+  }
+  return width;
+}
+
 function stringWidth(value) {
-  const text = String(value ?? '');
+  const text = stripANSI(value);
   if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
     const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' });
     let width = 0;
-    for (const _segment of segmenter.segment(text)) width += 1;
+    for (const segment of segmenter.segment(text)) width += graphemeWidth(segment.segment);
     return width;
   }
-  return Array.from(text).length;
+  return Array.from(text).reduce((width, symbol) => width + graphemeWidth(symbol), 0);
+}
+
+function stripANSI(value) {
+  return String(value ?? '')
+    .replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '')
+    .replace(/\x1B\][^\x07]*(?:\x07|\x1B\\)/g, '');
+}
+
+function wrapAnsi(value, columns, options = {}) {
+  const text = String(value ?? '');
+  const width = Number(columns);
+  const hard = options.hard !== false;
+  const trim = options.trim === true;
+  const wordWrap = options.wordWrap !== false;
+  if (!Number.isFinite(width) || width <= 0) return trim ? text.trimEnd() : text;
+
+  const ansiPattern = /\x1B\[[0-?]*[ -/]*[@-~]|\x1B\][^\x07]*(?:\x07|\x1B\\)/g;
+  const segmenter = typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
+    ? new Intl.Segmenter('en', { granularity: 'grapheme' })
+    : null;
+  const splitVisible = (chunk) => {
+    if (chunk === '') return [];
+    if (!segmenter) return Array.from(chunk);
+    return Array.from(segmenter.segment(chunk), part => part.segment);
+  };
+  const splitByGrapheme = hard || !wordWrap;
+  let result = '';
+  let currentWidth = 0;
+  let lastIndex = 0;
+  const appendVisible = (chunk) => {
+    const tokens = splitByGrapheme ? splitVisible(chunk) : (chunk.match(/\s+|[^\s]+/gu) || []);
+    for (const token of tokens) {
+      if (token === '\n') {
+        if (trim) result = result.replace(/[ \t]+$/g, '');
+        result += token;
+        currentWidth = 0;
+        continue;
+      }
+      const tokenWidth = stringWidth(token);
+      const isWhitespace = /^\s+$/u.test(token);
+      if (trim && isWhitespace && currentWidth === 0) continue;
+      if (currentWidth > 0 && currentWidth + tokenWidth > width) {
+        if (!splitByGrapheme && !isWhitespace) {
+          result = result.replace(/[ \t]+$/g, '');
+          result += '\n';
+          currentWidth = 0;
+        } else {
+          for (const piece of splitVisible(token)) {
+            const pieceWidth = stringWidth(piece);
+            if (currentWidth > 0 && currentWidth + pieceWidth > width) {
+              if (trim) result = result.replace(/[ \t]+$/g, '');
+              result += '\n';
+              currentWidth = 0;
+            }
+            if (trim && /^\s+$/u.test(piece) && currentWidth === 0) continue;
+            result += piece;
+            currentWidth += pieceWidth;
+          }
+          continue;
+        }
+      }
+      result += token;
+      currentWidth += tokenWidth;
+    }
+  };
+  for (const match of text.matchAll(ansiPattern)) {
+    appendVisible(text.slice(lastIndex, match.index ?? 0));
+    result += match[0];
+    lastIndex = (match.index ?? 0) + match[0].length;
+  }
+  appendVisible(text.slice(lastIndex));
+  return trim ? result.replace(/[ \t]+$/gm, '') : result;
+}
+
+function stableHash(value, seed) {
+  const text = String(value ?? '');
+  let hash = 2166136261;
+  if (seed !== undefined) {
+    const seedText = String(seed ?? '');
+    for (let i = 0; i < seedText.length; i += 1) {
+      hash ^= seedText.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    hash ^= 0x9e3779b9;
+    hash = Math.imul(hash, 16777619);
+  }
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function replaceRequired(source, pattern, replacement, label, expectedCount) {
+  const text = String(source);
+  const matches = text.match(pattern);
+  if (!matches || matches.length === 0) {
+    throw new Error(`rewriteNativeChunkSource: missing ${label}`);
+  }
+  if (expectedCount !== undefined && matches.length !== expectedCount) {
+    throw new Error(`rewriteNativeChunkSource: unexpected ${label} count ${matches.length}`);
+  }
+  return text.replace(pattern, replacement);
 }
 
 function parseScalar(value) {
@@ -347,25 +528,53 @@ function createFakeRequire(realRequire) {
   };
 }
 
-async function main() {
-  const extractedFile = ensureEntryFile();
-  const code = fs.readFileSync(extractedFile, 'utf8');
-  const patchedCode = code.replace(
-    /^function\(exports, require, module, __filename, __dirname\) \{/,
-    'function(exports, require, module, __filename, __dirname) {var __claudeBun = globalThis.__claudeBunShim;',
-  ).replace(
+function rewriteNativeChunkSource(source) {
+  const rawPrefix = 'function(exports, require, module, __filename, __dirname) {';
+  const injectedPrefix = rawPrefix + 'var __claudeBun = globalThis.__claudeBunShim;';
+  let patched = String(source);
+  patched = replaceRequired(
+    patched,
+    /^function\(exports, require, module, __filename, __dirname\) \{(?:var __claudeBun = globalThis\.__claudeBunShim;)?/,
+    injectedPrefix,
+    'module wrapper prefix',
+    1,
+  );
+  patched = replaceRequired(
+    patched,
     /\btypeof Bun\b/g,
     'typeof __claudeBun',
-  ).replace(
+    'typeof Bun',
+    3,
+  );
+  patched = replaceRequired(
+    patched,
+    /\btypeof globalThis\.Bun\b/g,
+    'typeof globalThis.__claudeBun',
+    'typeof globalThis.Bun',
+    1,
+  );
+  patched = replaceRequired(
+    patched,
+    /\bglobalThis\.Bun\b/g,
+    'globalThis.__claudeBun',
+    'globalThis.Bun',
+    1,
+  );
+  patched = replaceRequired(
+    patched,
     /\bBun\./g,
     '__claudeBun.',
-  ).replace(
-    /function t5q\(q\)\{return Bun\.YAML\.parse\(q\)\}/g,
-    'function t5q(q){return globalThis.__claudeYaml.parse(q)}',
-  ).replace(
-    /function VK6\(q\)\{return Bun\.YAML\.stringify\(q,null,2\)\+`/g,
-    'function VK6(q){return globalThis.__claudeYaml.stringify(q,null,2)+`',
+    'Bun property access',
+    31,
   );
+  return patched;
+}
+
+async function main() {
+  let extractedFile;
+  extractedFile = ensureEntryFile();
+  const code = fs.readFileSync(extractedFile, 'utf8');
+  const patchedCode = rewriteNativeChunkSource(code);
   const fn = eval('(' + patchedCode.replace(/\)\s*$/, '') + ')');
 
   const originalArgv = process.argv.slice();
@@ -392,6 +601,9 @@ async function main() {
     globalThis.Bun = {
       version: '1.1.8',
       stringWidth,
+      wrapAnsi,
+      stripANSI,
+      hash: stableHash,
       which: (cmd) => {
         try {
           return _realChild.execFileSync('which', [String(cmd)], { encoding: 'utf8' }).trim() || null;
@@ -442,10 +654,13 @@ async function main() {
       throw new RequestedExit(code);
     };
 
+    const printWaitMs = Number(process.env.CLAUDE_TERMUX_PRINT_WAIT_MS || 5000);
     const moduleLike = { exports: {} };
     const maybePromise = fn(moduleLike.exports, fakeRequire, moduleLike, extractedFile, workdir);
     if (maybePromise && typeof maybePromise.then === 'function') await maybePromise;
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    if (Number.isFinite(printWaitMs) && printWaitMs > 0) {
+      await new Promise(resolve => setTimeout(resolve, printWaitMs));
+    }
     if (asyncErrors.length > 0) throw asyncErrors[0];
   } catch (error) {
     if (error instanceof RequestedExit) {
@@ -456,6 +671,11 @@ async function main() {
   } finally {
     process.removeListener('uncaughtException', onAsyncError);
     process.removeListener('unhandledRejection', onAsyncError);
+    if (extractedFile) {
+      try {
+        fs.rmSync(extractedFile, { force: true });
+      } catch {}
+    }
     process.argv = originalArgv;
     process.exit = originalExit;
     try {
@@ -515,8 +735,39 @@ class RequestedExit extends Error {
   }
 }
 
+function cleanupStaleEntryFiles(currentWorkdir = workdir, currentEntryJsOffset = entryJsOffset, currentEntryEndOffset = entryEndOffset, now = Date.now()) {
+  const prefix = `cli.${currentEntryJsOffset}.${currentEntryEndOffset}.`;
+  const suffix = '.bare-path.js';
+  const maxAgeMs = 24 * 60 * 60 * 1000;
+  let entries;
+  try {
+    entries = fs.readdirSync(currentWorkdir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (!entry.isFile() && !entry.isSymbolicLink()) continue;
+    if (!entry.name.startsWith(prefix) || !entry.name.endsWith(suffix)) continue;
+    const filePath = path.join(currentWorkdir, entry.name);
+    let stats;
+    try {
+      stats = fs.statSync(filePath);
+    } catch {
+      continue;
+    }
+    if (Number.isFinite(stats.mtimeMs) && now - stats.mtimeMs < maxAgeMs) continue;
+    try {
+      fs.rmSync(filePath, { force: true });
+    } catch {}
+  }
+}
+
 function ensureEntryFile() {
-  const extractedFile = path.join(workdir, `cli.${entryJsOffset}.${entryEndOffset}.bare-path.js`);
+  cleanupStaleEntryFiles();
+  const extractedFile = path.join(
+    workdir,
+    `cli.${entryJsOffset}.${entryEndOffset}.${process.pid}.${Date.now().toString(36)}.${Math.random().toString(36).slice(2)}.bare-path.js`,
+  );
   const len = entryEndOffset - entryJsOffset;
   if (!(len > 0)) throw new Error('invalid replay offsets');
 
@@ -529,15 +780,165 @@ function ensureEntryFile() {
   return extractedFile;
 }
 
+function isFullWidthCodePoint(codePoint) {
+  return Number.isFinite(codePoint) && (
+    codePoint >= 0x1100 && (
+      codePoint <= 0x115f ||
+      codePoint === 0x2329 ||
+      codePoint === 0x232a ||
+      (codePoint >= 0x2e80 && codePoint <= 0xa4cf && codePoint !== 0x303f) ||
+      (codePoint >= 0xac00 && codePoint <= 0xd7a3) ||
+      (codePoint >= 0xf900 && codePoint <= 0xfaff) ||
+      (codePoint >= 0xfe10 && codePoint <= 0xfe19) ||
+      (codePoint >= 0xfe30 && codePoint <= 0xfe6f) ||
+      (codePoint >= 0xff00 && codePoint <= 0xff60) ||
+      (codePoint >= 0xffe0 && codePoint <= 0xffe6) ||
+      (codePoint >= 0x1f300 && codePoint <= 0x1f6ff) ||
+      (codePoint >= 0x1fa70 && codePoint <= 0x1faff) ||
+      (codePoint >= 0x1f900 && codePoint <= 0x1f9ff) ||
+      (codePoint >= 0x20000 && codePoint <= 0x3fffd)
+    )
+  );
+}
+
+function graphemeWidth(grapheme) {
+  let width = 0;
+  const symbols = Array.from(String(grapheme ?? ''));
+  const codePoints = symbols.map(symbol => symbol.codePointAt(0)).filter(codePoint => Number.isFinite(codePoint));
+  if (codePoints.length === 0) return 0;
+  if (codePoints.length > 1 && codePoints.every(codePoint => codePoint >= 0x1f1e6 && codePoint <= 0x1f1ff)) {
+    return 2;
+  }
+  if (codePoints.includes(0x20e3) || codePoints.includes(0x200d)) {
+    return 2;
+  }
+  if (codePoints.includes(0xfe0f) || codePoints.some(codePoint => codePoint >= 0x2600 && codePoint <= 0x27bf)) {
+    return 2;
+  }
+  for (const symbol of symbols) {
+    const codePoint = symbol.codePointAt(0);
+    if (codePoint === undefined || codePoint === 0) continue;
+    if (codePoint < 32 || (codePoint >= 0x7f && codePoint < 0xa0)) continue;
+    if (codePoint === 0x200d || codePoint === 0xfe0f) continue;
+    if (/\p{M}/u.test(symbol)) continue;
+    if (isFullWidthCodePoint(codePoint)) return 2;
+    width = 1;
+  }
+  return width;
+}
+
 function stringWidth(value) {
-  const text = String(value ?? '');
+  const text = stripANSI(value);
   if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
     const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' });
     let width = 0;
-    for (const _segment of segmenter.segment(text)) width += 1;
+    for (const segment of segmenter.segment(text)) width += graphemeWidth(segment.segment);
     return width;
   }
-  return Array.from(text).length;
+  return Array.from(text).reduce((width, symbol) => width + graphemeWidth(symbol), 0);
+}
+
+function stripANSI(value) {
+  return String(value ?? '')
+    .replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '')
+    .replace(/\x1B\][^\x07]*(?:\x07|\x1B\\)/g, '');
+}
+
+function wrapAnsi(value, columns, options = {}) {
+  const text = String(value ?? '');
+  const width = Number(columns);
+  const hard = options.hard !== false;
+  const trim = options.trim === true;
+  const wordWrap = options.wordWrap !== false;
+  if (!Number.isFinite(width) || width <= 0) return trim ? text.trimEnd() : text;
+
+  const ansiPattern = /\x1B\[[0-?]*[ -/]*[@-~]|\x1B\][^\x07]*(?:\x07|\x1B\\)/g;
+  const segmenter = typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
+    ? new Intl.Segmenter('en', { granularity: 'grapheme' })
+    : null;
+  const splitVisible = (chunk) => {
+    if (chunk === '') return [];
+    if (!segmenter) return Array.from(chunk);
+    return Array.from(segmenter.segment(chunk), part => part.segment);
+  };
+  const splitByGrapheme = hard || !wordWrap;
+  let result = '';
+  let currentWidth = 0;
+  let lastIndex = 0;
+  const appendVisible = (chunk) => {
+    const tokens = splitByGrapheme ? splitVisible(chunk) : (chunk.match(/\s+|[^\s]+/gu) || []);
+    for (const token of tokens) {
+      if (token === '\n') {
+        if (trim) result = result.replace(/[ \t]+$/g, '');
+        result += token;
+        currentWidth = 0;
+        continue;
+      }
+      const tokenWidth = stringWidth(token);
+      const isWhitespace = /^\s+$/u.test(token);
+      if (trim && isWhitespace && currentWidth === 0) continue;
+      if (currentWidth > 0 && currentWidth + tokenWidth > width) {
+        if (!splitByGrapheme && !isWhitespace) {
+          result = result.replace(/[ \t]+$/g, '');
+          result += '\n';
+          currentWidth = 0;
+        } else {
+          for (const piece of splitVisible(token)) {
+            const pieceWidth = stringWidth(piece);
+            if (currentWidth > 0 && currentWidth + pieceWidth > width) {
+              if (trim) result = result.replace(/[ \t]+$/g, '');
+              result += '\n';
+              currentWidth = 0;
+            }
+            if (trim && /^\s+$/u.test(piece) && currentWidth === 0) continue;
+            result += piece;
+            currentWidth += pieceWidth;
+          }
+          continue;
+        }
+      }
+      result += token;
+      currentWidth += tokenWidth;
+    }
+  };
+  for (const match of text.matchAll(ansiPattern)) {
+    appendVisible(text.slice(lastIndex, match.index ?? 0));
+    result += match[0];
+    lastIndex = (match.index ?? 0) + match[0].length;
+  }
+  appendVisible(text.slice(lastIndex));
+  return trim ? result.replace(/[ \t]+$/gm, '') : result;
+}
+
+function stableHash(value, seed) {
+  const text = String(value ?? '');
+  let hash = 2166136261;
+  if (seed !== undefined) {
+    const seedText = String(seed ?? '');
+    for (let i = 0; i < seedText.length; i += 1) {
+      hash ^= seedText.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    hash ^= 0x9e3779b9;
+    hash = Math.imul(hash, 16777619);
+  }
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function replaceRequired(source, pattern, replacement, label, expectedCount) {
+  const text = String(source);
+  const matches = text.match(pattern);
+  if (!matches || matches.length === 0) {
+    throw new Error(`rewriteNativeChunkSource: missing ${label}`);
+  }
+  if (expectedCount !== undefined && matches.length !== expectedCount) {
+    throw new Error(`rewriteNativeChunkSource: unexpected ${label} count ${matches.length}`);
+  }
+  return text.replace(pattern, replacement);
 }
 
 function parseScalar(value) {
@@ -636,6 +1037,63 @@ function createFakeRequire(realRequire) {
   const realChild = realRequire('child_process');
   const realVm = realRequire('vm');
 
+  function injectBunIntoContext(context) {
+    if (!context || typeof context !== 'object') return context;
+    try {
+      if (!Object.prototype.hasOwnProperty.call(context, '__claudeYaml')) {
+        Object.defineProperty(context, '__claudeYaml', {
+          value: globalThis.__claudeYaml,
+          configurable: true,
+          writable: true,
+        });
+      }
+      if (!Object.prototype.hasOwnProperty.call(context, '__claudeBunShim')) {
+        Object.defineProperty(context, '__claudeBunShim', {
+          value: globalThis.__claudeBunShim,
+          configurable: true,
+          writable: true,
+        });
+      }
+      if (!Object.prototype.hasOwnProperty.call(context, '__claudeBun')) {
+        Object.defineProperty(context, '__claudeBun', {
+          value: globalThis.__claudeBunShim,
+          configurable: true,
+          writable: true,
+        });
+      }
+      if (Object.prototype.hasOwnProperty.call(context, 'Bun')) {
+        if (context.Bun && typeof context.Bun === 'object' && context.Bun !== globalThis.Bun) {
+          try {
+            context.Bun = globalThis.Bun;
+          } catch {
+            Object.defineProperty(context, 'Bun', {
+              value: globalThis.Bun,
+              configurable: true,
+              writable: true,
+            });
+          }
+        }
+        if (!context.Bun || typeof context.Bun !== 'object') {
+          Object.defineProperty(context, 'Bun', {
+            value: globalThis.Bun,
+            configurable: true,
+            writable: true,
+          });
+        }
+      } else {
+        Object.defineProperty(context, 'Bun', {
+          value: globalThis.Bun,
+          configurable: true,
+          writable: true,
+        });
+      }
+      if (context.Bun && globalThis.__claudeYaml) {
+        context.Bun.YAML = globalThis.__claudeYaml;
+      }
+    } catch {}
+    return context;
+  }
+
   function rewriteArgs(args) {
     if (
       Array.isArray(args) &&
@@ -732,25 +1190,53 @@ function createFakeRequire(realRequire) {
   };
 }
 
-async function main() {
-  const extractedFile = ensureEntryFile();
-  const code = fs.readFileSync(extractedFile, 'utf8');
-  const patchedCode = code.replace(
-    /^function\(exports, require, module, __filename, __dirname\) \{/,
-    'function(exports, require, module, __filename, __dirname) {var __claudeBun = globalThis.__claudeBunShim;',
-  ).replace(
+function rewriteNativeChunkSource(source) {
+  const rawPrefix = 'function(exports, require, module, __filename, __dirname) {';
+  const injectedPrefix = rawPrefix + 'var __claudeBun = globalThis.__claudeBunShim;';
+  let patched = String(source);
+  patched = replaceRequired(
+    patched,
+    /^function\(exports, require, module, __filename, __dirname\) \{(?:var __claudeBun = globalThis\.__claudeBunShim;)?/,
+    injectedPrefix,
+    'module wrapper prefix',
+    1,
+  );
+  patched = replaceRequired(
+    patched,
     /\btypeof Bun\b/g,
     'typeof __claudeBun',
-  ).replace(
+    'typeof Bun',
+    3,
+  );
+  patched = replaceRequired(
+    patched,
+    /\btypeof globalThis\.Bun\b/g,
+    'typeof globalThis.__claudeBun',
+    'typeof globalThis.Bun',
+    1,
+  );
+  patched = replaceRequired(
+    patched,
+    /\bglobalThis\.Bun\b/g,
+    'globalThis.__claudeBun',
+    'globalThis.Bun',
+    1,
+  );
+  patched = replaceRequired(
+    patched,
     /\bBun\./g,
     '__claudeBun.',
-  ).replace(
-    /function t5q\(q\)\{return Bun\.YAML\.parse\(q\)\}/g,
-    'function t5q(q){return globalThis.__claudeYaml.parse(q)}',
-  ).replace(
-    /function VK6\(q\)\{return Bun\.YAML\.stringify\(q,null,2\)\+`/g,
-    'function VK6(q){return globalThis.__claudeYaml.stringify(q,null,2)+`',
+    'Bun property access',
+    31,
   );
+  return patched;
+}
+
+async function main() {
+  let extractedFile;
+  extractedFile = ensureEntryFile();
+  const code = fs.readFileSync(extractedFile, 'utf8');
+  const patchedCode = rewriteNativeChunkSource(code);
   const fn = eval('(' + patchedCode.replace(/\)\s*$/, '') + ')');
 
   const originalArgv = process.argv.slice();
@@ -777,6 +1263,9 @@ async function main() {
     globalThis.Bun = {
       version: '1.1.8',
       stringWidth,
+      wrapAnsi,
+      stripANSI,
+      hash: stableHash,
       which: (cmd) => {
         try {
           return _realChild.execFileSync('which', [String(cmd)], { encoding: 'utf8' }).trim() || null;
@@ -830,8 +1319,6 @@ async function main() {
     const moduleLike = { exports: {} };
     const maybePromise = fn(moduleLike.exports, fakeRequire, moduleLike, extractedFile, workdir);
     if (maybePromise && typeof maybePromise.then === 'function') await maybePromise;
-    const _waitMs = Number(process.env.CLAUDE_TERMUX_PRINT_WAIT_MS || 200);
-    await new Promise(resolve => setTimeout(resolve, _waitMs));
     if (asyncErrors.length > 0) throw asyncErrors[0];
   } catch (error) {
     if (error instanceof RequestedExit) {
@@ -844,17 +1331,25 @@ async function main() {
     process.removeListener('unhandledRejection', onAsyncError);
     process.argv = originalArgv;
     process.exit = originalExit;
-    try {
-      if (originalBun === undefined) {
-        delete process.versions.bun;
-      } else {
-        Object.defineProperty(process.versions, 'bun', { value: originalBun, configurable: true });
+    process.once('exit', () => {
+      if (extractedFile) {
+        try {
+          fs.rmSync(extractedFile, { force: true });
+        } catch {}
       }
-    } catch {}
-    delete globalThis.__claudeYaml;
-    delete globalThis.__claudeBunShim;
-    delete globalThis.__claudeBun;
-    if (hadGlobalBun) globalThis.Bun = originalGlobalBun;
+      try {
+        if (originalBun === undefined) {
+          delete process.versions.bun;
+        } else {
+          Object.defineProperty(process.versions, 'bun', { value: originalBun, configurable: true });
+        }
+      } catch {}
+      delete globalThis.__claudeYaml;
+      delete globalThis.__claudeBunShim;
+      delete globalThis.__claudeBun;
+      if (hadGlobalBun) globalThis.Bun = originalGlobalBun;
+      else delete globalThis.Bun;
+    });
   }
 }
 
