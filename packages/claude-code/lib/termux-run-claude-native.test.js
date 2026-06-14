@@ -280,7 +280,7 @@ test('cleanupStaleEntryFiles removes only stale extracted files for the same off
 function buildSyntheticBundleSource() {
   const typeofBun = Array.from({ length: 3 }, () => 'typeof Bun').join('; ');
   const bunProps = Array.from({ length: 33 }, (_, index) => `Bun.p${index}`).join('; ');
-  return `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; }`;
+  return `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0 }`;
 }
 
 test('rewriteNativeChunkSource rewrites the synthetic bundle slice', () => {
@@ -293,6 +293,8 @@ test('rewriteNativeChunkSource rewrites the synthetic bundle slice', () => {
   assert.match(patched, /typeof globalThis\.__claudeBun/);
   assert.match(patched, /globalThis\.__claudeBun/);
   assert.match(patched, /__claudeBun\./);
+  assert.match(patched, /npmInstallDeprecated:!1/);
+  assert.doesNotMatch(patched, /npmInstallDeprecated:!0/);
 });
 
 test('rewriteNativeChunkSource rejects unexpected replacement counts', () => {
