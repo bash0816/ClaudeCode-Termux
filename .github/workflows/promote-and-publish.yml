@@ -1,0 +1,86 @@
+name: Promote to Latest
+
+# Triggers when termux_verified promotion is pushed to main.
+# Checks if the latest_audited_version in manifest differs from the registry
+# `latest` dist-tag, and if so runs a retag (not a re-publish).
+# NOTE: `environment: npm-publish` must have no manual approval gate for
+# this to run fully automatically.
+
+concurrency:
+  group: npm-promote
+  cancel-in-progress: false
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "config/claude-native-audited-versions.json"
+      - "packages/claude-code/config/claude-native-audited-versions.json"
+      - "config/claude-termux-release-manifest.json"
+      - "packages/claude-code/config/claude-termux-release-manifest.json"
+      - "packages/claude-code/package.json"
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Check if retag needed
+        id: check
+        run: |
+          set -eu
+          latest_audited=$(node -p "require('./config/claude-termux-release-manifest.json').latest_audited_version")
+          status=$(node -e "
+            const c = require('./config/claude-native-audited-versions.json');
+            const v = c.versions['${latest_audited}'];
+            process.stdout.write(v ? v.status : 'unknown');
+          ")
+          registry_latest=$(npm view @bash0816/claude-code dist-tags.latest 2>/dev/null || echo "")
+
+          echo "latest_audited=${latest_audited}" >> "$GITHUB_OUTPUT"
+          echo "registry_latest=${registry_latest}" >> "$GITHUB_OUTPUT"
+
+          if [ "$status" != "termux_verified" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Status=${status} (not termux_verified) — skip"
+          elif [ "$registry_latest" = "$latest_audited" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Registry latest already at ${latest_audited} — skip"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Retag needed: ${registry_latest} → ${latest_audited}"
+          fi
+
+      - name: Retag latest
+        if: steps.check.outputs.skip == 'false'
+        working-directory: packages/claude-code
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          CLAUDE_TERMUX_EXPECTED_PREVIOUS_AUDITED_VERSION: ${{ steps.check.outputs.registry_latest }}
+        run: |
+          set -eu
+          node ../../scripts/retag-latest-dist-tags.js
+          echo "Retagged: latest → ${{ steps.check.outputs.latest_audited }}"
+
+      - name: Dispatch release-finalize
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          set -eu
+          ver="${{ steps.check.outputs.latest_audited }}"
+          gh workflow run release-finalize.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --field version="${ver}"
+          echo "Dispatched release-finalize for ${ver}"
