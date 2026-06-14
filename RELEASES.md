@@ -1,15 +1,8 @@
 ## 2.1.177-1 — 2026-06-14 ✅ Current audited / 現在の監査済み版
 
-> **Termux verified.** Device A・Device B 実機検証で `claude auth status`（npm 非推奨警告の非表示を確認）を通過しました。
-> **Release flow.** 新版はまず `candidate` で公開し、実機検証が終わったら `latest` と `candidate` を入れ替えます。検証前に `latest` を先に動かしません。
+Suppresses the `Installed via npm (deprecated)` warning shown in `claude auth status` on Termux. The native binary is unchanged from upstream `@anthropic-ai/claude-code@2.1.177`.
 
-**English**
-
-Suppresses the `Installed via npm (deprecated)` warning in `claude auth status` on Termux. The check is skipped via `DISABLE_INSTALLATION_CHECKS=true` exported in the launch wrapper (`termux-run-claude-native.sh`), which is the official env var supported by Claude Code. The native binary is unchanged from upstream `@anthropic-ai/claude-code@2.1.177`.
-
-**日本語**
-
-Termux 環境で `claude auth status` に表示される `Installed via npm (deprecated)` 警告を抑制しました。起動ラッパー（`termux-run-claude-native.sh`）に `DISABLE_INSTALLATION_CHECKS=true` を追加することで、Claude Code 公式サポートの環境変数経由でチェックをスキップします。ネイティブバイナリは upstream `@anthropic-ai/claude-code@2.1.177` から変更なし。
+Termux の `claude auth status` に表示される `Installed via npm (deprecated)` 警告を抑制しました。ネイティブバイナリは upstream と同一です。
 
 ```sh
 npm install -g @bash0816/claude-code@latest
@@ -20,15 +13,9 @@ claude --version
 
 ## 2.1.161-2 — 2026-06-14 ✅ Historical stable / 旧推奨版
 
-> **Previous audited release.** rollback / historical reference として残します。`claude update --dry-run` は `Already on latest audited version: 2.1.177-1` を返します。
+Fix `wrapAnsi()` behavior when `wordWrap:false` — previously text was returned as-is; now wraps by grapheme (same as `hard:true`). Also fixes `trim:true` to skip leading whitespace at line start. Adds `cleanupStaleEntryFiles()` to remove stale `cli.*.bare-path.js` extraction files older than 24 hours on each launch.
 
-**English**
-
-Fix `wrapAnsi()` behavior when `wordWrap:false` — previously text was returned as-is; now wraps by grapheme (same as `hard:true`). Also fixes `trim:true` to skip leading whitespace at line start. Adds `cleanupStaleEntryFiles()` to remove stale `cli.*.bare-path.js` extraction files older than 24 hours on each launch. Reviewed by GPT-5.5 and Opus (both Go, no findings).
-
-**日本語**
-
-`wrapAnsi()` の `wordWrap:false` 挙動を修正しました（以前はテキストをそのまま返していた→グラフェム単位で折り返す `hard:true` と同等の挙動に変更）。`trim:true` の先頭空白除去も修正。`cleanupStaleEntryFiles()` を追加し、起動ごとに24時間以上古い `cli.*.bare-path.js` 抽出ファイルを自動削除します。
+`wrapAnsi()` の `wordWrap:false` 挙動を修正しました（テキストをそのまま返していた → グラフェム単位折り返しに変更）。`trim:true` の先頭空白除去も修正。起動ごとに24時間以上古い抽出ファイルを自動削除する `cleanupStaleEntryFiles()` を追加。
 
 ```sh
 npm install -g @bash0816/claude-code@2.1.161-2
