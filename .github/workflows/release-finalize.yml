@@ -133,6 +133,7 @@ jobs:
             echo "PR #${existing_pr} already exists for ${branch}"
           else
             pr_body_file=$(mktemp)
+            trap 'rm -f "$pr_body_file"' EXIT
             printf "Automated docs update for @bash0816/claude-code@%s.\n\n**TODO before merging:**\n- [ ] RELEASES.md の upstream highlights を追記する\n- [ ] GitHub Release のノートを編集する（マージ後に \`gh release edit v%s\` で更新可）\n" "$VER" "$VER" > "$pr_body_file"
             pr_url=$(gh pr create --base main --head "$branch" \
               --title "docs: update README and RELEASES for ${VER}" \
