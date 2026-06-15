@@ -21,7 +21,7 @@ jobs:
 
       - uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Extract and validate version
         id: ver
@@ -69,11 +69,11 @@ jobs:
           ver="${{ steps.ver.outputs.ver }}"
           previous_ver="${{ steps.prev.outputs.previous_ver }}"
           tag="v${ver}"
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+          if gh release view "$tag" -repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             echo "Release $tag already exists, skipping"
             exit 0
           fi
-          release_notes=$(awk -v ver="$ver" 'BEGIN{f=0} $0=="## " ver " — " substr($0, length("## " ver " — ")+1) || ($0 ~ "^## " && index($0, "## " ver " ")>0){f=1;next} f && /^### /{exit} f && /^## /{exit} f{print}' RELEASES.md | sed '/^[[:space:]]*$/d')
+          release_notes=$(awk -v ver="$ver" 'BEGIN{f=0} $0=="## " ver " — " substr($0, length("## " ver " — ")+1) || ($0 ~ "^## " && index($0, "## " ver " ")>0){f=1;next} f && /^### /{exit} f && /^## /{exit} f{print}' RELEASES.md | sed '/^[[:space:]] *$/d')
           if [ -z "$release_notes" ]; then
             release_notes="upstream @anthropic-ai/claude-code@${ver} 追従。"
           fi
