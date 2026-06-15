@@ -1,3 +1,17 @@
+## 2.1.178 — 2026-06-16 ✅ Current audited / 現在の監査済み版
+
+<!-- TODO: upstream highlights を追記してください -->
+
+```sh
+npm install -g @bash0816/claude-code@latest
+```
+
+```sh
+npm install -g @bash0816/claude-code@2.1.177-1
+```
+
+---
+
 ## 2.1.177-1 — 2026-06-14 ✅ Current audited / 現在の監査済み版
 
 Upstream `@anthropic-ai/claude-code` update from 2.1.161 to 2.1.177, plus a Termux-specific fix to suppress the `Installed via npm (deprecated)` warning in `claude auth status`.
