@@ -52,6 +52,8 @@ git push origin main
 
 ### 1-4. candidate タグで npm publish
 
+> ⚠️ **事前確認**: Phase 1-4 を実行する前に Phase 2-A（Device A ローカル確認）を完了させること。
+
 GitHub Actions → `npm-package.yml` を手動 dispatch:
 
 ```
@@ -68,25 +70,39 @@ npm view @bash0816/claude-code dist-tags
 
 ---
 
-## Phase 2: 実機確認（唯一の手動ステップ）
+## Phase 2: 実機確認
 
-Device A・Device B の両端末で確認する。
+### 2-A: Device A 確認（candidate publish 前・必須）
+
+このマシン（Termux Device A）で実施する。Phase 1-4 の candidate publish より**前**に行う。
 
 ```sh
-npm install -g @bash0816/claude-code@candidate
-claude --version
-claude auth status
-claude -p "hello"
-claude update --dry-run
+sh scripts/install-candidate.sh
 ```
 
 確認項目:
-- `claude --version` が `X.Y.Z-N (Claude Code)` を返す
+- `claude --version` が `X.Y.Z` を返す
 - `claude auth status` に不要な警告が出ない
 - `claude -p "hello"` が正常終了する
 - TUI が起動・応答する
 
-問題があれば candidate を取り下げ、修正して再 publish する。
+Device A がすべて OK なら **Phase 1-4**（candidate publish）を実施する。
+
+### 2-B: Device B 確認（candidate publish 後）
+
+Device B（別端末）で実施する。Phase 1-4 の candidate publish の**後**に行う。
+
+```sh
+npm install -g @bash0816/claude-code@candidate
+```
+
+確認項目:
+- `claude --version` が `X.Y.Z` を返す
+- `claude auth status` に不要な警告が出ない
+- `claude -p "hello"` が正常終了する
+- TUI が起動・応答する
+
+**Device A・Device B の両方が OK になってから Phase 3（termux_verified 昇格）へ進む。**
 
 ---
 
