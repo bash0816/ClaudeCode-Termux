@@ -1,0 +1,111 @@
+name: Claude Code Version Watch
+
+on:
+  schedule:
+    - cron: '17 19 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  intake:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Fetch upstream latest version
+        id: latest
+        run: |
+          set -eu
+          latest=$(npm view @anthropic-ai/claude-code version)
+          if [ -z "$latest" ]; then
+            echo "ERROR: npm view returned empty version" >&2
+            exit 1
+          fi
+          echo "version=$latest" >> "$GITHUB_OUTPUT"
+          echo "Upstream latest: $latest"
+
+      - name: Check manifest state
+        id: manifest
+        run: |
+          set -eu
+          latest_audited=$(node -p "require('./config/claude-termux-release-manifest.json').latest_audited_version")
+          echo "latest_audited=$latest_audited" >> "$GITHUB_OUTPUT"
+          echo "Current latest_audited: $latest_audited"
+
+      - name: Determine mode
+        id: mode
+        run: |
+          set -eu
+          latest="${{ steps.latest.outputs.version }}"
+          latest_audited="${{ steps.manifest.outputs.latest_audited }}"
+          audited_base=$(node -p "process.stdout.write('${latest_audited}'.replace(/-[0-9]+\$/, ''))")
+          already_known=$(node -e "
+            const c = require('./config/claude-native-audited-versions.json');
+            process.exit(c.versions['${latest}'] ? 0 : 1);
+          " && echo true || echo false)
+          if [ "$latest" = "$audited_base" ]; then
+            echo "mode=skip_uptodate" >> "$GITHUB_OUTPUT"
+            echo "Already at audited base: $latest"
+          elif [ "$already_known" = "true" ]; then
+            echo "mode=skip_pending" >> "$GITHUB_OUTPUT"
+            echo "Version already in metadata: $latest"
+          elif git ls-remote --heads origin "automation/claude-code-${latest}" | grep -q .; then
+            echo "mode=skip_pending" >> "$GITHUB_OUTPUT"
+            echo "Automation branch already exists: automation/claude-code-${latest}"
+          else
+            echo "mode=new_intake" >> "$GITHUB_OUTPUT"
+            echo "New version to intake: $latest"
+          fi
+
+      - name: Discover offsets and integrity
+        if: steps.mode.outputs.mode == 'new_intake'
+        run: |
+          set -eu
+          version="${{ steps.latest.outputs.version }}"
+          node scripts/termux-prepare-claude-native-version.js "$version" --json > /tmp/offsets.json
+          echo "Offsets discovered:"
+          cat /tmp/offsets.json
+
+      - name: Add candidate metadata
+        if: steps.mode.outputs.mode == 'new_intake'
+        run: |
+          set -eu
+          version="${{ steps.latest.outputs.version }}"
+          node scripts/add-candidate-metadata.js "$version" /tmp/offsets.json
+          node scripts/update-release-manifest.js
+          echo "Metadata added for $version"
+
+      - name: Commit and create PR
+        if: steps.mode.outputs.mode == 'new_intake'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          version="${{ steps.latest.outputs.version }}"
+          branch="automation/claude-code-${version}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$branch" origin/main
+          git add config/ packages/claude-code/config/ packages/claude-code/package.json
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "Track claude-code ${version} candidate"
+          git push --force-with-lease origin "$branch"
+          existing=$(gh pr list --base main --head "$branch" --json number --jq 'length')
+          if [ "$existing" -eq 0 ]; then
+            gh pr create \
+              --base main \
+              --head "$branch" \
+              --title "Track claude-code ${version} candidate" \
+              --body "$(printf 'Automated upstream claude-code intake.\n\n- upstream: @anthropic-ai/claude-code@%s\n- status: offset_discovered\n- Next: Device B verification -> promote-verified-version.js -> npm publish' "$version")"
+          fi
