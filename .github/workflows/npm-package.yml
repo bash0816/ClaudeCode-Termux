@@ -115,7 +115,17 @@ jobs:
           set -euo pipefail
           node ../../scripts/update-release-manifest.js
           node ../../scripts/update-readme-version-guidance.js
-          git diff --exit-code -- ../../README.md README.md config/claude-native-audited-versions.json config/claude-termux-release-manifest.json
+          git diff --exit-code -- config/claude-native-audited-versions.json config/claude-termux-release-manifest.json
+          if ! git diff --quiet -- ../../README.md README.md; then
+            if [ "${{ github.event_name }}" = "pull_request" ]; then
+              echo "ERROR: README is out of sync with manifest" >&2
+              git diff -- ../../README.md README.md
+              exit 1
+            else
+              echo "WARNING: README has pending version update (release-finalize PR will fix this)"
+              git diff -- ../../README.md README.md
+            fi
+          fi
 
       - name: Pack dry run
         run: npm pack --dry-run

@@ -8,7 +8,7 @@ name: Promote to Latest
 
 concurrency:
   group: npm-promote
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 on:
   push:
