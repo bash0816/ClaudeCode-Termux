@@ -11,6 +11,7 @@ TERMUX_TMPDIR="${TMPDIR:-/data/data/com.termux/files/usr/tmp}"
 SSL_CERT_DIR="${SSL_CERT_DIR:-/data/data/com.termux/files/usr/etc/tls}"
 SSL_CERT_FILE="${SSL_CERT_FILE:-/data/data/com.termux/files/usr/etc/tls/cert.pem}"
 DISABLE_AUTOUPDATER="${DISABLE_AUTOUPDATER:-1}"
+NODE="${MAGI_NODE:-node}"
 
 need_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -19,8 +20,16 @@ need_cmd() {
   fi
 }
 
-need_cmd node
-need_cmd termux-open-url
+if ! "$NODE" --version >/dev/null 2>&1; then
+  echo "Missing required node: ${NODE}" >&2
+  exit 1
+fi
+if [ -z "${MAGI_ENV:-}" ]; then
+  need_cmd termux-open-url
+else
+  command -v termux-open-url >/dev/null 2>&1 \
+    || echo "[claude-code] termux-open-url not found; URL opening unavailable" >&2
+fi
 
 if [ ! -f "${SOURCE_BIN}" ]; then
   echo "Missing source binary: ${SOURCE_BIN}" >&2
@@ -713,7 +722,7 @@ NODE
   export ENABLE_CLAUDEAI_MCP_SERVERS="${ENABLE_CLAUDEAI_MCP_SERVERS:-0}"
   export CLAUDE_CODE_SIMPLE="${CLAUDE_CODE_SIMPLE:-0}"
   export DISABLE_INSTALLATION_CHECKS="${DISABLE_INSTALLATION_CHECKS:-true}"
-  node "$_helper" "$@" </dev/null
+  "$NODE" "$_helper" "$@" </dev/null
   _status=$?
   rm -f "$_helper"
   trap - EXIT HUP INT TERM
@@ -1380,7 +1389,7 @@ NODE
   export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="${CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:-1}"
   export ENABLE_CLAUDEAI_MCP_SERVERS="${ENABLE_CLAUDEAI_MCP_SERVERS:-0}"
   export DISABLE_INSTALLATION_CHECKS="${DISABLE_INSTALLATION_CHECKS:-true}"
-  node "$_bootstrap" "$@"
+  "$NODE" "$_bootstrap" "$@"
   _status=$?
   rm -f "$_bootstrap"
   trap - EXIT HUP INT TERM
