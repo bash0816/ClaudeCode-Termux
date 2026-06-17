@@ -1,3 +1,17 @@
+## 2.1.179 — 2026-06-17 ✅ Current audited / 現在の監査済み版
+
+<!-- TODO: upstream highlights を追記してください -->
+
+```sh
+npm install -g @bash0816/claude-code@latest
+```
+
+```sh
+npm install -g @bash0816/claude-code@2.1.178
+```
+
+---
+
 ## 2.1.178 — 2026-06-16 ✅ Current audited / 現在の監査済み版
 
 Upstream `@anthropic-ai/claude-code` minor patch from 2.1.177 to 2.1.178. No Termux-specific changes in this release.
