@@ -118,27 +118,34 @@ function runRetagTest(options = {}) {
 }
 
 test('retag latest swaps dist-tags in the expected order', () => {
-  const result = runRetagTest();
+  const result = runRetagTest({
+    currentTags: { latest: '2.1.179', candidate: '2.1.181' },
+    previousAuditedVersion: '2.1.179',
+  });
 
   assert.equal(result.status, 0);
   assert.deepEqual(result.log, [
     'npm view @bash0816/claude-code dist-tags --json',
-    'npm dist-tag add @bash0816/claude-code@2.1.179 latest',
-    'npm dist-tag add @bash0816/claude-code@2.1.178 candidate',
+    'npm dist-tag add @bash0816/claude-code@2.1.181 latest',
+    'npm dist-tag add @bash0816/claude-code@2.1.179 candidate',
     'npm dist-tag ls @bash0816/claude-code',
   ]);
 });
 
 test('retag latest restores previous dist-tags when the promotion fails', () => {
-  const result = runRetagTest({ failOnAddCall: 2 });
+  const result = runRetagTest({
+    failOnAddCall: 2,
+    currentTags: { latest: '2.1.179', candidate: '2.1.181' },
+    previousAuditedVersion: '2.1.179',
+  });
 
   assert.equal(result.status, 1);
   assert.deepEqual(result.log, [
     'npm view @bash0816/claude-code dist-tags --json',
-    'npm dist-tag add @bash0816/claude-code@2.1.179 latest',
-    'npm dist-tag add @bash0816/claude-code@2.1.178 candidate',
-    'npm dist-tag add @bash0816/claude-code@2.1.178 latest',
+    'npm dist-tag add @bash0816/claude-code@2.1.181 latest',
     'npm dist-tag add @bash0816/claude-code@2.1.179 candidate',
+    'npm dist-tag add @bash0816/claude-code@2.1.179 latest',
+    'npm dist-tag add @bash0816/claude-code@2.1.181 candidate',
   ]);
 });
 
