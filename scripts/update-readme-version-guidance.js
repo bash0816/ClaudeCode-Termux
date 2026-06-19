@@ -102,7 +102,7 @@ function updateSupportedVersionsTable(content, latestAudited, previousStable) {
       if (firstHistoricalMatch) {
         tableSection = tableSection.replace(
           firstHistoricalMatch[0],
-          `| \`${currentRollback}\` | ✅ historical stable |\n${firstHistoricalMatch[0]}`
+          `| \`${currentRollback}\` | ✅ historical stable |`
         );
       } else {
         tableSection = tableSection.replace(
