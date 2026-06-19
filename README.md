@@ -85,7 +85,8 @@ Only versions registered in the audited metadata can run.
 | Version | Status |
 |---------|--------|
 | `2.1.181` | ✅ **Recommended / 推奨** — current audited release |
-| `2.1.178` | ✅ historical stable — rollback candidate |
+| `2.1.179` | ✅ historical stable — rollback candidate |
+| `2.1.178` | ✅ historical stable |
 | `2.1.161-2` | ✅ historical stable |
 | `2.1.161-1` | reverted — do not keep using this line |
 | `2.1.161` | reverted — do not keep using this line |
