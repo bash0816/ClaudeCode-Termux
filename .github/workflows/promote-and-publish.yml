@@ -19,6 +19,7 @@ on:
       - "config/claude-termux-release-manifest.json"
       - "packages/claude-code/config/claude-termux-release-manifest.json"
       - "packages/claude-code/package.json"
+  workflow_dispatch: {}
 
 permissions:
   contents: read
@@ -26,6 +27,7 @@ permissions:
 
 jobs:
   promote:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: npm-publish
     env:
