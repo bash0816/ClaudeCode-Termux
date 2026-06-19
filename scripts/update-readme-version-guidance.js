@@ -85,12 +85,32 @@ function updateSupportedVersionsTable(content, latestAudited, previousStable) {
     `| \`${latestAudited}\` | ✅ **Recommended / 推奨** — current audited release |`
   );
 
-  // Replace the rollback candidate row version
+  // Replace the rollback candidate row version, and demote old rollback to historical stable
   if (previousStable) {
+    const rollbackMatches = [...tableSection.matchAll(/\| `([^`]+)` \| ✅ historical stable — rollback candidate \|/g)];
+    if (rollbackMatches.length === 0) throw new Error('no rollback candidate row found');
+    if (rollbackMatches.length > 1) throw new Error(`multiple rollback candidate rows: ${rollbackMatches.map(m => m[1]).join(', ')}`);
+    const currentRollback = rollbackMatches[0][1];
+    const escapedPrev = previousStable.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    tableSection = tableSection.replace(`| \`${escapedPrev}\` | ✅ historical stable |\n`, '');
     tableSection = tableSection.replace(
       /\| `[^`]+` \| ✅ historical stable — rollback candidate \|/,
       `| \`${previousStable}\` | ✅ historical stable — rollback candidate |`
     );
+    if (currentRollback !== previousStable && !tableSection.includes(`| \`${currentRollback}\` |`)) {
+      const firstHistoricalMatch = tableSection.match(/\| `[^`]+` \| ✅ historical stable \|/);
+      if (firstHistoricalMatch) {
+        tableSection = tableSection.replace(
+          firstHistoricalMatch[0],
+          `| \`${currentRollback}\` | ✅ historical stable |\n${firstHistoricalMatch[0]}`
+        );
+      } else {
+        tableSection = tableSection.replace(
+          `| \`${previousStable}\` | ✅ historical stable — rollback candidate |`,
+          `| \`${previousStable}\` | ✅ historical stable — rollback candidate |\n| \`${currentRollback}\` | ✅ historical stable |`
+        );
+      }
+    }
   }
 
   return content.slice(0, startIdx + tableStart.length) + tableSection + content.slice(endIdx);
@@ -242,3 +262,5 @@ try {
   console.error(error && error.stack ? error.stack : String(error));
   process.exit(1);
 }
+
+if (require.main !== module) { module.exports = { updateSupportedVersionsTable }; }
