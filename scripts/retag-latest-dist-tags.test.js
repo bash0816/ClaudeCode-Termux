@@ -12,6 +12,13 @@ const repoRoot = path.resolve(__dirname, '..');
 const packageDir = path.join(repoRoot, 'packages', 'claude-code');
 const scriptPath = path.join(repoRoot, 'scripts', 'retag-latest-dist-tags.js');
 
+function readJson(file) {
+  return JSON.parse(fs.readFileSync(file, 'utf8'));
+}
+
+const pkgJson = readJson(path.join(packageDir, 'package.json'));
+const pkgVersion = pkgJson.version;
+
 function makeTempDir(prefix) {
   const baseDir = process.env.TMPDIR || (process.env.PREFIX ? path.join(process.env.PREFIX, 'tmp') : os.tmpdir());
   return fs.mkdtempSync(path.join(baseDir, prefix));
@@ -119,15 +126,15 @@ function runRetagTest(options = {}) {
 
 test('retag latest swaps dist-tags in the expected order', () => {
   const result = runRetagTest({
-    currentTags: { latest: '2.1.179', candidate: '2.1.181' },
-    previousAuditedVersion: '2.1.179',
+    currentTags: { latest: '2.1.181', candidate: pkgVersion },
+    previousAuditedVersion: '2.1.181',
   });
 
   assert.equal(result.status, 0);
   assert.deepEqual(result.log, [
     'npm view @bash0816/claude-code dist-tags --json',
-    'npm dist-tag add @bash0816/claude-code@2.1.181 latest',
-    'npm dist-tag add @bash0816/claude-code@2.1.179 candidate',
+    `npm dist-tag add @bash0816/claude-code@${pkgVersion} latest`,
+    `npm dist-tag add @bash0816/claude-code@2.1.181 candidate`,
     'npm dist-tag ls @bash0816/claude-code',
   ]);
 });
@@ -135,17 +142,17 @@ test('retag latest swaps dist-tags in the expected order', () => {
 test('retag latest restores previous dist-tags when the promotion fails', () => {
   const result = runRetagTest({
     failOnAddCall: 2,
-    currentTags: { latest: '2.1.179', candidate: '2.1.181' },
-    previousAuditedVersion: '2.1.179',
+    currentTags: { latest: '2.1.181', candidate: pkgVersion },
+    previousAuditedVersion: '2.1.181',
   });
 
   assert.equal(result.status, 1);
   assert.deepEqual(result.log, [
     'npm view @bash0816/claude-code dist-tags --json',
-    'npm dist-tag add @bash0816/claude-code@2.1.181 latest',
-    'npm dist-tag add @bash0816/claude-code@2.1.179 candidate',
-    'npm dist-tag add @bash0816/claude-code@2.1.179 latest',
-    'npm dist-tag add @bash0816/claude-code@2.1.181 candidate',
+    `npm dist-tag add @bash0816/claude-code@${pkgVersion} latest`,
+    `npm dist-tag add @bash0816/claude-code@2.1.181 candidate`,
+    `npm dist-tag add @bash0816/claude-code@2.1.181 latest`,
+    `npm dist-tag add @bash0816/claude-code@${pkgVersion} candidate`,
   ]);
 });
 
