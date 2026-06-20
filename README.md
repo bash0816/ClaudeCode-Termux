@@ -41,7 +41,7 @@ Existing users on older installs should keep using `claude update` to migrate on
 Latest audited version / 最新監査済み版:
 
 ```sh
-npm install -g @bash0816/claude-code@2.1.181
+npm install -g @bash0816/claude-code@2.1.183
 ```
 
 ## Update / 更新
@@ -84,9 +84,9 @@ Only versions registered in the audited metadata can run.
 <!-- SUPPORTED_VERSIONS_TABLE_START -->
 | Version | Status |
 |---------|--------|
-| `2.1.181` | ✅ **Recommended / 推奨** — current audited release |
-| `2.1.179` | ✅ historical stable — rollback candidate |
-| `2.1.178` | ✅ historical stable |
+| `2.1.183` | ✅ **Recommended / 推奨** — current audited release |
+| `2.1.181` | ✅ historical stable — rollback candidate |
+| `2.1.179` | ✅ historical stable |
 | `2.1.161-1` | reverted — do not keep using this line |
 | `2.1.161` | reverted — do not keep using this line |
 | `2.1.157` | historical — not recommended for new installs |
@@ -94,9 +94,9 @@ Only versions registered in the audited metadata can run.
 <!-- SUPPORTED_VERSIONS_TABLE_END -->
 
 Official upstream Claude Code may be newer. This repo's published latest audited
-release is `2.1.181`.
+release is `2.1.183`.
 
-公式 upstream の Claude Code は別で更新されることがあります。この repo の公開 latest audited release は `2.1.181` です。
+公式 upstream の Claude Code は別で更新されることがあります。この repo の公開 latest audited release は `2.1.183` です。
 
 For the full version history, see [RELEASES.md](RELEASES.md).
 
@@ -138,7 +138,7 @@ Example:
 例:
 
 ```text
-2.1.181 (Claude Code)
+2.1.183 (Claude Code)
 ```
 
 ## Do Not Use / 非推奨
