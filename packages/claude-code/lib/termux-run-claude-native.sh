@@ -57,6 +57,11 @@ for _a in "$@"; do
   esac
 done
 
+_tui=0
+if [ "$_pf" = "0" ] && [ -t 0 ]; then
+  _tui=1
+fi
+
 if [ "$_pf" = "1" ] && [ "${CLAUDE_TERMUX_STDIN:-}" != "inherit" ]; then
   _helper=$(mktemp "${TERMUX_TMPDIR}/claude-helper.XXXXXX.js")
   trap 'rm -f "$_helper"' EXIT HUP INT TERM
@@ -730,6 +735,7 @@ NODE
 else
   _bootstrap=$(mktemp "${TERMUX_TMPDIR}/claude-bootstrap.XXXXXX.js")
   trap 'rm -f "$_bootstrap"' EXIT HUP INT TERM
+  export CLAUDE_TERMUX_TUI="${_tui}"
   cat <<'NODE' > "$_bootstrap"
 const fs = require('fs');
 const path = require('path');
@@ -1379,12 +1385,16 @@ async function main() {
 
 main()
   .then(() => {
+    if (process.env.CLAUDE_TERMUX_TUI === '1' && process.exitCode === undefined) {
+      return;
+    }
     process.exit(process.exitCode ?? 0);
   })
   .catch(error => {
     if (error && error.code === 'CLAUDE_TERMUX_OFFICIAL_UPDATE_BLOCKED') {
       console.error(BLOCK_MESSAGE);
       process.exit(error.status || 1);
+      return;
     }
     console.error(error && error.stack ? error.stack : String(error));
     process.exit(1);
