@@ -1,3 +1,26 @@
+## 2.1.183 — 2026-06-21 ✅ Current audited / 現在の監査済み版
+
+upstream claude-code 2.1.183 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
+
+**Upstream highlights / 主な変更（upstream）**
+
+- **Auto mode 安全性強化**: `git reset --hard` / `git checkout -- .` / `git clean -fd` / `git stash drop` をユーザーが明示的に指示していない場合にブロック。`git commit --amend` も当セッションでのコミットでない場合にブロック。`terraform destroy` / `pulumi destroy` / `cdk destroy` も保護対象に
+- **非推奨モデル警告**: 非推奨または自動アップデートされたモデルを使用中の場合、stderr / エージェントフロントマターで警告を表示
+- **`attribution.sessionUrl` 設定追加**: コミット・PR への claude.ai セッションリンク埋め込みを無効化できるオプション
+- **`/config` 改善**: `/config --help` 追加、Enter と Space で設定変更、Esc で保存 & 閉じる
+- **スタートアップの "setup issues" 行を削除**: 問題確認は `/doctor` で
+- **バグ修正**: `thinking.disabled` 設定時の 400 エラー修正、WebSearch サブエージェント空結果修正、Windows Terminal でのフルスクリーン TUI 破損修正、思考ブロックのみ返却時の無音完了修正 など多数
+
+```sh
+npm install -g @bash0816/claude-code@latest
+```
+
+```sh
+npm install -g @bash0816/claude-code@2.1.181
+```
+
+---
+
 ## 2.1.181 — 2026-06-19 ✅ Current audited / 現在の監査済み版
 
 upstream claude-code 2.1.181 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
