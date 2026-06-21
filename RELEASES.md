@@ -1,3 +1,17 @@
+## 2.1.185 — 2026-06-21 ✅ Current audited / 現在の監査済み版
+
+claude doctor hang fix (process.exit after main) + TUI immediate-exit fix (CLAUDE_TERMUX_TUI env guard)
+
+```sh
+npm install -g @bash0816/claude-code@latest
+```
+
+```sh
+npm install -g @bash0816/claude-code@2.1.183
+```
+
+---
+
 ## 2.1.183 — 2026-06-21 ✅ Current audited / 現在の監査済み版
 
 upstream claude-code 2.1.183 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
