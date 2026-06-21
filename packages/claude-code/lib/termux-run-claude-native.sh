@@ -1377,14 +1377,18 @@ async function main() {
   }
 }
 
-main().catch(error => {
-  if (error && error.code === 'CLAUDE_TERMUX_OFFICIAL_UPDATE_BLOCKED') {
-    console.error(BLOCK_MESSAGE);
-    process.exit(error.status || 1);
-  }
-  console.error(error && error.stack ? error.stack : String(error));
-  process.exit(1);
-});
+main()
+  .then(() => {
+    process.exit(process.exitCode ?? 0);
+  })
+  .catch(error => {
+    if (error && error.code === 'CLAUDE_TERMUX_OFFICIAL_UPDATE_BLOCKED') {
+      console.error(BLOCK_MESSAGE);
+      process.exit(error.status || 1);
+    }
+    console.error(error && error.stack ? error.stack : String(error));
+    process.exit(1);
+  });
 NODE
   export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="${CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:-1}"
   export ENABLE_CLAUDEAI_MCP_SERVERS="${ENABLE_CLAUDEAI_MCP_SERVERS:-0}"
