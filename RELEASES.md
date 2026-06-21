@@ -1,3 +1,17 @@
+## 2.1.183 — 2026-06-21 ✅ Current audited / 現在の監査済み版
+
+<!-- TODO: upstream highlights を追記してください -->
+
+```sh
+npm install -g @bash0816/claude-code@latest
+```
+
+```sh
+npm install -g @bash0816/claude-code@2.1.181
+```
+
+---
+
 ## 2.1.181 — 2026-06-19 ✅ Current audited / 現在の監査済み版
 
 upstream claude-code 2.1.181 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
