@@ -100,19 +100,18 @@ jobs:
           previous_stable=$(node -e "process.stdout.write(require('./config/claude-termux-release-manifest.json').previous_stable_version || '')")
           notes="${NOTES:-}"
           if [ -z "$notes" ]; then
-            # Fetch upstream release notes from anthropics/claude-code
             upstream_tag="v${VER}"
             upstream_body=$(gh api "repos/anthropics/claude-code/releases/tags/${upstream_tag}" --jq '.body' 2>/dev/null || echo "")
+            notes_file=$(mktemp)
             if [ -n "$upstream_body" ]; then
-              # Format as upstream highlights block
-              notes="upstream claude-code ${VER} 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
-
-**Upstream highlights / 主な変更（upstream）**
-
-${upstream_body}"
+              printf 'upstream claude-code %s 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。\n\n**Upstream highlights / 主な変更（upstream）**\n\n%s' \
+                "$VER" "$upstream_body" > "$notes_file"
             else
-              notes="upstream claude-code ${VER} 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。"
+              printf 'upstream claude-code %s 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。' \
+                "$VER" > "$notes_file"
             fi
+            notes=$(cat "$notes_file")
+            rm -f "$notes_file"
           fi
           rollback_line=""
           if [ -n "$previous_stable" ]; then
