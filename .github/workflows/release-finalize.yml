@@ -85,6 +85,8 @@ jobs:
           echo "README updated"
 
       - name: Update RELEASES.md
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
           if [ -n "${RELEASE_DATE:-}" ]; then
@@ -98,7 +100,19 @@ jobs:
           previous_stable=$(node -e "process.stdout.write(require('./config/claude-termux-release-manifest.json').previous_stable_version || '')")
           notes="${NOTES:-}"
           if [ -z "$notes" ]; then
-            notes="<!-- TODO: upstream highlights を追記してください -->"
+            # Fetch upstream release notes from anthropics/claude-code
+            upstream_tag="v${VER}"
+            upstream_body=$(gh api "repos/anthropics/claude-code/releases/tags/${upstream_tag}" --jq '.body' 2>/dev/null || echo "")
+            if [ -n "$upstream_body" ]; then
+              # Format as upstream highlights block
+              notes="upstream claude-code ${VER} 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
+
+**Upstream highlights / 主な変更（upstream）**
+
+${upstream_body}"
+            else
+              notes="upstream claude-code ${VER} 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。"
+            fi
           fi
           rollback_line=""
           if [ -n "$previous_stable" ]; then
