@@ -279,7 +279,7 @@ test('cleanupStaleEntryFiles removes only stale extracted files for the same off
 
 function buildSyntheticBundleSource() {
   const typeofBun = Array.from({ length: 3 }, () => 'typeof Bun').join('; ');
-  const bunProps = Array.from({ length: 33 }, (_, index) => `Bun.p${index}`).join('; ');
+  const bunProps = Array.from({ length: 34 }, (_, index) => `Bun.p${index}`).join('; ');
   return `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0 }`;
 }
 
@@ -303,7 +303,7 @@ test('rewriteNativeChunkSource rejects unexpected replacement counts', () => {
 
   assert.throws(
     () => rewriteNativeChunkSource(source),
-    /unexpected Bun property access count 32/,
+    /unexpected Bun property access count 33/,
   );
 });
 
