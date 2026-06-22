@@ -41,7 +41,7 @@ Existing users on older installs should keep using `claude update` to migrate on
 Latest audited version / 最新監査済み版:
 
 ```sh
-npm install -g @bash0816/claude-code@2.1.185
+npm install -g @bash0816/claude-code@2.1.186
 ```
 
 ## Update / 更新
@@ -84,8 +84,9 @@ Only versions registered in the audited metadata can run.
 <!-- SUPPORTED_VERSIONS_TABLE_START -->
 | Version | Status |
 |---------|--------|
-| `2.1.185` | ✅ **Recommended / 推奨** — current audited release |
-| `2.1.183` | ✅ historical stable — rollback candidate |
+| `2.1.186` | ✅ **Recommended / 推奨** — current audited release |
+| `2.1.185` | ✅ historical stable — rollback candidate |
+| `2.1.183` | ✅ historical stable |
 | `2.1.176` | ✅ historical stable — matches upstream `stable` tag |
 | `2.1.161-1` | reverted — do not keep using this line |
 | `2.1.161` | reverted — do not keep using this line |
@@ -141,7 +142,7 @@ Example:
 例:
 
 ```text
-2.1.185 (Claude Code)
+2.1.186 (Claude Code)
 ```
 
 ## Do Not Use / 非推奨
