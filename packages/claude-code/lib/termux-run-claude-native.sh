@@ -619,16 +619,6 @@ async function main() {
     process.once('unhandledRejection', onAsyncError);
     Object.defineProperty(process.versions, 'bun', { value: '1.1.8', configurable: true });
     const _realChild = require('child_process');
-    const _realNet = require('net');
-    function bunDeepEquals(a, b) {
-      if (a === b) return true;
-      if (typeof a !== typeof b || a === null || b === null) return false;
-      if (typeof a !== 'object') return false;
-      if (Array.isArray(a) !== Array.isArray(b)) return false;
-      const kA = Object.keys(a), kB = Object.keys(b);
-      if (kA.length !== kB.length) return false;
-      return kA.every(k => Object.prototype.hasOwnProperty.call(b, k) && bunDeepEquals(a[k], b[k]));
-    }
     globalThis.Bun = {
       version: '1.1.8',
       stringWidth,
@@ -672,68 +662,6 @@ async function main() {
           lte: (a, b) => _cmp(a, b) <= 0,
           };
         })(),
-      spawn: (cmd, opts) => {
-        opts = opts || {};
-        const arr = Array.isArray(cmd) ? cmd : [String(cmd)];
-        const exe = arr[0], args = arr.slice(1);
-        let stdioArr = ['pipe', 'pipe', 'pipe'];
-        if (Array.isArray(opts.stdio)) {
-          stdioArr = opts.stdio.map(function(s) { return s === 'piped' ? 'pipe' : (s == null ? 'inherit' : s); });
-        } else {
-          const m = { pipe: 'pipe', piped: 'pipe', ignore: 'ignore', inherit: 'inherit' };
-          if (opts.stdin != null) stdioArr[0] = m[opts.stdin] || opts.stdin;
-          if (opts.stdout != null) stdioArr[1] = m[opts.stdout] || opts.stdout;
-          if (opts.stderr != null) stdioArr[2] = m[opts.stderr] || opts.stderr;
-        }
-        const child = _realChild.spawn(exe, args, { cwd: opts.cwd, env: opts.env, stdio: stdioArr, detached: !!opts.detached, argv0: opts.argv0 });
-        function addText(s) {
-          if (!s) return s;
-          s.text = function() { return new Promise(function(res, rej) { const c = []; s.on('data', function(d) { c.push(d); }); s.on('end', function() { res(Buffer.concat(c).toString('utf8')); }); s.on('error', rej); }); };
-          return s;
-        }
-        const exited = new Promise(function(res) { child.on('exit', function(code, sig) { res(sig ? 1 : (code != null ? code : 0)); }); });
-        return { pid: child.pid, exited: exited, stdout: addText(child.stdout), stderr: addText(child.stderr), stdin: child.stdin, kill: function(sig) { child.kill(sig); }, unref: function() { child.unref(); }, ref: function() { child.ref(); } };
-      },
-      listen: (opts) => {
-        opts = opts || {};
-        const h = opts.socket || {};
-        const hostname = opts.hostname || '127.0.0.1';
-        let listenPort = opts.port || 0;
-        if (!listenPort) {
-          try {
-            const r = _realChild.spawnSync(process.execPath, ['-e', 'const s=require("net").createServer();s.listen(0,"127.0.0.1",function(){process.stdout.write(s.address().port+"");s.close()})'], { encoding: 'utf8', timeout: 3000 });
-            listenPort = parseInt(r.stdout, 10) || (49152 + Math.floor(Math.random() * 16383));
-          } catch (e) { listenPort = 49152 + Math.floor(Math.random() * 16383); }
-        }
-        const srv = _realNet.createServer(function(conn) {
-          const bs = {
-            data: undefined,
-            write: function(d) {
-              if (conn.destroyed) return 0;
-              const buf = typeof d === 'string' ? Buffer.from(d, 'utf8') : d;
-              conn.write(buf);
-              return buf.length;
-            },
-            end: function() { if (!conn.destroyed) conn.end(); },
-            terminate: function() { conn.destroy(); },
-            destroy: function() { conn.destroy(); },
-            get destroyed() { return conn.destroyed; },
-            flush: function() {},
-          };
-          if (h.open) h.open(bs);
-          conn.on('data', function(d) { if (h.data) h.data(bs, d); });
-          conn.on('close', function() { if (h.close) h.close(bs); });
-          conn.on('error', function(e) { if (h.error) h.error(bs, e); });
-          conn.on('drain', function() { if (h.drain) h.drain(bs); });
-        });
-        srv.listen(listenPort, hostname);
-        return { port: listenPort, hostname: hostname, stop: function() { srv.close(); }, unref: function() { srv.unref(); }, ref: function() { srv.ref(); } };
-      },
-      deepEquals: bunDeepEquals,
-      embeddedFiles: [],
-      stdin: { stream: function() { return process.stdin; }, text: async function() { const c = []; for await (const d of process.stdin) c.push(Buffer.isBuffer(d) ? d : Buffer.from(d)); return Buffer.concat(c).toString('utf8'); } },
-      generateHeapSnapshot: function() { return {}; },
-      JSONL: { parse: function(s) { return String(s).split('\n').filter(function(l) { return l.trim(); }).map(function(l) { return JSON.parse(l); }); }, stringify: function(a) { return (Array.isArray(a) ? a : [a]).map(function(d) { return JSON.stringify(d); }).join('\n'); } },
         YAML: globalThis.__claudeYaml,
     };
     Object.assign(globalThis.__claudeBunShim, globalThis.Bun);
@@ -815,33 +743,6 @@ const {
   BLOCK_MESSAGE,
   createGuardedChildProcess,
 } = require(path.join(process.env.CLAUDE_TERMUX_PACKAGE_DIR, 'lib', 'native-update-guard.js'));
-
-// Intercept npm version checks for @anthropic-ai/claude-code.
-// Returns our @bash0816/claude-code manifest version so claude doctor
-// shows our audited version rather than upstream's unbuilt version.
-(function() {
-  var _m;
-  try {
-    _m = JSON.parse(fs.readFileSync(
-      path.join(process.env.CLAUDE_TERMUX_PACKAGE_DIR, 'config', 'claude-termux-release-manifest.json'),
-      'utf8'
-    ));
-  } catch (_) { return; }
-  var _v = _m && _m.latest_audited_version;
-  if (!_v) return;
-  if (typeof globalThis.fetch !== 'function') return;
-  var _origFetch = globalThis.fetch;
-  globalThis.fetch = async function(input, init) {
-    var url = typeof input === 'string' ? input :
-      (input instanceof URL ? input.href : (input && input.url) || String(input));
-    if (url.includes('registry.npmjs.org') &&
-        (url.includes('anthropic-ai/claude-code') || url.includes('anthropic-ai%2Fclaude-code'))) {
-      var body = JSON.stringify({ latest: _v, stable: _v, next: _v });
-      return new Response(body, { status: 200, headers: { 'content-type': 'application/json' } });
-    }
-    return _origFetch.call(this, input, init);
-  };
-})();
 
 const sourceBin = process.env.SOURCE_BIN;
 const workdir = process.env.WORKDIR;
@@ -1389,16 +1290,6 @@ async function main() {
     process.once('unhandledRejection', onAsyncError);
     Object.defineProperty(process.versions, 'bun', { value: '1.1.8', configurable: true });
     const _realChild = require('child_process');
-    const _realNet = require('net');
-    function bunDeepEquals(a, b) {
-      if (a === b) return true;
-      if (typeof a !== typeof b || a === null || b === null) return false;
-      if (typeof a !== 'object') return false;
-      if (Array.isArray(a) !== Array.isArray(b)) return false;
-      const kA = Object.keys(a), kB = Object.keys(b);
-      if (kA.length !== kB.length) return false;
-      return kA.every(k => Object.prototype.hasOwnProperty.call(b, k) && bunDeepEquals(a[k], b[k]));
-    }
     globalThis.Bun = {
       version: '1.1.8',
       stringWidth,
@@ -1442,68 +1333,6 @@ async function main() {
           lte: (a, b) => _cmp(a, b) <= 0,
         };
         })(),
-      spawn: (cmd, opts) => {
-        opts = opts || {};
-        const arr = Array.isArray(cmd) ? cmd : [String(cmd)];
-        const exe = arr[0], args = arr.slice(1);
-        let stdioArr = ['pipe', 'pipe', 'pipe'];
-        if (Array.isArray(opts.stdio)) {
-          stdioArr = opts.stdio.map(function(s) { return s === 'piped' ? 'pipe' : (s == null ? 'inherit' : s); });
-        } else {
-          const m = { pipe: 'pipe', piped: 'pipe', ignore: 'ignore', inherit: 'inherit' };
-          if (opts.stdin != null) stdioArr[0] = m[opts.stdin] || opts.stdin;
-          if (opts.stdout != null) stdioArr[1] = m[opts.stdout] || opts.stdout;
-          if (opts.stderr != null) stdioArr[2] = m[opts.stderr] || opts.stderr;
-        }
-        const child = _realChild.spawn(exe, args, { cwd: opts.cwd, env: opts.env, stdio: stdioArr, detached: !!opts.detached, argv0: opts.argv0 });
-        function addText(s) {
-          if (!s) return s;
-          s.text = function() { return new Promise(function(res, rej) { const c = []; s.on('data', function(d) { c.push(d); }); s.on('end', function() { res(Buffer.concat(c).toString('utf8')); }); s.on('error', rej); }); };
-          return s;
-        }
-        const exited = new Promise(function(res) { child.on('exit', function(code, sig) { res(sig ? 1 : (code != null ? code : 0)); }); });
-        return { pid: child.pid, exited: exited, stdout: addText(child.stdout), stderr: addText(child.stderr), stdin: child.stdin, kill: function(sig) { child.kill(sig); }, unref: function() { child.unref(); }, ref: function() { child.ref(); } };
-      },
-      listen: (opts) => {
-        opts = opts || {};
-        const h = opts.socket || {};
-        const hostname = opts.hostname || '127.0.0.1';
-        let listenPort = opts.port || 0;
-        if (!listenPort) {
-          try {
-            const r = _realChild.spawnSync(process.execPath, ['-e', 'const s=require("net").createServer();s.listen(0,"127.0.0.1",function(){process.stdout.write(s.address().port+"");s.close()})'], { encoding: 'utf8', timeout: 3000 });
-            listenPort = parseInt(r.stdout, 10) || (49152 + Math.floor(Math.random() * 16383));
-          } catch (e) { listenPort = 49152 + Math.floor(Math.random() * 16383); }
-        }
-        const srv = _realNet.createServer(function(conn) {
-          const bs = {
-            data: undefined,
-            write: function(d) {
-              if (conn.destroyed) return 0;
-              const buf = typeof d === 'string' ? Buffer.from(d, 'utf8') : d;
-              conn.write(buf);
-              return buf.length;
-            },
-            end: function() { if (!conn.destroyed) conn.end(); },
-            terminate: function() { conn.destroy(); },
-            destroy: function() { conn.destroy(); },
-            get destroyed() { return conn.destroyed; },
-            flush: function() {},
-          };
-          if (h.open) h.open(bs);
-          conn.on('data', function(d) { if (h.data) h.data(bs, d); });
-          conn.on('close', function() { if (h.close) h.close(bs); });
-          conn.on('error', function(e) { if (h.error) h.error(bs, e); });
-          conn.on('drain', function() { if (h.drain) h.drain(bs); });
-        });
-        srv.listen(listenPort, hostname);
-        return { port: listenPort, hostname: hostname, stop: function() { srv.close(); }, unref: function() { srv.unref(); }, ref: function() { srv.ref(); } };
-      },
-      deepEquals: bunDeepEquals,
-      embeddedFiles: [],
-      stdin: { stream: function() { return process.stdin; }, text: async function() { const c = []; for await (const d of process.stdin) c.push(Buffer.isBuffer(d) ? d : Buffer.from(d)); return Buffer.concat(c).toString('utf8'); } },
-      generateHeapSnapshot: function() { return {}; },
-      JSONL: { parse: function(s) { return String(s).split('\n').filter(function(l) { return l.trim(); }).map(function(l) { return JSON.parse(l); }); }, stringify: function(a) { return (Array.isArray(a) ? a : [a]).map(function(d) { return JSON.stringify(d); }).join('\n'); } },
         YAML: globalThis.__claudeYaml,
     };
     Object.assign(globalThis.__claudeBunShim, globalThis.Bun);
