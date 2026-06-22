@@ -51,7 +51,7 @@ function main() {
     manifest_version: 1,
     package_name: pkg.name,
     latest_audited_version: maxVersion(stableVersions),
-    latest_candidate_version: maxVersion(candidateVersions),
+    latest_candidate_version: candidateVersions.includes(pkg.version) ? pkg.version : maxVersion(candidateVersions),
     previous_stable_version: secondMaxVersion(stableVersions),
     manifest_url: manifestUrl,
   };
