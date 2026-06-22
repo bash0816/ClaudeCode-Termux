@@ -93,10 +93,13 @@ Only versions registered in the audited metadata can run.
 | `2.1.153-4` and earlier | historical — not recommended for new installs |
 <!-- SUPPORTED_VERSIONS_TABLE_END -->
 
-Official upstream Claude Code may be newer. This repo's published latest audited
-release is `2.1.185`.
+<!-- UPSTREAM_VERSION_START -->
+Official upstream (`@anthropic-ai/claude-code`): latest `2.1.185` / stable `2.1.176`
+This repo's published latest audited release: `2.1.185`
 
-公式 upstream の Claude Code は別で更新されることがあります。この repo の公開 latest audited release は `2.1.185` です。
+公式 upstream (`@anthropic-ai/claude-code`): latest `2.1.185` / stable `2.1.176`
+この repo の公開 latest audited release: `2.1.185`
+<!-- UPSTREAM_VERSION_END -->
 
 For the full version history, see [RELEASES.md](RELEASES.md).
 
