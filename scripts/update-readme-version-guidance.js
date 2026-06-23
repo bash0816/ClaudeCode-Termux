@@ -69,54 +69,31 @@ function renderOverrideCommands(versions) {
   return versions.map(version => `CLAUDE_TERMUX_CLAUDE_VERSION=${version} claude --version`);
 }
 
-function updateSupportedVersionsTable(content, latestAudited, previousStable) {
-  // Update Recommended row between comment markers
+function updateSupportedVersionsTable(content, latestAudited, previousStable, stablePinned) {
   const tableStart = '<!-- SUPPORTED_VERSIONS_TABLE_START -->\n';
   const tableEnd = '\n<!-- SUPPORTED_VERSIONS_TABLE_END -->';
   const startIdx = content.indexOf(tableStart);
   const endIdx = content.indexOf(tableEnd, startIdx);
   if (startIdx === -1 || endIdx === -1) return content;
 
-  let tableSection = content.slice(startIdx + tableStart.length, endIdx);
-
-  // Replace the Recommended row version
-  tableSection = tableSection.replace(
-    /\| `[^`]+` \| ✅ \*\*Recommended \/ 推奨\*\* — current audited release \|/,
-    `| \`${latestAudited}\` | ✅ **Recommended / 推奨** — current audited release |`
-  );
-
-  // Replace the rollback candidate row version, and demote old rollback to historical stable
-  if (previousStable) {
-    const rollbackMatches = [...tableSection.matchAll(/\| `([^`]+)` \| ✅ historical stable — rollback candidate \|/g)];
-    if (rollbackMatches.length === 0) throw new Error('no rollback candidate row found');
-    if (rollbackMatches.length > 1) throw new Error(`multiple rollback candidate rows: ${rollbackMatches.map(m => m[1]).join(', ')}`);
-    const currentRollback = rollbackMatches[0][1];
-    const escapedPrev = previousStable.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    tableSection = tableSection.replace(`| \`${escapedPrev}\` | ✅ historical stable |\n`, '');
-    tableSection = tableSection.replace(
-      /\| `[^`]+` \| ✅ historical stable — rollback candidate \|/,
-      `| \`${previousStable}\` | ✅ historical stable — rollback candidate |`
-    );
-    if (currentRollback !== previousStable && !tableSection.includes(`| \`${currentRollback}\` |`)) {
-      const firstHistoricalMatch = tableSection.match(/\| `[^`]+` \| ✅ historical stable \|/);
-      if (firstHistoricalMatch) {
-        tableSection = tableSection.replace(
-          firstHistoricalMatch[0],
-          `| \`${currentRollback}\` | ✅ historical stable |`
-        );
-      } else {
-        tableSection = tableSection.replace(
-          `| \`${previousStable}\` | ✅ historical stable — rollback candidate |`,
-          `| \`${previousStable}\` | ✅ historical stable — rollback candidate |\n| \`${currentRollback}\` | ✅ historical stable |`
-        );
-      }
-    }
+  const rows = [
+    `| \`${latestAudited}\` | ✅ **Recommended / 推奨** — latest |`,
+    `| \`${previousStable}\` | ✅ rollback candidate — \`@candidate\` dist-tag |`,
+  ];
+  if (stablePinned && stablePinned !== previousStable && stablePinned !== latestAudited) {
+    rows.push(`| \`${stablePinned}\` | ✅ stable — \`@stable\` dist-tag |`);
   }
+
+  const tableSection = [
+    '| Version | Status |',
+    '|---------|--------|',
+    ...rows,
+  ].join('\n');
 
   return content.slice(0, startIdx + tableStart.length) + tableSection + content.slice(endIdx);
 }
 
-function updateRootReadme(content, versions, latestAudited, previousStable) {
+function updateRootReadme(content, versions, latestAudited, previousStable, stablePinned) {
   // Install command
   const installBlock = [
     formatShellBlock(renderInstallCommands([latestAudited])),
@@ -132,7 +109,7 @@ function updateRootReadme(content, versions, latestAudited, previousStable) {
   );
 
   // Supported Versions table (between comment markers)
-  content = updateSupportedVersionsTable(content, latestAudited, previousStable);
+  content = updateSupportedVersionsTable(content, latestAudited, previousStable, stablePinned);
 
   // Text references to latest audited version
   content = content.replace(
@@ -252,7 +229,7 @@ function main() {
   const rootReadme = fs.readFileSync(rootReadmeFile, 'utf8');
   const packageReadme = fs.readFileSync(packageReadmeFile, 'utf8');
 
-  fs.writeFileSync(rootReadmeFile, updateRootReadme(rootReadme, verifiedVersions, manifest.latest_audited_version, manifest.previous_stable_version));
+  fs.writeFileSync(rootReadmeFile, updateRootReadme(rootReadme, verifiedVersions, manifest.latest_audited_version, manifest.previous_stable_version, manifest.stable_pinned_version));
   fs.writeFileSync(packageReadmeFile, updatePackageReadme(packageReadme, verifiedVersions, manifest.latest_audited_version));
 }
 

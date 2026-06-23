@@ -84,22 +84,17 @@ Only versions registered in the audited metadata can run.
 <!-- SUPPORTED_VERSIONS_TABLE_START -->
 | Version | Status |
 |---------|--------|
-| `2.1.186` | ✅ **Recommended / 推奨** — current audited release |
-| `2.1.185` | ✅ historical stable — rollback candidate |
-| `2.1.183` | ✅ historical stable |
-| `2.1.176` | ✅ historical stable — matches upstream `stable` tag |
-| `2.1.161-1` | reverted — do not keep using this line |
-| `2.1.161` | reverted — do not keep using this line |
-| `2.1.157` | historical — not recommended for new installs |
-| `2.1.153-4` and earlier | historical — not recommended for new installs |
+| `2.1.186` | ✅ **Recommended / 推奨** — latest |
+| `2.1.185` | ✅ rollback candidate — `@candidate` dist-tag |
+| `2.1.176` | ✅ stable — `@stable` dist-tag |
 <!-- SUPPORTED_VERSIONS_TABLE_END -->
 
 <!-- UPSTREAM_VERSION_START -->
-Official upstream (`@anthropic-ai/claude-code`): latest `2.1.185` / stable `2.1.176`
-This repo's published latest audited release: `2.1.185`
+Official upstream (`@anthropic-ai/claude-code`): latest `2.1.186` / stable `2.1.176`
+This repo's published latest audited release: `2.1.186`
 
-公式 upstream (`@anthropic-ai/claude-code`): latest `2.1.185` / stable `2.1.176`
-この repo の公開 latest audited release: `2.1.185`
+公式 upstream (`@anthropic-ai/claude-code`): latest `2.1.186` / stable `2.1.176`
+この repo の公開 latest audited release: `2.1.186`
 <!-- UPSTREAM_VERSION_END -->
 
 For the full version history, see [RELEASES.md](RELEASES.md).

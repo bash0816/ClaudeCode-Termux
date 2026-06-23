@@ -4,5 +4,6 @@
   "latest_audited_version": "2.1.186",
   "latest_candidate_version": "2.1.186",
   "previous_stable_version": "2.1.185",
+  "stable_pinned_version": "2.1.176",
   "manifest_url": "https://raw.githubusercontent.com/bash0816/ClaudeCode-Termux/main/config/claude-termux-release-manifest.json"
 }
