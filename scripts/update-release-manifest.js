@@ -47,7 +47,7 @@ function main() {
   const stableVersions = versions.filter(version => rootConfig.versions[version].status === 'termux_verified');
   const candidateVersions = versions.filter(version => ['termux_verified', 'offset_discovered'].includes(rootConfig.versions[version].status));
 
-  const manifest = {
+  const computed = {
     manifest_version: 1,
     package_name: pkg.name,
     latest_audited_version: maxVersion(stableVersions),
@@ -57,7 +57,9 @@ function main() {
   };
 
   for (const file of manifestFiles) {
-    fs.writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
+    let existing = {};
+    try { existing = loadJson(file); } catch {}
+    fs.writeFileSync(file, JSON.stringify({ ...existing, ...computed }, null, 2) + '\n');
   }
 }
 

@@ -61,6 +61,10 @@ _tui=0
 if [ "$_pf" = "0" ] && [ -t 0 ]; then
   _tui=1
 fi
+# doctor is a one-shot diagnostic command; force non-TUI regardless of TTY
+case "${1:-}" in
+  doctor) _tui=0 ;;
+esac
 
 if [ "$_pf" = "1" ] && [ "${CLAUDE_TERMUX_STDIN:-}" != "inherit" ]; then
   _helper=$(mktemp "${TERMUX_TMPDIR}/claude-helper.XXXXXX.js")
