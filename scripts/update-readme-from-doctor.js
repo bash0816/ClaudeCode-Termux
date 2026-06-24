@@ -4,7 +4,6 @@
 // Runs `claude doctor` and updates README.md with upstream version info.
 // Call this at release time after installing the new package version.
 
-const { execFileSync, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -30,6 +29,7 @@ function runDoctor() {
     // script(1) allocates a PTY so claude doctor renders version info
     const proc = spawn('script', ['-q', '-c', 'claude doctor', '/dev/null'], {
       env: { ...process.env },
+      detached: true,
     });
     let output = '';
     proc.stdout.on('data', d => { output += d.toString(); });
@@ -39,14 +39,16 @@ function runDoctor() {
     const enterTimer = setTimeout(() => {
       try { proc.stdin.write('\n'); } catch (_) {}
     }, 8000);
+    let timedOut = false;
     const killTimer = setTimeout(() => {
-      try { proc.kill(); } catch (_) {}
+      timedOut = true;
+      try { process.kill(-proc.pid, 'SIGKILL'); } catch (_) {}
     }, 15000);
 
-    proc.on('close', () => {
+    proc.on('close', (code, signal) => {
       clearTimeout(enterTimer);
       clearTimeout(killTimer);
-      resolve(stripAnsi(output));
+      resolve({ output: stripAnsi(output), timedOut, exitCode: code });
     });
     proc.on('error', err => {
       clearTimeout(enterTimer);
@@ -112,14 +114,26 @@ async function main() {
   console.log('running claude doctor...');
   const doctorOutput = await runDoctor();
 
-  const upstream = parseDoctor(doctorOutput);
+  if (doctorOutput.timedOut) {
+    console.error('ERROR: claude doctor timed out');
+    process.exit(1);
+  }
+  if (doctorOutput.exitCode !== 0 && doctorOutput.exitCode !== null) {
+    console.error(`ERROR: claude doctor exited with code ${doctorOutput.exitCode}`);
+    process.exit(1);
+  }
+
+  const upstream = parseDoctor(doctorOutput.output);
   console.log(`upstream latest: ${upstream.latestVersion || '(not found)'}`);
   console.log(`upstream stable: ${upstream.stableVersion || '(not found)'}`);
   console.log(`our version:     ${ourVersion}`);
 
-  if (!upstream.latestVersion) {
-    console.error('WARNING: could not parse upstream version from claude doctor output');
+  if (!upstream.latestVersion || !upstream.stableVersion) {
+    const missing = [!upstream.latestVersion && 'latestVersion', !upstream.stableVersion && 'stableVersion'].filter(Boolean).join(', ');
+    console.error(`WARNING: could not parse from claude doctor output: ${missing}`);
     if (process.argv.includes('--strict')) process.exit(1);
+    console.error('skipping README update to avoid writing (unknown)');
+    process.exit(0);
   }
 
   const section = buildSection(upstream, ourVersion);
