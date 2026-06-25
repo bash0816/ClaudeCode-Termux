@@ -1,3 +1,18 @@
+## 2.1.191 — 2026-06-25 ✅ Current audited / 現在の監査済み版
+
+upstream claude-code 2.1.191 追従。Termux 実機検証済み（TUI 起動・スモークテスト通過）。
+
+**Termux 固有修正 / Termux-specific fixes**
+
+- Bun ランタイム検出ロジックの修正（Opus 4 モデルで Bun が使われる場合の対応）
+- Opus 4 モデルサポートの改善
+
+```sh
+npm install -g @bash0816/claude-code@2.1.191
+```
+
+---
+
 ## 2.1.187 — 2026-06-24 ✅ Current audited / 現在の監査済み版
 
 upstream claude-code 2.1.187 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
