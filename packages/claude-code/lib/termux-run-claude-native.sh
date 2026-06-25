@@ -558,7 +558,7 @@ function rewriteNativeChunkSource(source) {
     /\btypeof Bun\b/g,
     'typeof __claudeBun',
     'typeof Bun',
-    3,
+    4,
   );
   patched = replaceRequired(
     patched,
@@ -579,7 +579,7 @@ function rewriteNativeChunkSource(source) {
     /\bBun\./g,
     '__claudeBun.',
     'Bun property access',
-    34,
+    36,
   );
   patched = replaceRequired(
     patched,
@@ -1229,7 +1229,7 @@ function rewriteNativeChunkSource(source) {
     /\btypeof Bun\b/g,
     'typeof __claudeBun',
     'typeof Bun',
-    3,
+    4,
   );
   patched = replaceRequired(
     patched,
@@ -1250,7 +1250,7 @@ function rewriteNativeChunkSource(source) {
     /\bBun\./g,
     '__claudeBun.',
     'Bun property access',
-    34,
+    36,
   );
   patched = replaceRequired(
     patched,
