@@ -278,8 +278,8 @@ test('cleanupStaleEntryFiles removes only stale extracted files for the same off
 });
 
 function buildSyntheticBundleSource() {
-  const typeofBun = Array.from({ length: 3 }, () => 'typeof Bun').join('; ');
-  const bunProps = Array.from({ length: 34 }, (_, index) => `Bun.p${index}`).join('; ');
+  const typeofBun = Array.from({ length: 4 }, () => 'typeof Bun').join('; ');
+  const bunProps = Array.from({ length: 36 }, (_, index) => `Bun.p${index}`).join('; ');
   return `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0 }`;
 }
 
@@ -303,11 +303,12 @@ test('rewriteNativeChunkSource rejects unexpected replacement counts', () => {
 
   assert.throws(
     () => rewriteNativeChunkSource(source),
-    /unexpected Bun property access count 33/,
+    /unexpected Bun property access count 35/,
   );
 });
 
-const tarballPath = path.join(__dirname, '..', 'bash0816-claude-code-2.1.177.tgz');
+const packageVersion = require('../package.json').version;
+const tarballPath = path.join(__dirname, '..', `bash0816-claude-code-${packageVersion}.tgz`);
 
 test('tarball contents match the workspace runner and test file', { skip: !fs.existsSync(tarballPath) }, () => {
   const tarRunner = child_process.execFileSync('tar', ['-xOf', tarballPath, 'package/lib/termux-run-claude-native.sh']);
