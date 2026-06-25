@@ -1,13 +1,14 @@
 ## 2.1.191 — 2026-06-25 ✅ Current audited / 現在の監査済み版
 
-Bun runtime detection fix and Opus 4 model support improvements for Android/Termux
+upstream claude-code 2.1.191 追従。Termux 実機検証済み（TUI 起動・スモークテスト通過）。
+
+**Termux 固有修正 / Termux-specific fixes**
+
+- Bun ランタイム検出ロジックの修正（Opus 4 モデルで Bun が使われる場合の対応）
+- Opus 4 モデルサポートの改善
 
 ```sh
-npm install -g @bash0816/claude-code@latest
-```
-
-```sh
-npm install -g @bash0816/claude-code@2.1.187
+npm install -g @bash0816/claude-code@2.1.191
 ```
 
 ---
