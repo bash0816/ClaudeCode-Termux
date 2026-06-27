@@ -33,3 +33,6 @@ for (const file of configFiles) {
 const pkg = loadJson(packageFile);
 pkg.version = version;
 fs.writeFileSync(packageFile, JSON.stringify(pkg, null, 2) + '\n');
+
+const { execFileSync } = require('child_process');
+execFileSync(process.execPath, [path.join(__dirname, 'update-release-manifest.js')], { stdio: 'inherit' });
