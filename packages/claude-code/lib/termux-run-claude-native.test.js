@@ -278,7 +278,7 @@ test('cleanupStaleEntryFiles removes only stale extracted files for the same off
 });
 
 function buildSyntheticBundleSource() {
-  const typeofBun = Array.from({ length: 4 }, () => 'typeof Bun').join('; ');
+  const typeofBun = Array.from({ length: 6 }, () => 'typeof Bun').join('; ');
   const bunProps = Array.from({ length: 36 }, (_, index) => `Bun.p${index}`).join('; ');
   return `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0 }`;
 }
