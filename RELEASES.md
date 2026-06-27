@@ -1,3 +1,17 @@
+## 2.1.195 — 2026-06-27 ✅ Current audited / 現在の監査済み版
+
+Tracks upstream @anthropic-ai/claude-code@2.1.195. Binary offset and Bun property access count updated for this release.
+
+```sh
+npm install -g @bash0816/claude-code@latest
+```
+
+```sh
+npm install -g @bash0816/claude-code@2.1.191
+```
+
+---
+
 ## 2.1.193 — 2026-06-27 ✅ Current audited / 現在の監査済み版
 
 upstream claude-code 2.1.193 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
