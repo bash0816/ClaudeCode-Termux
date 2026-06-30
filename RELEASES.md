@@ -1,3 +1,23 @@
+## 2.1.197 — 2026-07-01 ✅ Current audited / 現在の監査済み版
+
+upstream claude-code 2.1.197 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
+
+**Upstream highlights / 主な変更（upstream）**
+
+## What's changed
+
+- Introducing Claude Sonnet 5: now the default model in Claude Code, with a native 1M-token context window and promotional pricing of $2/$10 per Mtok through August 31. Update to version 2.1.197 for access. https://www.anthropic.com/news/claude-sonnet-5
+
+```sh
+npm install -g @bash0816/claude-code@latest
+```
+
+```sh
+npm install -g @bash0816/claude-code@2.1.195
+```
+
+---
+
 ## 2.1.195 — 2026-06-27 ✅ Current audited / 現在の監査済み版
 
 Tracks upstream @anthropic-ai/claude-code@2.1.195. Binary offset and Bun property access count updated for this release.
