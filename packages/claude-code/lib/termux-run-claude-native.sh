@@ -579,7 +579,7 @@ function rewriteNativeChunkSource(source) {
     /\bBun\./g,
     '__claudeBun.',
     'Bun property access',
-    38,
+    37,
   );
   patched = replaceRequired(
     patched,
@@ -1250,7 +1250,7 @@ function rewriteNativeChunkSource(source) {
     /\bBun\./g,
     '__claudeBun.',
     'Bun property access',
-    38,
+    37,
   );
   patched = replaceRequired(
     patched,
