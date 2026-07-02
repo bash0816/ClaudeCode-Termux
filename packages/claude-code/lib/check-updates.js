@@ -114,7 +114,8 @@ function shouldNotify(cache, latestVersion) {
 
 function installTarget(packageName, targetVersion) {
   const spec = `${packageName}@${targetVersion}`;
-  const command = `npm install -g ${spec}`;
+  const prefix = path.resolve(packageDir, '..', '..', '..', '..');
+  const command = `npm install -g --prefix ${prefix} ${spec}`;
 
   if (dryRun) {
     console.log(command);
@@ -122,7 +123,7 @@ function installTarget(packageName, targetVersion) {
   }
 
   console.error(`Updating to audited version ${targetVersion}`);
-  const result = cp.spawnSync('npm', ['install', '-g', spec], {
+  const result = cp.spawnSync('npm', ['install', '-g', '--prefix', prefix, spec], {
     stdio: 'inherit',
     env: process.env,
   });
