@@ -307,7 +307,7 @@ test('rewriteNativeChunkSource rewrites the synthetic bundle slice (version 2.1.
   try {
     const { rewriteNativeChunkSource } = loadHelperApi();
     const typeofBun = Array.from({ length: 7 }, () => 'typeof Bun').join('; ');
-    const bunProps = Array.from({ length: 37 }, (_, index) => `Bun.p${index}`).join('; ');
+    const bunProps = Array.from({ length: 40 }, (_, index) => `Bun.p${index}`).join('; ');
     const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0 }`;
     const patched = rewriteNativeChunkSource(source);
 
