@@ -558,7 +558,7 @@ function rewriteNativeChunkSource(source) {
     /\btypeof Bun\b/g,
     'typeof __claudeBun',
     'typeof Bun',
-    6,
+    7,
   );
   patched = replaceRequired(
     patched,
@@ -1229,7 +1229,7 @@ function rewriteNativeChunkSource(source) {
     /\btypeof Bun\b/g,
     'typeof __claudeBun',
     'typeof Bun',
-    6,
+    7,
   );
   patched = replaceRequired(
     patched,
