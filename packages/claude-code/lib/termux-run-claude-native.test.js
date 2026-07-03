@@ -78,7 +78,7 @@ function loadHelperApi() {
     '\n\nasync function main() {',
   );
 
-  const context = vm.createContext({ module: { exports: {} }, exports: {}, fs, path });
+  const context = vm.createContext({ module: { exports: {} }, exports: {}, fs, path, process });
   vm.runInContext(
     `${replaceSource}\n${cleanupSource}\n${fullWidthSource}\n${graphemeWidthSource}\n${stripAnsiSource}\n${stringWidthSource}\n${wrapAnsiSource}\n${stableHashSource}\n${rewriteSource}\nmodule.exports = { replaceRequired, cleanupStaleEntryFiles, isFullWidthCodePoint, graphemeWidth, stripANSI, stringWidth, wrapAnsi, stableHash, rewriteNativeChunkSource };`,
     context,
@@ -283,18 +283,44 @@ function buildSyntheticBundleSource() {
   return `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0 }`;
 }
 
-test('rewriteNativeChunkSource rewrites the synthetic bundle slice', () => {
-  const { rewriteNativeChunkSource } = loadHelperApi();
-  const source = buildSyntheticBundleSource();
-  const patched = rewriteNativeChunkSource(source);
+test('rewriteNativeChunkSource rewrites the synthetic bundle slice (version 2.1.198)', () => {
+  process.env.CURRENT_CLAUDE_VERSION = '2.1.198';
+  try {
+    const { rewriteNativeChunkSource } = loadHelperApi();
+    const source = buildSyntheticBundleSource();
+    const patched = rewriteNativeChunkSource(source);
 
-  assert.match(patched, /var __claudeBun = globalThis\.__claudeBunShim;/);
-  assert.match(patched, /typeof __claudeBun/);
-  assert.match(patched, /typeof globalThis\.__claudeBun/);
-  assert.match(patched, /globalThis\.__claudeBun/);
-  assert.match(patched, /__claudeBun\./);
-  assert.match(patched, /npmInstallDeprecated:!1/);
-  assert.doesNotMatch(patched, /npmInstallDeprecated:!0/);
+    assert.match(patched, /var __claudeBun = globalThis\.__claudeBunShim;/);
+    assert.match(patched, /typeof __claudeBun/);
+    assert.match(patched, /typeof globalThis\.__claudeBun/);
+    assert.match(patched, /globalThis\.__claudeBun/);
+    assert.match(patched, /__claudeBun\./);
+    assert.match(patched, /npmInstallDeprecated:!1/);
+    assert.doesNotMatch(patched, /npmInstallDeprecated:!0/);
+  } finally {
+    delete process.env.CURRENT_CLAUDE_VERSION;
+  }
+});
+
+test('rewriteNativeChunkSource rewrites the synthetic bundle slice (version 2.1.200)', () => {
+  process.env.CURRENT_CLAUDE_VERSION = '2.1.200';
+  try {
+    const { rewriteNativeChunkSource } = loadHelperApi();
+    const typeofBun = Array.from({ length: 7 }, () => 'typeof Bun').join('; ');
+    const bunProps = Array.from({ length: 37 }, (_, index) => `Bun.p${index}`).join('; ');
+    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0 }`;
+    const patched = rewriteNativeChunkSource(source);
+
+    assert.match(patched, /var __claudeBun = globalThis\.__claudeBunShim;/);
+    assert.match(patched, /typeof __claudeBun/);
+    assert.match(patched, /typeof globalThis\.__claudeBun/);
+    assert.match(patched, /globalThis\.__claudeBun/);
+    assert.match(patched, /__claudeBun\./);
+    assert.match(patched, /npmInstallDeprecated:!1/);
+    assert.doesNotMatch(patched, /npmInstallDeprecated:!0/);
+  } finally {
+    delete process.env.CURRENT_CLAUDE_VERSION;
+  }
 });
 
 test('rewriteNativeChunkSource rejects unexpected replacement counts', () => {

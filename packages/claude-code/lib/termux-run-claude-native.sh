@@ -553,12 +553,18 @@ function rewriteNativeChunkSource(source) {
     'module wrapper prefix',
     1,
   );
+  const _typeofBunExpected = (() => {
+    const _ver = String(process.env.CURRENT_CLAUDE_VERSION || '');
+    const _m = _ver.match(/^(\d+)\.(\d+)\.(\d+)/);
+    if (_m && (Number(_m[1]) > 2 || Number(_m[2]) > 1 || Number(_m[3]) >= 200)) return 7;
+    return 6;
+  })();
   patched = replaceRequired(
     patched,
     /\btypeof Bun\b/g,
     'typeof __claudeBun',
     'typeof Bun',
-    7,
+    _typeofBunExpected,
   );
   patched = replaceRequired(
     patched,
@@ -1224,12 +1230,18 @@ function rewriteNativeChunkSource(source) {
     'module wrapper prefix',
     1,
   );
+  const _typeofBunExpected = (() => {
+    const _ver = String(process.env.CURRENT_CLAUDE_VERSION || '');
+    const _m = _ver.match(/^(\d+)\.(\d+)\.(\d+)/);
+    if (_m && (Number(_m[1]) > 2 || Number(_m[2]) > 1 || Number(_m[3]) >= 200)) return 7;
+    return 6;
+  })();
   patched = replaceRequired(
     patched,
     /\btypeof Bun\b/g,
     'typeof __claudeBun',
     'typeof Bun',
-    7,
+    _typeofBunExpected,
   );
   patched = replaceRequired(
     patched,
