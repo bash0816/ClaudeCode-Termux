@@ -2,7 +2,7 @@ name: Claude Code Version Watch
 
 on:
   schedule:
-    - cron: '17 19 * * *'
+    - cron: '17 7,19 * * *'
   workflow_dispatch:
 
 permissions:
