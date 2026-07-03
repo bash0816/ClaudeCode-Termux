@@ -580,12 +580,18 @@ function rewriteNativeChunkSource(source) {
     'globalThis.Bun',
     1,
   );
+  const _bunPropertyAccessExpected = (() => {
+    const _ver = String(process.env.CURRENT_CLAUDE_VERSION || '');
+    const _m = _ver.match(/^(\d+)\.(\d+)\.(\d+)/);
+    if (_m && (Number(_m[1]) > 2 || Number(_m[2]) > 1 || Number(_m[3]) >= 200)) return 40;
+    return 37;
+  })();
   patched = replaceRequired(
     patched,
     /\bBun\./g,
     '__claudeBun.',
     'Bun property access',
-    37,
+    _bunPropertyAccessExpected,
   );
   patched = replaceRequired(
     patched,
@@ -1257,12 +1263,18 @@ function rewriteNativeChunkSource(source) {
     'globalThis.Bun',
     1,
   );
+  const _bunPropertyAccessExpected = (() => {
+    const _ver = String(process.env.CURRENT_CLAUDE_VERSION || '');
+    const _m = _ver.match(/^(\d+)\.(\d+)\.(\d+)/);
+    if (_m && (Number(_m[1]) > 2 || Number(_m[2]) > 1 || Number(_m[3]) >= 200)) return 40;
+    return 37;
+  })();
   patched = replaceRequired(
     patched,
     /\bBun\./g,
     '__claudeBun.',
     'Bun property access',
-    37,
+    _bunPropertyAccessExpected,
   );
   patched = replaceRequired(
     patched,
