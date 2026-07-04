@@ -3,8 +3,8 @@ name: Promote to Latest
 # Triggers when termux_verified promotion is pushed to main.
 # Checks if the latest_audited_version in manifest differs from the registry
 # `latest` dist-tag, and if so runs a retag (not a re-publish).
-# NOTE: `environment: npm-publish` must have no manual approval gate for
-# this to run fully automatically.
+# The check job runs without an approval gate; the promote job (which writes
+# to npm) only runs and requests the gate when retag is actually needed.
 
 concurrency:
   group: npm-promote
@@ -26,12 +26,13 @@ permissions:
   actions: write
 
 jobs:
-  promote:
+  check:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment: npm-publish
-    env:
-      GH_TOKEN: ${{ github.token }}
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+      latest_audited: ${{ steps.check.outputs.latest_audited }}
+      registry_latest: ${{ steps.check.outputs.registry_latest }}
     steps:
       - uses: actions/checkout@v6
 
@@ -66,22 +67,35 @@ jobs:
             echo "Retag needed: ${registry_latest} → ${latest_audited}"
           fi
 
+  promote:
+    needs: check
+    if: needs.check.outputs.skip == 'false'
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
       - name: Retag latest
-        if: steps.check.outputs.skip == 'false'
         working-directory: packages/claude-code
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          CLAUDE_TERMUX_EXPECTED_PREVIOUS_AUDITED_VERSION: ${{ steps.check.outputs.registry_latest }}
+          CLAUDE_TERMUX_EXPECTED_PREVIOUS_AUDITED_VERSION: ${{ needs.check.outputs.registry_latest }}
         run: |
           set -eu
           node ../../scripts/retag-latest-dist-tags.js
-          echo "Retagged: latest → ${{ steps.check.outputs.latest_audited }}"
+          echo "Retagged: latest → ${{ needs.check.outputs.latest_audited }}"
 
       - name: Dispatch release-finalize
-        if: steps.check.outputs.skip == 'false'
         run: |
           set -eu
-          ver="${{ steps.check.outputs.latest_audited }}"
+          ver="${{ needs.check.outputs.latest_audited }}"
           gh workflow run release-finalize.yml \
             --repo "$GITHUB_REPOSITORY" \
             --field version="${ver}"
