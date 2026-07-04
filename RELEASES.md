@@ -1,3 +1,23 @@
+## 2.1.201 — 2026-07-04 ✅ Current audited / 現在の監査済み版
+
+upstream claude-code 2.1.201 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
+
+**Upstream highlights / 主な変更（upstream）**
+
+## What's changed
+
+- Claude Sonnet 5 sessions no longer use the mid-conversation system role for harness reminders
+
+```sh
+npm install -g @bash0816/claude-code@latest
+```
+
+```sh
+npm install -g @bash0816/claude-code@2.1.200
+```
+
+---
+
 ## 2.1.200 — 2026-07-04 ✅ Current audited / 現在の監査済み版
 
 upstream claude-code 2.1.200 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
