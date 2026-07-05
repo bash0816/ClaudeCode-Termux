@@ -90,11 +90,11 @@ Only versions registered in the audited metadata can run.
 <!-- SUPPORTED_VERSIONS_TABLE_END -->
 
 <!-- UPSTREAM_VERSION_START -->
-Official upstream (`@anthropic-ai/claude-code`): latest `2.1.186` / stable `2.1.176`
-This repo's published latest audited release: `2.1.186`
+Official upstream (`@anthropic-ai/claude-code`): latest `2.1.201` / stable `2.1.193`
+This repo's published latest audited release: `2.1.201`
 
-公式 upstream (`@anthropic-ai/claude-code`): latest `2.1.186` / stable `2.1.176`
-この repo の公開 latest audited release: `2.1.186`
+公式 upstream (`@anthropic-ai/claude-code`): latest `2.1.201` / stable `2.1.193`
+この repo の公開 latest audited release: `2.1.201`
 <!-- UPSTREAM_VERSION_END -->
 
 For the full version history, see [RELEASES.md](RELEASES.md).
