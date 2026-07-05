@@ -294,9 +294,10 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.retag_stable != ''
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          INPUT_RETAG_STABLE: ${{ inputs.retag_stable }}
         run: |
           set -euo pipefail
-          target="${{ inputs.retag_stable }}"
+          target="${INPUT_RETAG_STABLE}"
           existing=$(npm view "@bash0816/claude-code@${target}" version 2>/dev/null || echo "")
           if [ -z "$existing" ]; then
             echo "ERROR: @bash0816/claude-code@${target} is not published" >&2
