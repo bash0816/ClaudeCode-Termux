@@ -49,6 +49,11 @@ on:
         required: false
         default: ""
         type: string
+      retag_stable:
+        description: "Retag @stable dist-tag to the specified version (must already be published)"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -131,7 +136,9 @@ jobs:
         run: npm pack --dry-run
 
   publish:
-    if: github.event_name == 'workflow_dispatch' && (inputs.publish == 'true' || inputs.retag_latest == 'true')
+    if: >
+      github.event_name == 'workflow_dispatch' &&
+      (inputs.publish == 'true' || inputs.retag_latest == 'true' || inputs.retag_stable != '')
     needs: verify
     runs-on: ubuntu-latest
     environment: npm-publish
@@ -156,8 +163,10 @@ jobs:
           node - <<'NODE'
           const publish = process.env.INPUT_PUBLISH === 'true';
           const retagLatest = process.env.INPUT_RETAG_LATEST === 'true';
-          if (publish && retagLatest) {
-            throw new Error('publish and retag_latest cannot both be true');
+          const retagStable = process.env.INPUT_RETAG_STABLE || '';
+          const modes = [publish, retagLatest, !!retagStable].filter(Boolean).length;
+          if (modes > 1) {
+            throw new Error('only one of publish / retag_latest / retag_stable can be specified at a time');
           }
           if (retagLatest && !process.env.INPUT_PREVIOUS_AUDITED_VERSION) {
             throw new Error('previous_audited_version is required when retag_latest is true');
@@ -166,6 +175,7 @@ jobs:
         env:
           INPUT_PUBLISH: ${{ inputs.publish }}
           INPUT_RETAG_LATEST: ${{ inputs.retag_latest }}
+          INPUT_RETAG_STABLE: ${{ inputs.retag_stable }}
           INPUT_PREVIOUS_AUDITED_VERSION: ${{ inputs.previous_audited_version }}
 
       - name: Publish guard
@@ -279,3 +289,19 @@ jobs:
           CLAUDE_TERMUX_EXPECTED_PREVIOUS_AUDITED_VERSION: ${{ inputs.previous_audited_version }}
         run: |
           node ../../scripts/retag-latest-dist-tags.js
+
+      - name: Retag stable
+        if: github.event_name == 'workflow_dispatch' && inputs.retag_stable != ''
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          target="${{ inputs.retag_stable }}"
+          existing=$(npm view "@bash0816/claude-code@${target}" version 2>/dev/null || echo "")
+          if [ -z "$existing" ]; then
+            echo "ERROR: @bash0816/claude-code@${target} is not published" >&2
+            exit 1
+          fi
+          echo "verified: @bash0816/claude-code@${target} exists"
+          npm dist-tag add "@bash0816/claude-code@${target}" stable
+          echo "Retagged @stable → ${target}"
