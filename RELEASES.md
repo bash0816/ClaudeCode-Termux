@@ -1,3 +1,40 @@
+## 2.1.202 — 2026-07-07 ✅ Current audited / 現在の監査済み版
+
+upstream claude-code 2.1.202 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
+
+**Upstream highlights / 主な変更（upstream）**
+
+## What's changed
+
+- Added a "Dynamic workflow size" setting in `/config` for controlling how large Claude generally makes dynamic workflows (small/medium/large agent counts) — an advisory guideline, not an enforced cap
+- Added `workflow.run_id` and `workflow.name` OpenTelemetry attributes to telemetry emitted by workflow-spawned agents, so a workflow run's activity can be reconstructed from OTel data
+- Fixed a crash in the inline Ctrl+R history search when accepting or cancelling while the search was still scanning the history file
+- Fixed `/rename` on background sessions being reverted when the job restarts, which broke addressing the session by its new name
+- Fixed transient mTLS handshake failures when settings were re-applied during an in-place client certificate rotation
+- Fixed commands sent from Remote Control (mobile/web) into an interactive session failing with "Unknown command"
+- Fixed images and files sent from the Remote Control mobile or web app without a caption being silently dropped
+- Fixed the sign-in URL printed by `claude auth login` and `claude mcp login --no-browser` not being reliably clickable when it wraps over SSH — it is now emitted as a single hyperlink
+- Fixed opening a chat from `claude agents` sometimes failing with "currently running as a background agent" followed by a worker crash/respawn loop
+- Fixed workflow scripts with unicode quote escapes in strings being corrupted before parsing; workflow parse errors now show the offending line instead of always blaming TypeScript
+- Fixed voice dictation retrying in an unbounded loop when the microphone or audio recorder fails — repeated capture failures now pause voice input
+- Fixed `/remote-control` sessions showing the wrong permission mode in the mobile and web apps
+- Fixed resuming a session by name, or opening the resume picker, taking minutes and using a large amount of memory in repositories with many git worktrees
+- Fixed installer and updater downloads failing immediately with "aborted" when a proxy or network drops the connection mid-download — transient connection drops now retry
+- Fixed re-invoking an already-loaded skill appending a duplicate copy of its instructions to context
+- Improved `/workflows` agent list layout: wider titles, a dedicated time column, shorter model names, and no per-row tool-call counts
+- Improved MCP error messages: clearer error when a server config has `url` but no `type`, suggesting `"type": "http"` instead of the misleading "command: expected string"
+- Changed `/review <pr>` back to a fast single-pass review; use `/code-review <level> <pr#>` for the multi-agent review at a chosen effort level
+
+```sh
+npm install -g @bash0816/claude-code@latest
+```
+
+```sh
+npm install -g @bash0816/claude-code@2.1.201
+```
+
+---
+
 ## 2.1.201 — 2026-07-04 ✅ Current audited / 現在の監査済み版
 
 upstream claude-code 2.1.201 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
