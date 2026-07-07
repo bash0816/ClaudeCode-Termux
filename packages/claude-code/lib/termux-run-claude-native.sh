@@ -594,12 +594,18 @@ function rewriteNativeChunkSource(source) {
     'Bun property access',
     _bunPropertyAccessExpected,
   );
+  const _npmInstallDeprecatedExpected = (() => {
+    const _ver = String(process.env.CURRENT_CLAUDE_VERSION || '');
+    const _m = _ver.match(/^(\d+)\.(\d+)\.(\d+)/);
+    if (_m && (Number(_m[1]) > 2 || Number(_m[2]) > 1 || Number(_m[3]) >= 203)) return 2;
+    return 1;
+  })();
   patched = replaceRequired(
     patched,
     /\bnpmInstallDeprecated:!0\b/g,
     'npmInstallDeprecated:!1',
     'npmInstallDeprecated flag',
-    1,
+    _npmInstallDeprecatedExpected,
   );
   return patched;
 }
@@ -1278,12 +1284,18 @@ function rewriteNativeChunkSource(source) {
     'Bun property access',
     _bunPropertyAccessExpected,
   );
+  const _npmInstallDeprecatedExpected = (() => {
+    const _ver = String(process.env.CURRENT_CLAUDE_VERSION || '');
+    const _m = _ver.match(/^(\d+)\.(\d+)\.(\d+)/);
+    if (_m && (Number(_m[1]) > 2 || Number(_m[2]) > 1 || Number(_m[3]) >= 203)) return 2;
+    return 1;
+  })();
   patched = replaceRequired(
     patched,
     /\bnpmInstallDeprecated:!0\b/g,
     'npmInstallDeprecated:!1',
     'npmInstallDeprecated flag',
-    1,
+    _npmInstallDeprecatedExpected,
   );
   return patched;
 }
