@@ -1,3 +1,23 @@
+## 2.1.204 — 2026-07-08 ✅ Current audited / 現在の監査済み版
+
+upstream claude-code 2.1.204 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
+
+**Upstream highlights / 主な変更（upstream）**
+
+## What's changed
+
+- Fixed hook events not streaming during SessionStart hooks in headless sessions, which could cause remote workers to be idle-reaped mid-hook
+
+```sh
+npm install -g @bash0816/claude-code@latest
+```
+
+```sh
+npm install -g @bash0816/claude-code@2.1.203
+```
+
+---
+
 ## 2.1.203 — 2026-07-08 ✅ Current audited / 現在の監査済み版
 
 upstream claude-code 2.1.203 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
