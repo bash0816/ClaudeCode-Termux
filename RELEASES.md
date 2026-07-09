@@ -1,3 +1,45 @@
+## 2.1.205 — 2026-07-10 ✅ Current audited / 現在の監査済み版
+
+upstream claude-code 2.1.205 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
+
+**Upstream highlights / 主な変更（upstream）**
+
+## What's changed
+
+- Added an auto mode rule that blocks tampering with session transcript files
+- Fixed `--json-schema` silently producing unstructured output when the schema was invalid, and schemas using the `format` keyword being rejected
+- Fixed a message sent while Claude was working being silently lost when the turn ended at the `--max-turns` limit
+- Fixed Windows worktree removal deleting files outside the worktree when an NTFS junction or directory symlink existed inside it
+- Fixed background agents staying shown as "failed" or "completed" in the agent list after being resumed with `SendMessage`
+- Fixed background jobs flipping from "needs input" back to "working" in the agent list when the agent's turn contained no readable text
+- Fixed `claude attach` erroring when a background agent was mid-upgrade restart instead of waiting for it to come back
+- Fixed session-to-PR linking missing a PR created in a Bash call whose output exceeded the 30K inline limit
+- Fixed `claude mcp add-from-claude-desktop` getting stuck when a server name contains unsupported characters; invalid names are now reported and remaining servers still import
+- Fixed a plugin LSP server that fails to initialize preventing a valid LSP server from another plugin handling the same file extension
+- Fixed a Windows crash when the directory Claude was launched from is deleted, locked, or unmounted while a command is running
+- Fixed a crash when a file watcher was closed while a directory scan was still in flight
+- Fixed project verify skills being rewritten on every session instead of only when a documented command changed
+- Fixed the agent view rendering one line too high and clipping its header when the job list slightly overflowed the screen
+- Fixed background tasks in the web and mobile Remote Control panels showing stale "Running" status by forwarding full task state on every membership change
+- Improved auto mode to ask before running `rm -rf` on a variable it can't resolve from context
+- Auto-update binary downloads now stream to disk instead of buffering in memory, cutting the updater's peak memory usage by roughly 400 MB
+- Background task notifications now explicitly state that no human input has occurred, preventing fabricated in-transcript approvals from being acted on
+- Improved agent view: sessions that edit, merge, comment on, or push to an existing PR now link it in `claude agents`
+- Improved agent view: rows now show a colored state word and a classifier-written headline instead of raw tool call text, and the peek opens with full status including the exact ask for blocked sessions
+- `/doctor` is now a full setup checkup that can diagnose and fix issues; `/checkup` is its alias
+- Reserved the "Claude Browser" MCP server name (alongside "Claude Preview") ahead of the Claude Desktop pane rename; user-configured MCP servers can no longer register under either name
+- Fixed Cowork VM-mode local-agent sessions failing to start with "Not logged in · Please run /login" on CLI 2.1.203+
+
+```sh
+npm install -g @bash0816/claude-code@latest
+```
+
+```sh
+npm install -g @bash0816/claude-code@2.1.204
+```
+
+---
+
 ## 2.1.204 — 2026-07-08 ✅ Current audited / 現在の監査済み版
 
 upstream claude-code 2.1.204 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
