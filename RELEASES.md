@@ -1,3 +1,15 @@
+## 2.1.206-1 — 2026-07-10 🔄 Candidate / 候補版
+
+Termux wrapper-only fix. Upstream version remains 2.1.206 (no upstream changes). Fixes `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` being forcibly exported at startup, which suppressed the Bootstrap process (`/api/claude_cli/bootstrap` endpoint) and prevented Fable 5 model options from appearing in `/model` picker. The environment variable was introduced in commit e7e0211 (2026-06-02) with unclear intent and inadvertently disabled multiple non-essential features (DesignSync, Projects, `/feedback`, and others as side-effects). Version 2.1.206-1 removes this forced export from both helper and bootstrap entry paths, restoring normal Fable 5 model discovery. Note: `DISABLE_AUTOUPDATER=1` remains separately maintained, so upstream auto-update suppression is unchanged.
+
+Termux wrapper 単独の修正。upstream version は 2.1.206 のまま変更なし。起動時に `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` が強制 export されていた不具合を修正しました。この環境変数は 2026-06-02 のコミット e7e0211 で導入されたものですが、意図が明確でないまま Bootstrap 処理（`/api/claude_cli/bootstrap` エンドポイント経由のモデル取得）を丸ごと抑制し、その結果 `/model` コマンドで Fable 5 モデルが表示されなくなっていました。この変数は意図せず DesignSync・Projects・`/feedback` など多くの非必須機能を巻き添えで無効化していました。2.1.206-1 では helper・bootstrap 両方の起動経路から強制 export を削除し、Fable 5 モデル選択肢の取得が正常に復元されています。なお `DISABLE_AUTOUPDATER=1` は別途維持されているため、upstream 自動アップデート抑制の動作は変わりません。
+
+```sh
+npm install -g @bash0816/claude-code@2.1.206-1
+```
+
+---
+
 ## 2.1.206 — 2026-07-10 ✅ Current audited / 現在の監査済み版
 
 upstream claude-code 2.1.206 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
