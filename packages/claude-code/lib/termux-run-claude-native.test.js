@@ -31,7 +31,7 @@ function extractFunction(block, startName, endName) {
 }
 
 function loadHelperApi() {
-  const helperBlock = extractBlock('cat <<\'NODE\' > "$_helper"', '\n  export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=');
+  const helperBlock = extractBlock('cat <<\'NODE\' > "$_helper"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
   const replaceSource = extractFunction(
     helperBlock,
     'function replaceRequired(source, pattern, replacement, label, expectedCount) {',
@@ -91,8 +91,8 @@ function sha256(filePath) {
 }
 
 test('helper and bootstrap rewrite helpers stay identical', () => {
-  const helperBlock = extractBlock('cat <<\'NODE\' > "$_helper"', '\n  export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=');
-  const bootstrapBlock = extractBlock('cat <<\'NODE\' > "$_bootstrap"', '\n  export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=');
+  const helperBlock = extractBlock('cat <<\'NODE\' > "$_helper"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+  const bootstrapBlock = extractBlock('cat <<\'NODE\' > "$_bootstrap"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
 
   const helperReplace = extractFunction(
     helperBlock,
@@ -180,7 +180,7 @@ test('helper and bootstrap rewrite helpers stay identical', () => {
 });
 
 test('print path does not defer cleanup to exit', () => {
-  const helperBlock = extractBlock('cat <<\'NODE\' > "$_helper"', '\n  export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=');
+  const helperBlock = extractBlock('cat <<\'NODE\' > "$_helper"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
 
   assert.equal(helperBlock.includes('CLAUDE_TERMUX_PRINT_WAIT_MS'), true);
   assert.equal(helperBlock.includes('setTimeout(resolve, printWaitMs)'), true);
@@ -189,7 +189,7 @@ test('print path does not defer cleanup to exit', () => {
 });
 
 test('bootstrap path defers cleanup to exit', () => {
-  const bootstrapBlock = extractBlock('cat <<\'NODE\' > "$_bootstrap"', '\n  export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=');
+  const bootstrapBlock = extractBlock('cat <<\'NODE\' > "$_bootstrap"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
 
   assert.equal(bootstrapBlock.includes('CLAUDE_TERMUX_PRINT_WAIT_MS'), false);
   assert.equal(bootstrapBlock.includes('setTimeout(resolve, printWaitMs)'), false);
@@ -198,8 +198,8 @@ test('bootstrap path defers cleanup to exit', () => {
 });
 
 test('entry extraction uses a process-unique filename', () => {
-  const helperBlock = extractBlock('cat <<\'NODE\' > "$_helper"', '\n  export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=');
-  const bootstrapBlock = extractBlock('cat <<\'NODE\' > "$_bootstrap"', '\n  export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=');
+  const helperBlock = extractBlock('cat <<\'NODE\' > "$_helper"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+  const bootstrapBlock = extractBlock('cat <<\'NODE\' > "$_bootstrap"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
 
   assert.equal(helperBlock.includes('process.pid'), true);
   assert.equal(helperBlock.includes('Math.random'), true);
