@@ -85,6 +85,7 @@ jobs:
           node --check ../../scripts/promote-verified-version.js
           node --check ../../scripts/retag-latest-dist-tags.js
           node --test ../../scripts/retag-latest-dist-tags.test.js
+          node --test lib/termux-run-claude-native.test.js
 
       - name: Verify audited metadata
         run: |
