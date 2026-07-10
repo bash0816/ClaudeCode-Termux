@@ -428,3 +428,7 @@ test('tarball contents match the workspace runner and test file', { skip: !fs.ex
   assert.equal(tarRunner.length, worktreeRunner.length);
   assert.equal(tarTest.length, worktreeTest.length);
 });
+
+test('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC is never forced (regression guard)', () => {
+  assert.equal(script.includes('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'), false);
+});
