@@ -481,7 +481,7 @@
       "entry_end_offset": 250874310,
       "tarball_integrity": "sha512-Jmcvn8Sg8+FaPLOy9t4h7ip+K1i5YYrimT1+iZL1YHBTA44WHJ9H/F8DW3QKnVyqUGqEza9Tg5PPVjzhi5fwyg==",
       "tarball_sha256": "02c381be3269489119287dc0b5f4b99b870d886f058918994b51e06b701dd1be",
-      "status": "offset_discovered"
+      "status": "termux_verified"
     }
   }
 }
