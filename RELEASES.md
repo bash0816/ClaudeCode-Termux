@@ -1,3 +1,23 @@
+## 2.1.209 — 2026-07-15 ✅ Current audited / 現在の監査済み版
+
+upstream claude-code 2.1.209 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
+
+**Upstream highlights / 主な変更（upstream）**
+
+## What's changed
+
+- Fixed /model and other dialogs being blocked in `claude agents` background sessions (reverts an overly broad guard)
+
+```sh
+npm install -g @bash0816/claude-code@latest
+```
+
+```sh
+npm install -g @bash0816/claude-code@2.1.207
+```
+
+---
+
 ## 2.1.207 — 2026-07-12 ✅ Current audited / 現在の監査済み版
 
 upstream claude-code 2.1.207 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
