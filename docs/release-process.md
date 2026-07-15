@@ -149,11 +149,19 @@ git push origin main
 
 ---
 
-## Phase 4: ドキュメント仕上げ（PR をマージ）
+## Phase 4: ドキュメント仕上げ（自動マージ）
 
-### 4-1. RELEASES.md を編集
+`release-finalize.yml` の "Merge docs PR (admin bypass)" ステップが、`RELEASE_ADMIN_PAT`(管理者権限を持つ fine-grained PAT、repository secret)を使って docs PR を `--admin` で自動マージする。人力でのPRマージ・承認待ちは不要。
 
-PR 内の RELEASES.md にある `<!-- TODO: upstream highlights を追記してください -->` を実際の内容に置き換える。
+マージ後、`create-github-release.yml` が自動トリガーされ、その時点の RELEASES.md の内容で GitHub Release が即座に作成される。
+
+### 4-1. (必要な場合のみ) RELEASES.md / GitHub Release の内容を補正
+
+PR本文の `TODO before merging` チェックリストは、マージをブロックする条件ではなく「マージ後に気づいたら補足するメモ」になった。upstream highlights の自動取得(`gh api .../releases/tags/...`)に失敗していた場合や、Termux 固有の注記を追記したい場合は、マージ後に別コミットで RELEASES.md を更新し、必要なら以下で GitHub Release のノートも合わせて更新する:
+
+```sh
+gh release edit vX.Y.Z-N --notes "..."
+```
 
 **書く内容（エンドユーザー向け）:**
 - upstream `X.Y.Z` の主要変更（新機能・バグ修正の箇条書き）
@@ -196,17 +204,9 @@ npm install -g @bash0816/claude-code@<previous_stable>
 ---
 ```
 
-### 4-2. PR をマージ
+### 4-2. 自動マージ・GitHub Release作成の確認
 
-PR をマージすると `create-github-release.yml` が自動トリガーされ、RELEASES.md の内容を使って GitHub Release が作成される。
-
-### 4-3. GitHub Release の確認・編集
-
-自動作成された GitHub Release のノートを確認し、必要であれば編集する:
-
-```sh
-gh release edit vX.Y.Z-N --notes "..."
-```
+`gh pr view <PR番号> --json state` でPRが自動マージ済み(`MERGED`)になっていることを確認する。マージ後、`create-github-release.yml` の実行結果を `gh run list --workflow="Create GitHub Release"` で確認する。
 
 ---
 
@@ -226,10 +226,9 @@ gh release edit vX.Y.Z-N --notes "..."
 - [ ] `npm view @bash0816/claude-code dist-tags` で `latest` が新版になっていることを確認
 
 ### docs PR
-- [ ] RELEASES.md の TODO を upstream highlights で埋める
-- [ ] PR をマージ
+- [ ] docs PR が自動マージされたことを確認(`gh pr view <PR番号> --json state`)
 - [ ] GitHub Release が自動作成されたことを確認
-- [ ] 内容を確認・必要であれば `gh release edit` で修正
+- [ ] (必要なら) RELEASES.md / GitHub Release の内容を補正
 
 ---
 
