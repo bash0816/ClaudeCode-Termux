@@ -11,9 +11,9 @@
 【人】実機確認（唯一の手動ステップ）
 【手動→自動】termux_verified に昇格 → main push
   → latest に自動 retag
-  → docs PR 自動作成
-【人】RELEASES.md を編集してPRをマージ
+  → docs PR 自動作成・自動マージ
   → GitHub Release 自動作成
+【人】(必要なら) RELEASES.md / GitHub Release の内容を補正
 ```
 
 ---
