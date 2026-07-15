@@ -102,27 +102,37 @@ jobs:
           if [ -z "$notes" ]; then
             upstream_tag="v${VER}"
             upstream_body=$(gh api "repos/anthropics/claude-code/releases/tags/${upstream_tag}" --jq '.body' 2>/dev/null || echo "")
-            notes_file=$(mktemp)
             if [ -n "$upstream_body" ]; then
-              printf 'upstream claude-code %s 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。\n\n**Upstream highlights / 主な変更（upstream）**\n\n%s' \
-                "$VER" "$upstream_body" > "$notes_file"
+              notes=$(printf 'upstream claude-code %s 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。\n\n**Upstream highlights / 主な変更（upstream）**\n\n%s' \
+                "$VER" "$upstream_body")
             else
-              printf 'upstream claude-code %s 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。' \
-                "$VER" > "$notes_file"
+              notes=$(printf 'upstream claude-code %s 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。' \
+                "$VER")
             fi
-            notes=$(cat "$notes_file")
-            rm -f "$notes_file"
           fi
           rollback_line=""
           if [ -n "$previous_stable" ]; then
-            rollback_line="\n\`\`\`sh\nnpm install -g @bash0816/claude-code@${previous_stable}\n\`\`\`"
+            rollback_line=$(printf '\n```sh\nnpm install -g @bash0816/claude-code@%s\n```' "$previous_stable")
           fi
           # Use ## VER (with trailing space) to avoid partial match (e.g. 2.1.177 matching 2.1.177-1)
           if grep -qF "## ${VER} " RELEASES.md; then
             echo "RELEASES.md already has ${VER} entry, skipping"
           else
-            entry="## ${VER} — ${date_str} ✅ Current audited / 現在の監査済み版\n\n${notes}\n\n\`\`\`sh\nnpm install -g @bash0816/claude-code@latest\n\`\`\`\n${rollback_line}\n\n---\n\n"
-            printf "%b" "${entry}" > /tmp/new_entry.md
+            entry=$(cat <<RELNOTES_EOF_9f3a2b
+## ${VER} — ${date_str} ✅ Current audited / 現在の監査済み版
+
+${notes}
+
+\`\`\`sh
+npm install -g @bash0816/claude-code@latest
+\`\`\`
+${rollback_line}
+
+---
+
+RELNOTES_EOF_9f3a2b
+)
+            printf '%s\n' "$entry" > /tmp/new_entry.md
             cat /tmp/new_entry.md RELEASES.md > /tmp/releases_new.md
             mv /tmp/releases_new.md RELEASES.md
             echo "RELEASES.md prepended with ${VER} stub"
