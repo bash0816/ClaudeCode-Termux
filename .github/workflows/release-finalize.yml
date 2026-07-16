@@ -123,19 +123,19 @@ jobs:
             echo "RELEASES.md already has ${VER} entry, skipping"
           else
             entry=$(cat <<RELNOTES_EOF_9f3a2b
-## ${VER} — ${date_str} ✅ Current audited / 現在の監査済み版
+          ## ${VER} — ${date_str} ✅ Current audited / 現在の監査済み版
 
-${notes}
+          ${notes}
 
-\`\`\`sh
-npm install -g @bash0816/claude-code@latest
-\`\`\`
-${rollback_line}
+          \`\`\`sh
+          npm install -g @bash0816/claude-code@latest
+          \`\`\`
+          ${rollback_line}
 
----
+          ---
 
-RELNOTES_EOF_9f3a2b
-)
+          RELNOTES_EOF_9f3a2b
+          )
             printf '%s\n' "$entry" > /tmp/new_entry.md
             cat /tmp/new_entry.md RELEASES.md > /tmp/releases_new.md
             mv /tmp/releases_new.md RELEASES.md
