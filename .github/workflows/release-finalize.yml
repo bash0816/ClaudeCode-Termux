@@ -1,5 +1,9 @@
 name: Release Finalize
 
+# NOTE(2026-07-16): trivial touch to force GitHub Actions to re-index the
+# workflow_dispatch trigger, which was returning HTTP 422
+# "Workflow does not have 'workflow_dispatch' trigger" despite this file
+# already declaring it. No behavioral change.
 on:
   workflow_dispatch:
     inputs:
