@@ -122,19 +122,14 @@ jobs:
           if grep -qF "## ${VER} " RELEASES.md; then
             echo "RELEASES.md already has ${VER} entry, skipping"
           else
-            entry=$(cat <<RELNOTES_EOF_9f3a2b
-          ## ${VER} — ${date_str} ✅ Current audited / 現在の監査済み版
-
-          ${notes}
-
-          \`\`\`sh
-          npm install -g @bash0816/claude-code@latest
-          \`\`\`
-          ${rollback_line}
-
-          ---
-
-          RELNOTES_EOF_9f3a2b
+            entry=$(
+            printf '## %s — %s ✅ Current audited / 現在の監査済み版\n\n' "$VER" "$date_str"
+            printf '%s\n\n' "$notes"
+            printf '```sh\n'
+            printf 'npm install -g @bash0816/claude-code@latest\n'
+            printf '```\n'
+            printf '%s\n\n' "$rollback_line"
+            printf -- '---\n\n'
           )
             printf '%s\n' "$entry" > /tmp/new_entry.md
             cat /tmp/new_entry.md RELEASES.md > /tmp/releases_new.md
