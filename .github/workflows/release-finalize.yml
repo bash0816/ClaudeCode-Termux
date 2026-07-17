@@ -116,6 +116,7 @@ jobs:
           fi
           rollback_line=""
           if [ -n "$previous_stable" ]; then
+            # shellcheck disable=SC2016  # markdown code fence backticks are misread as command substitution, not a real expansion issue
             rollback_line=$(printf '\n```sh\nnpm install -g @bash0816/claude-code@%s\n```' "$previous_stable")
           fi
           # Use ## VER (with trailing space) to avoid partial match (e.g. 2.1.177 matching 2.1.177-1)
