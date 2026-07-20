@@ -1,3 +1,22 @@
+## 2.1.215 — 2026-07-20 ✅ Current audited / 現在の監査済み版
+
+upstream claude-code 2.1.215 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
+
+**Upstream highlights / 主な変更（upstream）**
+
+## What's changed
+
+- Claude no longer runs the `/verify` and `/code-review` skills on its own; invoke them with `/verify` or `/code-review` when you want them
+
+```sh
+npm install -g @bash0816/claude-code@latest
+```
+
+```sh
+npm install -g @bash0816/claude-code@2.1.214
+```
+
+---
 ## 2.1.214 — 2026-07-19 ✅ Current audited / 現在の監査済み版
 
 upstream claude-code 2.1.214 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
