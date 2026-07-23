@@ -554,6 +554,15 @@
       "tarball_integrity": "sha512-u0uRgmcZTL1vVQVvFbQ2GVjmmFQ+MhEGNrWaqm5xddqpVPE3RGVlm6wt1icMieV+wGdwCAzBNb89MeRM5giwzw==",
       "tarball_sha256": "665393be60778bb16427c2faff07778ccbea6d982ec883ecc767cf6a99c02ba3",
       "status": "termux_verified"
+    },
+    "2.1.218": {
+      "wrapper_spec": "@anthropic-ai/claude-code@2.1.218",
+      "native_spec": "@anthropic-ai/claude-code-linux-arm64@2.1.218",
+      "entry_js_offset": 242315844,
+      "entry_end_offset": 263624682,
+      "tarball_integrity": "sha512-CcbVQCzXd9EnlktCEPrkElhdBZuqIWhkeinRGxUuZa6aal4h6J+8Dbo+OnfchBEzd1mahRDQK8BckGBAYozv2g==",
+      "tarball_sha256": "1d3cb5e12f0b653929e34ba046a7ba0a4f5c01eb25ea57b478dbac27e4af9619",
+      "status": "offset_discovered"
     }
   }
 }
