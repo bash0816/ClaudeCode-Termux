@@ -583,6 +583,7 @@ function rewriteNativeChunkSource(source) {
   const _bunPropertyAccessExpected = (() => {
     const _ver = String(process.env.CURRENT_CLAUDE_VERSION || '');
     const _m = _ver.match(/^(\d+)\.(\d+)\.(\d+)/);
+    if (_m && (Number(_m[1]) > 2 || Number(_m[2]) > 1 || Number(_m[3]) >= 219)) return 42;
     if (_m && (Number(_m[1]) > 2 || Number(_m[2]) > 1 || Number(_m[3]) >= 216)) return 40;
     if (_m && (Number(_m[1]) > 2 || Number(_m[2]) > 1 || Number(_m[3]) >= 214)) return 39;
     if (_m && (Number(_m[1]) > 2 || Number(_m[2]) > 1 || Number(_m[3]) >= 205)) return 38;
@@ -1275,6 +1276,7 @@ function rewriteNativeChunkSource(source) {
   const _bunPropertyAccessExpected = (() => {
     const _ver = String(process.env.CURRENT_CLAUDE_VERSION || '');
     const _m = _ver.match(/^(\d+)\.(\d+)\.(\d+)/);
+    if (_m && (Number(_m[1]) > 2 || Number(_m[2]) > 1 || Number(_m[3]) >= 219)) return 42;
     if (_m && (Number(_m[1]) > 2 || Number(_m[2]) > 1 || Number(_m[3]) >= 216)) return 40;
     if (_m && (Number(_m[1]) > 2 || Number(_m[2]) > 1 || Number(_m[3]) >= 214)) return 39;
     if (_m && (Number(_m[1]) > 2 || Number(_m[2]) > 1 || Number(_m[3]) >= 205)) return 38;
