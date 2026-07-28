@@ -636,6 +636,12 @@ async function main() {
   function onAsyncError(error) {
     asyncErrors.push(error);
   }
+  const printWaitMs = Number(process.env.CLAUDE_TERMUX_PRINT_WAIT_MS || 5000);
+  async function waitForPrintFlush() {
+    if (Number.isFinite(printWaitMs) && printWaitMs > 0) {
+      await new Promise(resolve => setTimeout(resolve, printWaitMs));
+    }
+  }
 
   try {
     process.once('uncaughtException', onAsyncError);
@@ -697,18 +703,15 @@ async function main() {
     process.exit = code => {
       throw new RequestedExit(code);
     };
-
-    const printWaitMs = Number(process.env.CLAUDE_TERMUX_PRINT_WAIT_MS || 5000);
     const moduleLike = { exports: {} };
     const maybePromise = fn(moduleLike.exports, fakeRequire, moduleLike, extractedFile, workdir);
     if (maybePromise && typeof maybePromise.then === 'function') await maybePromise;
-    if (Number.isFinite(printWaitMs) && printWaitMs > 0) {
-      await new Promise(resolve => setTimeout(resolve, printWaitMs));
-    }
+    await waitForPrintFlush();
     if (asyncErrors.length > 0) throw asyncErrors[0];
   } catch (error) {
     if (error instanceof RequestedExit) {
       process.exitCode = error.code;
+      await waitForPrintFlush();
       return;
     }
     throw error;
@@ -758,6 +761,7 @@ else
   _bootstrap=$(mktemp "${TERMUX_TMPDIR}/claude-bootstrap.XXXXXX.js")
   trap 'rm -f "$_bootstrap"' EXIT HUP INT TERM
   export CLAUDE_TERMUX_TUI="${_tui}"
+  export CLAUDE_TERMUX_PRINT_MODE="${_pf}"
   cat <<'NODE' > "$_bootstrap"
 const fs = require('fs');
 const path = require('path');
@@ -1329,6 +1333,13 @@ async function main() {
   function onAsyncError(error) {
     asyncErrors.push(error);
   }
+  async function waitForPrintFlushIfNeeded() {
+    if (process.env.CLAUDE_TERMUX_PRINT_MODE !== '1') return;
+    const printWaitMs = Number(process.env.CLAUDE_TERMUX_PRINT_WAIT_MS || 5000);
+    if (Number.isFinite(printWaitMs) && printWaitMs > 0) {
+      await new Promise(resolve => setTimeout(resolve, printWaitMs));
+    }
+  }
 
   try {
     process.once('uncaughtException', onAsyncError);
@@ -1394,10 +1405,12 @@ async function main() {
     const moduleLike = { exports: {} };
     const maybePromise = fn(moduleLike.exports, fakeRequire, moduleLike, extractedFile, workdir);
     if (maybePromise && typeof maybePromise.then === 'function') await maybePromise;
+    await waitForPrintFlushIfNeeded();
     if (asyncErrors.length > 0) throw asyncErrors[0];
   } catch (error) {
     if (error instanceof RequestedExit) {
       process.exitCode = error.code;
+      await waitForPrintFlushIfNeeded();
       return;
     }
     throw error;

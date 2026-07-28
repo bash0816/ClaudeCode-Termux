@@ -191,10 +191,30 @@ test('print path does not defer cleanup to exit', () => {
 test('bootstrap path defers cleanup to exit', () => {
   const bootstrapBlock = extractBlock('cat <<\'NODE\' > "$_bootstrap"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
 
-  assert.equal(bootstrapBlock.includes('CLAUDE_TERMUX_PRINT_WAIT_MS'), false);
-  assert.equal(bootstrapBlock.includes('setTimeout(resolve, printWaitMs)'), false);
   assert.equal(bootstrapBlock.includes('process.once(\'exit\''), true);
   assert.equal(bootstrapBlock.includes('process.removeListener(\'uncaughtException\''), true);
+});
+
+test('bootstrap branch exports CLAUDE_TERMUX_PRINT_MODE before invoking node', () => {
+  const bootstrapShellRegion = extractFunction(
+    script,
+    'export CLAUDE_TERMUX_TUI="${_tui}"',
+    'cat <<\'NODE\' > "$_bootstrap"',
+  );
+  assert.equal(bootstrapShellRegion.includes('export CLAUDE_TERMUX_PRINT_MODE="${_pf}"'), true);
+});
+
+test('helper and bootstrap wait for print flush, including the RequestedExit path', () => {
+  const helperBlock = extractBlock('cat <<\'NODE\' > "$_helper"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+  const bootstrapBlock = extractBlock('cat <<\'NODE\' > "$_bootstrap"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+
+  assert.equal(helperBlock.includes('async function waitForPrintFlush()'), true);
+  assert.equal(helperBlock.includes('await waitForPrintFlush();\n    if (asyncErrors.length > 0) throw asyncErrors[0];'), true);
+  assert.equal(helperBlock.includes('process.exitCode = error.code;\n      await waitForPrintFlush();\n      return;'), true);
+
+  assert.equal(bootstrapBlock.includes('async function waitForPrintFlushIfNeeded()'), true);
+  assert.equal(bootstrapBlock.includes('await waitForPrintFlushIfNeeded();\n    if (asyncErrors.length > 0) throw asyncErrors[0];'), true);
+  assert.equal(bootstrapBlock.includes('process.exitCode = error.code;\n      await waitForPrintFlushIfNeeded();\n      return;'), true);
 });
 
 test('entry extraction uses a process-unique filename', () => {
@@ -543,4 +563,78 @@ test('tarball contents match the workspace runner and test file', { skip: !fs.ex
 
 test('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC is never forced (regression guard)', () => {
   assert.equal(script.includes('CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'), false);
+});
+
+function buildScenarioFixtureSource() {
+  const typeofBun = Array.from({ length: 7 }, () => 'typeof Bun').join('; ');
+  const bunProps = Array.from({ length: 42 }, (_, i) => `Bun.p${i}`).join('; ');
+  return `function(exports, require, module, __filename, __dirname) {
+    ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps};
+    npmInstallDeprecated:!0; npmInstallDeprecated:!0;
+    const scenario = process.env.TEST_SCENARIO;
+    if (scenario === 'sync-exit') { process.stdout.write('ok'); process.exit(0); return; }
+    if (scenario === 'async-exit') {
+      setTimeout(() => { process.stdout.write('ok'); }, 100).unref();
+      return;
+    }
+    process.stdout.write('ok');
+  }`;
+}
+
+function runScenario({ printMode, stdinInherit, scenario }) {
+  const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-stdin-test-'));
+  const sourceBin = path.join(tmpBase, 'fake-source.js');
+  const fixtureSource = buildScenarioFixtureSource();
+  fs.writeFileSync(sourceBin, fixtureSource, 'utf8');
+  const entryJsOffset = 0;
+  const entryEndOffset = Buffer.byteLength(fixtureSource, 'utf8');
+  const workdir = path.join(tmpBase, 'workdir');
+  fs.mkdirSync(workdir, { recursive: true });
+
+  const env = {
+    ...process.env,
+    SOURCE_BIN: sourceBin,
+    WORKDIR: workdir,
+    ENTRY_JS_OFFSET: String(entryJsOffset),
+    ENTRY_END_OFFSET: String(entryEndOffset),
+    CURRENT_CLAUDE_VERSION: '2.1.220',
+    CLAUDE_TERMUX_PACKAGE_DIR: path.join(__dirname, '..'),
+    MAGI_ENV: '1',
+    CLAUDE_TERMUX_PRINT_WAIT_MS: '300',
+    TMPDIR: tmpBase,
+    TEST_SCENARIO: scenario,
+  };
+  if (stdinInherit) env.CLAUDE_TERMUX_STDIN = 'inherit';
+  else delete env.CLAUDE_TERMUX_STDIN;
+
+  const args = printMode ? ['-p', 'x'] : [];
+  const start = Date.now();
+  const result = child_process.spawnSync('sh', [scriptPath, ...args], {
+    env,
+    input: 'test input\n',
+    encoding: 'utf8',
+    timeout: 10000,
+  });
+  const elapsedMs = Date.now() - start;
+  fs.rmSync(tmpBase, { recursive: true, force: true });
+  return { ...result, elapsedMs };
+}
+
+test('helper branch (CLI -p, no stdin inherit): normal/sync-exit/async-exit all produce output', () => {
+  for (const scenario of ['normal', 'sync-exit', 'async-exit']) {
+    const r = runScenario({ printMode: true, stdinInherit: false, scenario });
+    assert.ok((r.stdout || '').includes('ok'), `scenario=${scenario} stdout=${r.stdout} stderr=${r.stderr}`);
+    assert.equal(r.status, 0, `scenario=${scenario} status=${r.status} stderr=${r.stderr}`);
+  }
+});
+
+test('bootstrap branch (-p + CLAUDE_TERMUX_STDIN=inherit): normal/sync-exit/async-exit all produce output', () => {
+  for (const scenario of ['normal', 'sync-exit', 'async-exit']) {
+    const r = runScenario({ printMode: true, stdinInherit: true, scenario });
+    assert.ok((r.stdout || '').includes('ok'), `scenario=${scenario} stdout=${r.stdout} stderr=${r.stderr}`);
+    assert.equal(r.status, 0, `scenario=${scenario} status=${r.status} stderr=${r.stderr}`);
+    if (scenario === 'async-exit') {
+      assert.ok(r.elapsedMs >= 250, `expected wait >= 250ms, got ${r.elapsedMs}ms`);
+    }
+  }
 });
