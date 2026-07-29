@@ -1,3 +1,20 @@
+## 2.1.220-2 — 2026-07-29 ✅ Current audited / 現在の監査済み版
+
+upstream claude-code 2.1.220-2 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
+
+**Upstream highlights / 主な変更（upstream）**
+
+{"message":"Not Found","documentation_url":"https://docs.github.com/rest/releases/releases#get-a-release-by-tag-name","status":"404"}
+
+```sh
+npm install -g @bash0816/claude-code@latest
+```
+
+```sh
+npm install -g @bash0816/claude-code@2.1.220
+```
+
+---
 ## 2.1.220 — 2026-07-25 ✅ Current audited / 現在の監査済み版
 
 upstream claude-code 2.1.220 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
