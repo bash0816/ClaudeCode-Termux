@@ -577,6 +577,39 @@ function buildScenarioFixtureSource() {
       setTimeout(() => { process.stdout.write('ok'); }, 100).unref();
       return;
     }
+    if (scenario === 'self-sigkill-fallback-string') {
+      try {
+        process.exit(17);
+      } catch (e) {
+        process.kill(process.pid, 'SIGKILL');
+      }
+      return;
+    }
+    if (scenario === 'self-sigkill-fallback-numeric') {
+      try {
+        process.exit(17);
+      } catch (e) {
+        process.kill(process.pid, 9);
+      }
+      return;
+    }
+    if (scenario === 'self-sigkill-fallback-no-code') {
+      try {
+        process.exit();
+      } catch (e) {
+        process.kill(process.pid, 'SIGKILL');
+      }
+      return;
+    }
+    if (scenario === 'other-process-kill') {
+      const cp = require('child_process');
+      const child = cp.spawn('node', ['-e', 'setTimeout(() => {}, 5000)']);
+      const childPid = child.pid;
+      process.kill(childPid, 0);
+      child.kill();
+      process.stdout.write('ok');
+      return;
+    }
     process.stdout.write('ok');
   }`;
 }
@@ -620,6 +653,45 @@ function runScenario({ printMode, stdinInherit, scenario }) {
   return { ...result, elapsedMs };
 }
 
+test('helper and bootstrap intercept process.kill(self, SIGKILL) statically', () => {
+  const helperBlock = extractBlock('cat <<\'NODE\' > "$_helper"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+  const bootstrapBlock = extractBlock('cat <<\'NODE\' > "$_bootstrap"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+
+  // Check helper branch
+  const helperOriginalKillIdx = helperBlock.indexOf('const originalKill = process.kill;');
+  assert.ok(helperOriginalKillIdx > -1, 'helper: missing originalKill declaration');
+
+  const helperProcessKillIdx = helperBlock.indexOf('process.kill = (pid, signal) => {', helperOriginalKillIdx);
+  assert.ok(helperProcessKillIdx > helperOriginalKillIdx, 'helper: process.kill override must come after originalKill declaration');
+
+  const helperRestoreIdx = helperBlock.indexOf('process.kill = originalKill;', helperProcessKillIdx);
+  assert.ok(helperRestoreIdx > helperProcessKillIdx, 'helper: process.kill restoration must come after override');
+
+  // Verify SIGKILL check within the override
+  const helperKillOverrideEnd = helperBlock.indexOf('};', helperProcessKillIdx);
+  const helperKillOverride = helperBlock.slice(helperProcessKillIdx, helperKillOverrideEnd);
+  assert.ok(helperKillOverride.includes('signal === \'SIGKILL\''), 'helper: process.kill must check for SIGKILL string');
+  assert.ok(helperKillOverride.includes('signal === 9'), 'helper: process.kill must check for SIGKILL numeric value');
+  assert.ok(helperKillOverride.includes('throw new RequestedExit'), 'helper: process.kill must throw RequestedExit for self SIGKILL');
+
+  // Check bootstrap branch
+  const bootstrapOriginalKillIdx = bootstrapBlock.indexOf('const originalKill = process.kill;');
+  assert.ok(bootstrapOriginalKillIdx > -1, 'bootstrap: missing originalKill declaration');
+
+  const bootstrapProcessKillIdx = bootstrapBlock.indexOf('process.kill = (pid, signal) => {', bootstrapOriginalKillIdx);
+  assert.ok(bootstrapProcessKillIdx > bootstrapOriginalKillIdx, 'bootstrap: process.kill override must come after originalKill declaration');
+
+  const bootstrapRestoreIdx = bootstrapBlock.indexOf('process.kill = originalKill;', bootstrapProcessKillIdx);
+  assert.ok(bootstrapRestoreIdx > bootstrapProcessKillIdx, 'bootstrap: process.kill restoration must come after override');
+
+  // Verify SIGKILL check within the override
+  const bootstrapKillOverrideEnd = bootstrapBlock.indexOf('};', bootstrapProcessKillIdx);
+  const bootstrapKillOverride = bootstrapBlock.slice(bootstrapProcessKillIdx, bootstrapKillOverrideEnd);
+  assert.ok(bootstrapKillOverride.includes('signal === \'SIGKILL\''), 'bootstrap: process.kill must check for SIGKILL string');
+  assert.ok(bootstrapKillOverride.includes('signal === 9'), 'bootstrap: process.kill must check for SIGKILL numeric value');
+  assert.ok(bootstrapKillOverride.includes('throw new RequestedExit'), 'bootstrap: process.kill must throw RequestedExit for self SIGKILL');
+});
+
 test('helper branch (CLI -p, no stdin inherit): normal/sync-exit/async-exit all produce output', () => {
   for (const scenario of ['normal', 'sync-exit', 'async-exit']) {
     const r = runScenario({ printMode: true, stdinInherit: false, scenario });
@@ -637,4 +709,28 @@ test('bootstrap branch (-p + CLAUDE_TERMUX_STDIN=inherit): normal/sync-exit/asyn
       assert.ok(r.elapsedMs >= 250, `expected wait >= 250ms, got ${r.elapsedMs}ms`);
     }
   }
+});
+
+test('helper branch intercepts self-directed SIGKILL (string signal) and exits with proper code', () => {
+  const r = runScenario({ printMode: true, stdinInherit: false, scenario: 'self-sigkill-fallback-string' });
+  assert.equal(r.status, 17, `expected status 17, got ${r.status}; stderr=${r.stderr}`);
+  assert.ok(!r.signal, `expected clean exit (no signal), but got signal: ${r.signal}`);
+});
+
+test('helper branch intercepts self-directed SIGKILL (numeric signal 9) and exits with proper code', () => {
+  const r = runScenario({ printMode: true, stdinInherit: false, scenario: 'self-sigkill-fallback-numeric' });
+  assert.equal(r.status, 17, `expected status 17, got ${r.status}; stderr=${r.stderr}`);
+  assert.ok(!r.signal, `expected clean exit (no signal), but got signal: ${r.signal}`);
+});
+
+test('helper branch intercepts self-directed SIGKILL with process.exit() (no code) and defaults to 0', () => {
+  const r = runScenario({ printMode: true, stdinInherit: false, scenario: 'self-sigkill-fallback-no-code' });
+  assert.equal(r.status, 0, `expected status 0, got ${r.status}; stderr=${r.stderr}`);
+  assert.ok(!r.signal, `expected clean exit (no signal), but got signal: ${r.signal}`);
+});
+
+test('helper branch allows process.kill to other processes (signal 0, passthrough)', () => {
+  const r = runScenario({ printMode: true, stdinInherit: false, scenario: 'other-process-kill' });
+  assert.ok((r.stdout || '').includes('ok'), `expected ok output, got stdout=${r.stdout} stderr=${r.stderr}`);
+  assert.equal(r.status, 0, `expected status 0, got ${r.status}; stderr=${r.stderr}`);
 });
