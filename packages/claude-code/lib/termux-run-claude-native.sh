@@ -623,6 +623,7 @@ async function main() {
 
   const originalArgv = process.argv.slice();
   const originalExit = process.exit;
+  const originalKill = process.kill;
   const originalBun = process.versions.bun;
   const hadGlobalBun = Object.prototype.hasOwnProperty.call(globalThis, 'Bun');
   const originalGlobalBun = globalThis.Bun;
@@ -700,8 +701,16 @@ async function main() {
     globalThis.__claudeBun = globalThis.__claudeBunShim;
     globalThis.Bun = globalThis.__claudeBunShim;
     process.argv = ['node', extractedFile, ...argv];
+    let lastExitAttemptCode = 0;
     process.exit = code => {
-      throw new RequestedExit(code);
+      lastExitAttemptCode = code ?? 0;
+      throw new RequestedExit(lastExitAttemptCode);
+    };
+    process.kill = (pid, signal) => {
+      if (pid === process.pid && (signal === 'SIGKILL' || signal === 9)) {
+        throw new RequestedExit(lastExitAttemptCode);
+      }
+      return originalKill.call(process, pid, signal);
     };
     const moduleLike = { exports: {} };
     const maybePromise = fn(moduleLike.exports, fakeRequire, moduleLike, extractedFile, workdir);
@@ -725,6 +734,7 @@ async function main() {
     }
     process.argv = originalArgv;
     process.exit = originalExit;
+    process.kill = originalKill;
     try {
       if (originalBun === undefined) {
         delete process.versions.bun;
@@ -1320,6 +1330,7 @@ async function main() {
 
   const originalArgv = process.argv.slice();
   const originalExit = process.exit;
+  const originalKill = process.kill;
   const originalBun = process.versions.bun;
   const hadGlobalBun = Object.prototype.hasOwnProperty.call(globalThis, 'Bun');
   const originalGlobalBun = globalThis.Bun;
@@ -1398,8 +1409,16 @@ async function main() {
     globalThis.__claudeBun = globalThis.__claudeBunShim;
     globalThis.Bun = globalThis.__claudeBunShim;
     process.argv = ['node', extractedFile, ...argv];
+    let lastExitAttemptCode = 0;
     process.exit = code => {
-      throw new RequestedExit(code);
+      lastExitAttemptCode = code ?? 0;
+      throw new RequestedExit(lastExitAttemptCode);
+    };
+    process.kill = (pid, signal) => {
+      if (pid === process.pid && (signal === 'SIGKILL' || signal === 9)) {
+        throw new RequestedExit(lastExitAttemptCode);
+      }
+      return originalKill.call(process, pid, signal);
     };
 
     const moduleLike = { exports: {} };
@@ -1419,6 +1438,7 @@ async function main() {
     process.removeListener('unhandledRejection', onAsyncError);
     process.argv = originalArgv;
     process.exit = originalExit;
+    process.kill = originalKill;
     process.once('exit', () => {
       if (extractedFile) {
         try {
