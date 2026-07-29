@@ -61,6 +61,11 @@ function formatTextBlock(lines) {
   return `\`\`\`text\n${lines.join('\n')}\n\`\`\``;
 }
 
+function extractNativeVersion(wrapperSpec) {
+  const idx = wrapperSpec.lastIndexOf('@');
+  return wrapperSpec.slice(idx + 1);
+}
+
 function renderInstallCommands(versions) {
   return versions.map(version => `npm install -g @bash0816/claude-code@${version}`);
 }
@@ -93,7 +98,7 @@ function updateSupportedVersionsTable(content, latestAudited, previousStable, st
   return content.slice(0, startIdx + tableStart.length) + tableSection + content.slice(endIdx);
 }
 
-function updateRootReadme(content, versions, latestAudited, previousStable, stablePinned) {
+function updateRootReadme(content, versions, latestAudited, previousStable, stablePinned, nativeVersion) {
   // Install command
   const installBlock = [
     formatShellBlock(renderInstallCommands([latestAudited])),
@@ -129,7 +134,7 @@ function updateRootReadme(content, versions, latestAudited, previousStable, stab
     '',
     '例:',
     '',
-    formatTextBlock([`${latestAudited} (Claude Code)`]),
+    formatTextBlock([`${nativeVersion} (Claude Code)`]),
     '',
   ].join('\n');
 
@@ -226,10 +231,13 @@ function main() {
     throw new Error('manifest latest audited version is not termux_verified');
   }
 
+  const latestAuditedEntry = rootConfig.versions[manifest.latest_audited_version];
+  const nativeVersion = extractNativeVersion(latestAuditedEntry.wrapper_spec);
+
   const rootReadme = fs.readFileSync(rootReadmeFile, 'utf8');
   const packageReadme = fs.readFileSync(packageReadmeFile, 'utf8');
 
-  fs.writeFileSync(rootReadmeFile, updateRootReadme(rootReadme, verifiedVersions, manifest.latest_audited_version, manifest.previous_stable_version, manifest.stable_pinned_version));
+  fs.writeFileSync(rootReadmeFile, updateRootReadme(rootReadme, verifiedVersions, manifest.latest_audited_version, manifest.previous_stable_version, manifest.stable_pinned_version, nativeVersion));
   fs.writeFileSync(packageReadmeFile, updatePackageReadme(packageReadme, verifiedVersions, manifest.latest_audited_version));
 }
 
