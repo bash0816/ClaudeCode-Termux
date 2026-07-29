@@ -610,11 +610,39 @@ function buildScenarioFixtureSource() {
       process.stdout.write('ok');
       return;
     }
+    if (scenario === 'stream-json-result') {
+      process.stdout.write('{"type":"init"}\\n');
+      const msg = '{"type":"result","data":"test"}\\n';
+      process.stdout.write(msg, undefined, () => {});
+      return;
+    }
+    if (scenario === 'stream-json-multibyte-split') {
+      // Split a UTF-8 multi-byte character across write calls
+      // 'あ' is 3 bytes in UTF-8: e3 81 82
+      const buf = Buffer.from('あ', 'utf8');
+      // Split the 3-byte character: first byte in one write, remaining in another
+      const jsonLine = '{"type":"result"}\\n';
+      const part1 = Buffer.concat([Buffer.from(jsonLine), buf.slice(0, 1)]);
+      const part2 = Buffer.concat([buf.slice(1)]);
+      process.stdout.write(part1);
+      process.stdout.write(part2, undefined, () => {});
+      return;
+    }
+    if (scenario === 'stream-json-timeout') {
+      process.stdout.write('{"type":"init"}\\n');
+      setTimeout(() => {}, 5000);
+      return;
+    }
+    if (scenario === 'stream-json-requested-exit-then-result') {
+      process.stdout.write('{"type":"result"}\\n');
+      process.exit(0);
+      return;
+    }
     process.stdout.write('ok');
   }`;
 }
 
-function runScenario({ printMode, stdinInherit, scenario }) {
+function runScenario({ printMode, stdinInherit, scenario, extraArgs }) {
   const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-stdin-test-'));
   const sourceBin = path.join(tmpBase, 'fake-source.js');
   const fixtureSource = buildScenarioFixtureSource();
@@ -640,7 +668,7 @@ function runScenario({ printMode, stdinInherit, scenario }) {
   if (stdinInherit) env.CLAUDE_TERMUX_STDIN = 'inherit';
   else delete env.CLAUDE_TERMUX_STDIN;
 
-  const args = printMode ? ['-p', 'x'] : [];
+  const args = printMode ? ['-p', 'x', ...(extraArgs || [])] : [];
   const start = Date.now();
   const result = child_process.spawnSync('sh', [scriptPath, ...args], {
     env,
@@ -649,8 +677,7 @@ function runScenario({ printMode, stdinInherit, scenario }) {
     timeout: 10000,
   });
   const elapsedMs = Date.now() - start;
-  fs.rmSync(tmpBase, { recursive: true, force: true });
-  return { ...result, elapsedMs };
+  return { ...result, elapsedMs, tmpBase };
 }
 
 test('helper and bootstrap intercept process.kill(self, SIGKILL) statically', () => {
@@ -695,42 +722,527 @@ test('helper and bootstrap intercept process.kill(self, SIGKILL) statically', ()
 test('helper branch (CLI -p, no stdin inherit): normal/sync-exit/async-exit all produce output', () => {
   for (const scenario of ['normal', 'sync-exit', 'async-exit']) {
     const r = runScenario({ printMode: true, stdinInherit: false, scenario });
-    assert.ok((r.stdout || '').includes('ok'), `scenario=${scenario} stdout=${r.stdout} stderr=${r.stderr}`);
-    assert.equal(r.status, 0, `scenario=${scenario} status=${r.status} stderr=${r.stderr}`);
+    try {
+      assert.ok((r.stdout || '').includes('ok'), `scenario=${scenario} stdout=${r.stdout} stderr=${r.stderr}`);
+      assert.equal(r.status, 0, `scenario=${scenario} status=${r.status} stderr=${r.stderr}`);
+    } finally {
+      fs.rmSync(r.tmpBase, { recursive: true, force: true });
+    }
   }
 });
 
 test('bootstrap branch (-p + CLAUDE_TERMUX_STDIN=inherit): normal/sync-exit/async-exit all produce output', () => {
   for (const scenario of ['normal', 'sync-exit', 'async-exit']) {
     const r = runScenario({ printMode: true, stdinInherit: true, scenario });
-    assert.ok((r.stdout || '').includes('ok'), `scenario=${scenario} stdout=${r.stdout} stderr=${r.stderr}`);
-    assert.equal(r.status, 0, `scenario=${scenario} status=${r.status} stderr=${r.stderr}`);
-    if (scenario === 'async-exit') {
-      assert.ok(r.elapsedMs >= 250, `expected wait >= 250ms, got ${r.elapsedMs}ms`);
+    try {
+      assert.ok((r.stdout || '').includes('ok'), `scenario=${scenario} stdout=${r.stdout} stderr=${r.stderr}`);
+      assert.equal(r.status, 0, `scenario=${scenario} status=${r.status} stderr=${r.stderr}`);
+      if (scenario === 'async-exit') {
+        assert.ok(r.elapsedMs >= 250, `expected wait >= 250ms, got ${r.elapsedMs}ms`);
+      }
+    } finally {
+      fs.rmSync(r.tmpBase, { recursive: true, force: true });
     }
   }
 });
 
 test('helper branch intercepts self-directed SIGKILL (string signal) and exits with proper code', () => {
   const r = runScenario({ printMode: true, stdinInherit: false, scenario: 'self-sigkill-fallback-string' });
-  assert.equal(r.status, 17, `expected status 17, got ${r.status}; stderr=${r.stderr}`);
-  assert.ok(!r.signal, `expected clean exit (no signal), but got signal: ${r.signal}`);
+  try {
+    assert.equal(r.status, 17, `expected status 17, got ${r.status}; stderr=${r.stderr}`);
+    assert.ok(!r.signal, `expected clean exit (no signal), but got signal: ${r.signal}`);
+  } finally {
+    fs.rmSync(r.tmpBase, { recursive: true, force: true });
+  }
 });
 
 test('helper branch intercepts self-directed SIGKILL (numeric signal 9) and exits with proper code', () => {
   const r = runScenario({ printMode: true, stdinInherit: false, scenario: 'self-sigkill-fallback-numeric' });
-  assert.equal(r.status, 17, `expected status 17, got ${r.status}; stderr=${r.stderr}`);
-  assert.ok(!r.signal, `expected clean exit (no signal), but got signal: ${r.signal}`);
+  try {
+    assert.equal(r.status, 17, `expected status 17, got ${r.status}; stderr=${r.stderr}`);
+    assert.ok(!r.signal, `expected clean exit (no signal), but got signal: ${r.signal}`);
+  } finally {
+    fs.rmSync(r.tmpBase, { recursive: true, force: true });
+  }
 });
 
 test('helper branch intercepts self-directed SIGKILL with process.exit() (no code) and defaults to 0', () => {
   const r = runScenario({ printMode: true, stdinInherit: false, scenario: 'self-sigkill-fallback-no-code' });
-  assert.equal(r.status, 0, `expected status 0, got ${r.status}; stderr=${r.stderr}`);
-  assert.ok(!r.signal, `expected clean exit (no signal), but got signal: ${r.signal}`);
+  try {
+    assert.equal(r.status, 0, `expected status 0, got ${r.status}; stderr=${r.stderr}`);
+    assert.ok(!r.signal, `expected clean exit (no signal), but got signal: ${r.signal}`);
+  } finally {
+    fs.rmSync(r.tmpBase, { recursive: true, force: true });
+  }
 });
 
 test('helper branch allows process.kill to other processes (signal 0, passthrough)', () => {
   const r = runScenario({ printMode: true, stdinInherit: false, scenario: 'other-process-kill' });
-  assert.ok((r.stdout || '').includes('ok'), `expected ok output, got stdout=${r.stdout} stderr=${r.stderr}`);
-  assert.equal(r.status, 0, `expected status 0, got ${r.status}; stderr=${r.stderr}`);
+  try {
+    assert.ok((r.stdout || '').includes('ok'), `expected ok output, got stdout=${r.stdout} stderr=${r.stderr}`);
+    assert.equal(r.status, 0, `expected status 0, got ${r.status}; stderr=${r.stderr}`);
+  } finally {
+    fs.rmSync(r.tmpBase, { recursive: true, force: true });
+  }
+});
+
+test('isStreamJsonPrintMode detects print flag and stream-json format (case 1: -p + format + value)', () => {
+  const helperBlock = extractBlock('cat <<\'NODE\' > "$_helper"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+  const fnSource = extractFunction(helperBlock, 'function isStreamJsonPrintMode(argv) {', '\n\nclass RequestedExit');
+  const context = vm.createContext({ module: { exports: {} } });
+  vm.runInContext(`${fnSource}\nmodule.exports = isStreamJsonPrintMode;`, context);
+  const isStreamJsonPrintMode = context.module.exports;
+
+  assert.equal(isStreamJsonPrintMode(['-p', 'hello', '--output-format', 'stream-json']), true, 'case 1');
+  assert.equal(isStreamJsonPrintMode(['-p', 'hello', '--output-format=stream-json']), true, 'case 2');
+  assert.equal(isStreamJsonPrintMode(['--print', '--output-format=stream-json']), true, 'case 3');
+  assert.equal(isStreamJsonPrintMode(['-p', 'hello', '--output-format', 'json']), false, 'case 4');
+  assert.equal(isStreamJsonPrintMode(['-p']), false, 'case 5');
+  assert.equal(isStreamJsonPrintMode(['--output-format=stream-json']), false, 'case 6');
+  assert.equal(isStreamJsonPrintMode(['-p', '--', '--output-format=stream-json']), false, 'case 7');
+  assert.equal(isStreamJsonPrintMode(['-p', '--output-format=stream-json', '--', 'extra']), true, 'case 8');
+  assert.equal(isStreamJsonPrintMode(['-p', '--output-format', '--', 'stream-json']), false, 'case 9');
+  assert.equal(isStreamJsonPrintMode(['-p', '--output-format']), false, 'case 10');
+  assert.equal(isStreamJsonPrintMode([]), false, 'case 11');
+});
+
+test('isStreamJsonPrintMode is identical in helper and bootstrap', () => {
+  const helperBlock = extractBlock('cat <<\'NODE\' > "$_helper"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+  const bootstrapBlock = extractBlock('cat <<\'NODE\' > "$_bootstrap"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+
+  const helperFn = extractFunction(helperBlock, 'function isStreamJsonPrintMode(argv) {', '\n\nclass RequestedExit');
+  const bootstrapFn = extractFunction(bootstrapBlock, 'function isStreamJsonPrintMode(argv) {', '\n\nclass RequestedExit');
+
+  assert.equal(helperFn, bootstrapFn, 'isStreamJsonPrintMode must be identical in both heredocs');
+});
+
+test('CLAUDE_TERMUX_PRINT_RESULT_TIMEOUT_MS fallback to 300000 on NaN', () => {
+  const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-timeout-test-'));
+  try {
+    const sourceBin = path.join(tmpBase, 'fake-source.js');
+    const fixtureSource = buildScenarioFixtureSource();
+    fs.writeFileSync(sourceBin, fixtureSource, 'utf8');
+    const entryJsOffset = 0;
+    const entryEndOffset = Buffer.byteLength(fixtureSource, 'utf8');
+    const workdir = path.join(tmpBase, 'workdir');
+    fs.mkdirSync(workdir, { recursive: true });
+
+    const env = {
+      ...process.env,
+      SOURCE_BIN: sourceBin,
+      WORKDIR: workdir,
+      ENTRY_JS_OFFSET: String(entryJsOffset),
+      ENTRY_END_OFFSET: String(entryEndOffset),
+      CURRENT_CLAUDE_VERSION: '2.1.220',
+      CLAUDE_TERMUX_PACKAGE_DIR: path.join(__dirname, '..'),
+      MAGI_ENV: '1',
+      CLAUDE_TERMUX_PRINT_WAIT_MS: '300',
+      CLAUDE_TERMUX_PRINT_RESULT_TIMEOUT_MS: 'invalid',
+      TMPDIR: tmpBase,
+      TEST_SCENARIO: 'stream-json-result',
+    };
+    delete env.CLAUDE_TERMUX_STDIN;
+
+    const result = child_process.spawnSync('sh', [scriptPath, '-p', 'x', '--output-format=stream-json'], {
+      env,
+      input: 'test input\n',
+      encoding: 'utf8',
+      timeout: 10000,
+    });
+    assert.equal(result.status, 0, `expected successful exit with invalid timeout fallback, got status=${result.status} stderr=${result.stderr}`);
+  } finally {
+    fs.rmSync(tmpBase, { recursive: true, force: true });
+  }
+});
+
+test('CLAUDE_TERMUX_PRINT_RESULT_TIMEOUT_MS fallback to 300000 on zero', () => {
+  const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-timeout-test-'));
+  try {
+    const sourceBin = path.join(tmpBase, 'fake-source.js');
+    const fixtureSource = buildScenarioFixtureSource();
+    fs.writeFileSync(sourceBin, fixtureSource, 'utf8');
+    const entryJsOffset = 0;
+    const entryEndOffset = Buffer.byteLength(fixtureSource, 'utf8');
+    const workdir = path.join(tmpBase, 'workdir');
+    fs.mkdirSync(workdir, { recursive: true });
+
+    const env = {
+      ...process.env,
+      SOURCE_BIN: sourceBin,
+      WORKDIR: workdir,
+      ENTRY_JS_OFFSET: String(entryJsOffset),
+      ENTRY_END_OFFSET: String(entryEndOffset),
+      CURRENT_CLAUDE_VERSION: '2.1.220',
+      CLAUDE_TERMUX_PACKAGE_DIR: path.join(__dirname, '..'),
+      MAGI_ENV: '1',
+      CLAUDE_TERMUX_PRINT_WAIT_MS: '300',
+      CLAUDE_TERMUX_PRINT_RESULT_TIMEOUT_MS: '0',
+      TMPDIR: tmpBase,
+      TEST_SCENARIO: 'stream-json-result',
+    };
+    delete env.CLAUDE_TERMUX_STDIN;
+
+    const result = child_process.spawnSync('sh', [scriptPath, '-p', 'x', '--output-format=stream-json'], {
+      env,
+      input: 'test input\n',
+      encoding: 'utf8',
+      timeout: 10000,
+    });
+    assert.equal(result.status, 0, `expected successful exit with zero timeout fallback, got status=${result.status} stderr=${result.stderr}`);
+  } finally {
+    fs.rmSync(tmpBase, { recursive: true, force: true });
+  }
+});
+
+test('helper and bootstrap installStreamJsonTerminalWatcher helpers stay identical', () => {
+  const helperBlock = extractBlock('cat <<\'NODE\' > "$_helper"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+  const bootstrapBlock = extractBlock('cat <<\'NODE\' > "$_bootstrap"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+
+  const helperWatcher = extractFunction(
+    helperBlock,
+    'function installStreamJsonTerminalWatcher() {',
+    '\n  function forceTimeoutExit',
+  );
+  const bootstrapWatcher = extractFunction(
+    bootstrapBlock,
+    'function installStreamJsonTerminalWatcher() {',
+    '\n  function forceTimeoutExit',
+  );
+
+  assert.equal(helperWatcher, bootstrapWatcher, 'installStreamJsonTerminalWatcher must be identical in both heredocs');
+});
+
+test('helper and bootstrap forceTimeoutExit helpers stay identical', () => {
+  const helperBlock = extractBlock('cat <<\'NODE\' > "$_helper"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+  const bootstrapBlock = extractBlock('cat <<\'NODE\' > "$_bootstrap"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+
+  const helperForceExit = extractFunction(
+    helperBlock,
+    'function forceTimeoutExit(exitCode) {',
+    '\n  async function waitForPrintFlush',
+  );
+  const bootstrapForceExit = extractFunction(
+    bootstrapBlock,
+    'function forceTimeoutExit(exitCode) {',
+    '\n  async function waitForPrintFlushIfNeeded',
+  );
+
+  assert.equal(helperForceExit, bootstrapForceExit, 'forceTimeoutExit must be identical in both heredocs');
+});
+
+test('installStreamJsonTerminalWatcher restores process.stdout.write own property state', () => {
+  // Test with the real process.stdout to verify own property handling
+  const hadOwnPropertyBefore = Object.prototype.hasOwnProperty.call(process.stdout, 'write');
+  const descriptorBefore = hadOwnPropertyBefore ? Object.getOwnPropertyDescriptor(process.stdout, 'write') : undefined;
+
+  // Get the watcher function from helper
+  const helperBlock = extractBlock('cat <<\'NODE\' > "$_helper"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+  const watcherSource = extractFunction(helperBlock, 'function installStreamJsonTerminalWatcher() {', '\n  function forceTimeoutExit');
+
+  const context = vm.createContext({
+    module: { exports: {} },
+    process,
+    Object,
+    Buffer,
+    require: (id) => {
+      if (id === 'string_decoder') return require('string_decoder');
+      throw new Error('require not available');
+    },
+  });
+
+  vm.runInContext(`
+    ${watcherSource}
+    module.exports = installStreamJsonTerminalWatcher;
+  `, context);
+
+  const installStreamJsonTerminalWatcher = context.module.exports;
+
+  try {
+    // Test case 1: Normal case where write is not an own property
+    {
+      const watcher = installStreamJsonTerminalWatcher();
+      const hadOwnPropertyAfterInstall = Object.prototype.hasOwnProperty.call(process.stdout, 'write');
+      assert.equal(hadOwnPropertyAfterInstall, true, 'after install: process.stdout.write should be own property');
+
+      // Restore watcher
+      watcher.restore();
+      const hadOwnPropertyAfterRestore = Object.prototype.hasOwnProperty.call(process.stdout, 'write');
+      assert.equal(hadOwnPropertyAfterRestore, hadOwnPropertyBefore, 'after restore: own property state should match initial');
+
+      // Verify restore is idempotent
+      watcher.restore();
+      const hadOwnPropertyAfterSecondRestore = Object.prototype.hasOwnProperty.call(process.stdout, 'write');
+      assert.equal(hadOwnPropertyAfterSecondRestore, hadOwnPropertyBefore, 'second restore should also maintain initial state');
+    }
+
+    // Test case 2: When write is an own property before installation
+    {
+      const testDescriptor = {
+        value: function testWrite() { return true; },
+        writable: true,
+        configurable: true,
+        enumerable: false,
+      };
+      Object.defineProperty(process.stdout, 'write', testDescriptor);
+
+      const watcher = installStreamJsonTerminalWatcher();
+      const hadOwnAfterInstall = Object.prototype.hasOwnProperty.call(process.stdout, 'write');
+      assert.equal(hadOwnAfterInstall, true, 'test case 2: after install should have own property');
+
+      watcher.restore();
+      const hadOwnAfterRestore = Object.prototype.hasOwnProperty.call(process.stdout, 'write');
+      assert.equal(hadOwnAfterRestore, true, 'test case 2: after restore should still have own property');
+
+      const restoredDescriptor = Object.getOwnPropertyDescriptor(process.stdout, 'write');
+      assert.equal(typeof restoredDescriptor.value, 'function', 'test case 2: restored value should be a function');
+      assert.equal(restoredDescriptor.configurable, true, 'test case 2: restored configurable should match');
+    }
+  } finally {
+    // Ensure stdout.write is fully restored to original state
+    if (hadOwnPropertyBefore && descriptorBefore) {
+      Object.defineProperty(process.stdout, 'write', descriptorBefore);
+    } else if (Object.prototype.hasOwnProperty.call(process.stdout, 'write')) {
+      delete process.stdout.write;
+    }
+  }
+});
+
+test('helper branch stream-json result detection (single write)', () => {
+  const r = runScenario({
+    printMode: true,
+    stdinInherit: false,
+    scenario: 'stream-json-result',
+    extraArgs: ['--output-format=stream-json'],
+  });
+  try {
+    assert.equal(r.status, 0, `expected status 0, got ${r.status}; stderr=${r.stderr}`);
+    // Result detection should be significantly faster than traditional PRINT_WAIT_MS (300ms in tests)
+    assert.ok(r.elapsedMs < 1500, `expected completion < 1500ms (much faster than 300ms PRINT_WAIT_MS), got ${r.elapsedMs}ms`);
+  } finally {
+    fs.rmSync(r.tmpBase, { recursive: true, force: true });
+  }
+});
+
+test('bootstrap branch stream-json result detection (single write)', () => {
+  const r = runScenario({
+    printMode: true,
+    stdinInherit: true,
+    scenario: 'stream-json-result',
+    extraArgs: ['--output-format=stream-json'],
+  });
+  try {
+    assert.equal(r.status, 0, `expected status 0, got ${r.status}; stderr=${r.stderr}`);
+    // Result detection should be significantly faster than traditional PRINT_WAIT_MS (300ms in tests)
+    assert.ok(r.elapsedMs < 1500, `expected completion < 1500ms (much faster than 300ms PRINT_WAIT_MS), got ${r.elapsedMs}ms`);
+  } finally {
+    fs.rmSync(r.tmpBase, { recursive: true, force: true });
+  }
+});
+
+test('helper branch stream-json multibyte character split handling', () => {
+  const r = runScenario({
+    printMode: true,
+    stdinInherit: false,
+    scenario: 'stream-json-multibyte-split',
+    extraArgs: ['--output-format=stream-json'],
+  });
+  try {
+    assert.equal(r.status, 0, `expected status 0, got ${r.status}; stderr=${r.stderr}`);
+    assert.ok(r.elapsedMs < 6000, `expected completion < 6000ms, got ${r.elapsedMs}ms`);
+  } finally {
+    fs.rmSync(r.tmpBase, { recursive: true, force: true });
+  }
+});
+
+test('bootstrap branch stream-json multibyte character split handling', () => {
+  const r = runScenario({
+    printMode: true,
+    stdinInherit: true,
+    scenario: 'stream-json-multibyte-split',
+    extraArgs: ['--output-format=stream-json'],
+  });
+  try {
+    assert.equal(r.status, 0, `expected status 0, got ${r.status}; stderr=${r.stderr}`);
+    assert.ok(r.elapsedMs < 6000, `expected completion < 6000ms, got ${r.elapsedMs}ms`);
+  } finally {
+    fs.rmSync(r.tmpBase, { recursive: true, force: true });
+  }
+});
+
+test('helper branch stream-json timeout triggers exit with status 1', () => {
+  const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-stream-timeout-'));
+  try {
+    const sourceBin = path.join(tmpBase, 'fake-source.js');
+    const fixtureSource = buildScenarioFixtureSource();
+    fs.writeFileSync(sourceBin, fixtureSource, 'utf8');
+    const entryJsOffset = 0;
+    const entryEndOffset = Buffer.byteLength(fixtureSource, 'utf8');
+    const workdir = path.join(tmpBase, 'workdir');
+    fs.mkdirSync(workdir, { recursive: true });
+
+    const env = {
+      ...process.env,
+      SOURCE_BIN: sourceBin,
+      WORKDIR: workdir,
+      ENTRY_JS_OFFSET: String(entryJsOffset),
+      ENTRY_END_OFFSET: String(entryEndOffset),
+      CURRENT_CLAUDE_VERSION: '2.1.220',
+      CLAUDE_TERMUX_PACKAGE_DIR: path.join(__dirname, '..'),
+      MAGI_ENV: '1',
+      CLAUDE_TERMUX_PRINT_WAIT_MS: '300',
+      CLAUDE_TERMUX_PRINT_RESULT_TIMEOUT_MS: '300',
+      TMPDIR: tmpBase,
+      TEST_SCENARIO: 'stream-json-timeout',
+    };
+    delete env.CLAUDE_TERMUX_STDIN;
+
+    const result = child_process.spawnSync('sh', [scriptPath, '-p', 'x', '--output-format=stream-json'], {
+      env,
+      input: 'test input\n',
+      encoding: 'utf8',
+      timeout: 5000,
+    });
+
+    assert.equal(result.status, 1, `expected status 1 on timeout, got ${result.status}; stderr=${result.stderr}`);
+    const entries = fs.readdirSync(workdir, { withFileTypes: true });
+    const entryFiles = entries.filter(e => e.name.includes('cli.') && e.name.endsWith('.bare-path.js'));
+    assert.equal(entryFiles.length, 0, `expected no extracted entry files after timeout, found ${entryFiles.length}`);
+  } finally {
+    fs.rmSync(tmpBase, { recursive: true, force: true });
+  }
+});
+
+test('bootstrap branch stream-json timeout triggers exit with status 1', () => {
+  const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-stream-timeout-'));
+  try {
+    const sourceBin = path.join(tmpBase, 'fake-source.js');
+    const fixtureSource = buildScenarioFixtureSource();
+    fs.writeFileSync(sourceBin, fixtureSource, 'utf8');
+    const entryJsOffset = 0;
+    const entryEndOffset = Buffer.byteLength(fixtureSource, 'utf8');
+    const workdir = path.join(tmpBase, 'workdir');
+    fs.mkdirSync(workdir, { recursive: true });
+
+    const env = {
+      ...process.env,
+      SOURCE_BIN: sourceBin,
+      WORKDIR: workdir,
+      ENTRY_JS_OFFSET: String(entryJsOffset),
+      ENTRY_END_OFFSET: String(entryEndOffset),
+      CURRENT_CLAUDE_VERSION: '2.1.220',
+      CLAUDE_TERMUX_PACKAGE_DIR: path.join(__dirname, '..'),
+      MAGI_ENV: '1',
+      CLAUDE_TERMUX_PRINT_WAIT_MS: '300',
+      CLAUDE_TERMUX_PRINT_RESULT_TIMEOUT_MS: '300',
+      CLAUDE_TERMUX_STDIN: 'inherit',
+      TMPDIR: tmpBase,
+      TEST_SCENARIO: 'stream-json-timeout',
+    };
+
+    const result = child_process.spawnSync('sh', [scriptPath, '-p', 'x', '--output-format=stream-json'], {
+      env,
+      input: 'test input\n',
+      encoding: 'utf8',
+      timeout: 5000,
+    });
+
+    assert.equal(result.status, 1, `expected status 1 on timeout, got ${result.status}; stderr=${result.stderr}`);
+    const entries = fs.readdirSync(workdir, { withFileTypes: true });
+    const entryFiles = entries.filter(e => e.name.includes('cli.') && e.name.endsWith('.bare-path.js'));
+    assert.equal(entryFiles.length, 0, `expected no extracted entry files after timeout, found ${entryFiles.length}`);
+  } finally {
+    fs.rmSync(tmpBase, { recursive: true, force: true });
+  }
+});
+
+test('helper branch stream-json requested exit after result', () => {
+  const r = runScenario({
+    printMode: true,
+    stdinInherit: false,
+    scenario: 'stream-json-requested-exit-then-result',
+    extraArgs: ['--output-format=stream-json'],
+  });
+  try {
+    assert.equal(r.status, 0, `expected status 0, got ${r.status}; stderr=${r.stderr}`);
+  } finally {
+    fs.rmSync(r.tmpBase, { recursive: true, force: true });
+  }
+});
+
+test('bootstrap branch stream-json requested exit after result', () => {
+  const r = runScenario({
+    printMode: true,
+    stdinInherit: true,
+    scenario: 'stream-json-requested-exit-then-result',
+    extraArgs: ['--output-format=stream-json'],
+  });
+  try {
+    assert.equal(r.status, 0, `expected status 0, got ${r.status}; stderr=${r.stderr}`);
+  } finally {
+    fs.rmSync(r.tmpBase, { recursive: true, force: true });
+  }
+});
+
+test('installStreamJsonTerminalWatcher waits for write callback before completing result', async () => {
+  const helperBlock = extractBlock('cat <<\'NODE\' > "$_helper"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+  const watcherSource = extractFunction(helperBlock, 'function installStreamJsonTerminalWatcher() {', '\n  function forceTimeoutExit');
+
+  // Create a dedicated mock stdout object instead of modifying the real one
+  let callbackFired = false;
+  const mockStdout = Object.create(Object.getPrototypeOf(process.stdout));
+
+  // Copy necessary properties
+  Object.defineProperty(mockStdout, 'write', {
+    value: function(chunk, encoding, callback) {
+      if (typeof encoding === 'function') {
+        callback = encoding;
+        encoding = undefined;
+      }
+      if (callback) {
+        // Defer callback to next microtask
+        setImmediate(() => {
+          callbackFired = true;
+          callback();
+        });
+      }
+      return true;
+    },
+    writable: true,
+    configurable: true,
+  });
+
+  const context = vm.createContext({
+    module: { exports: {} },
+    process: { stdout: mockStdout },
+    Object,
+    Buffer,
+    require: (id) => {
+      if (id === 'string_decoder') return require('string_decoder');
+      throw new Error('require not available');
+    },
+  });
+
+  vm.runInContext(`
+    ${watcherSource}
+    module.exports = installStreamJsonTerminalWatcher;
+  `, context);
+
+  const installStreamJsonTerminalWatcher = context.module.exports;
+  const watcher = installStreamJsonTerminalWatcher();
+
+  // Simulate a write with result JSON
+  const resultJson = '{"type":"result","data":"test"}\n';
+  mockStdout.write(resultJson, 'utf8');
+
+  // Get the promise before callback fires
+  const resultPromise = watcher.waitForResult();
+
+  // Give time for callback to fire
+  await new Promise(resolve => setTimeout(resolve, 50));
+
+  // Promise should now be resolved
+  await resultPromise;
+  assert.ok(callbackFired, 'callback should have been fired');
+
+  watcher.restore();
 });
