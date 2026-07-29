@@ -143,7 +143,7 @@ Example:
 例:
 
 ```text
-2.1.220-2 (Claude Code)
+2.1.220 (Claude Code)
 ```
 
 ## Do Not Use / 非推奨
