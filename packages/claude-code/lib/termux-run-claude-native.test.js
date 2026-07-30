@@ -894,6 +894,98 @@ test('CLAUDE_TERMUX_PRINT_RESULT_TIMEOUT_MS fallback to 300000 on zero', () => {
   }
 });
 
+test('helper branch (CLI -p, no stdin inherit) stream-json: result detected -> exits immediately without waiting for timeout', () => {
+  const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-stream-json-clear-timeout-'));
+  try {
+    const sourceBin = path.join(tmpBase, 'fake-source.js');
+    const fixtureSource = buildScenarioFixtureSource();
+    fs.writeFileSync(sourceBin, fixtureSource, 'utf8');
+    const entryJsOffset = 0;
+    const entryEndOffset = Buffer.byteLength(fixtureSource, 'utf8');
+    const workdir = path.join(tmpBase, 'workdir');
+    fs.mkdirSync(workdir, { recursive: true });
+
+    const env = {
+      ...process.env,
+      SOURCE_BIN: sourceBin,
+      WORKDIR: workdir,
+      ENTRY_JS_OFFSET: String(entryJsOffset),
+      ENTRY_END_OFFSET: String(entryEndOffset),
+      CURRENT_CLAUDE_VERSION: '2.1.220',
+      CLAUDE_TERMUX_PACKAGE_DIR: path.join(__dirname, '..'),
+      MAGI_ENV: '1',
+      CLAUDE_TERMUX_PRINT_WAIT_MS: '300',
+      CLAUDE_TERMUX_PRINT_RESULT_TIMEOUT_MS: '10000',
+      TMPDIR: tmpBase,
+      TEST_SCENARIO: 'stream-json-result',
+    };
+    delete env.CLAUDE_TERMUX_STDIN;
+
+    const start = Date.now();
+    const result = child_process.spawnSync('sh', [scriptPath, '-p', 'x', '--output-format=stream-json'], {
+      env,
+      input: 'test input\n',
+      encoding: 'utf8',
+      timeout: 20000,
+    });
+    const elapsedMs = Date.now() - start;
+
+    assert.equal(result.status, 0, `expected successful exit, got status=${result.status} stderr=${result.stderr}`);
+    assert.ok(
+      elapsedMs < 3000,
+      `expected process to exit quickly after result detected, but elapsed=${elapsedMs}ms (should be < 3000ms with 10000ms timeout). This indicates the timeout timer was not cleared.`
+    );
+  } finally {
+    fs.rmSync(tmpBase, { recursive: true, force: true });
+  }
+});
+
+test('bootstrap branch (-p + CLAUDE_TERMUX_STDIN=inherit) stream-json: result detected -> exits immediately without waiting for timeout', () => {
+  const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-stream-json-clear-timeout-bootstrap-'));
+  try {
+    const sourceBin = path.join(tmpBase, 'fake-source.js');
+    const fixtureSource = buildScenarioFixtureSource();
+    fs.writeFileSync(sourceBin, fixtureSource, 'utf8');
+    const entryJsOffset = 0;
+    const entryEndOffset = Buffer.byteLength(fixtureSource, 'utf8');
+    const workdir = path.join(tmpBase, 'workdir');
+    fs.mkdirSync(workdir, { recursive: true });
+
+    const env = {
+      ...process.env,
+      SOURCE_BIN: sourceBin,
+      WORKDIR: workdir,
+      ENTRY_JS_OFFSET: String(entryJsOffset),
+      ENTRY_END_OFFSET: String(entryEndOffset),
+      CURRENT_CLAUDE_VERSION: '2.1.220',
+      CLAUDE_TERMUX_PACKAGE_DIR: path.join(__dirname, '..'),
+      MAGI_ENV: '1',
+      CLAUDE_TERMUX_STDIN: 'inherit',
+      CLAUDE_TERMUX_PRINT_WAIT_MS: '300',
+      CLAUDE_TERMUX_PRINT_RESULT_TIMEOUT_MS: '10000',
+      TMPDIR: tmpBase,
+      TEST_SCENARIO: 'stream-json-result',
+    };
+
+    const start = Date.now();
+    const result = child_process.spawnSync('sh', [scriptPath, '-p', 'x', '--output-format=stream-json'], {
+      env,
+      input: 'test input\n',
+      encoding: 'utf8',
+      timeout: 20000,
+    });
+    const elapsedMs = Date.now() - start;
+
+    assert.equal(result.status, 0, `expected successful exit, got status=${result.status} stderr=${result.stderr}`);
+    assert.ok(
+      elapsedMs < 3000,
+      `expected process to exit quickly after result detected, but elapsed=${elapsedMs}ms (should be < 3000ms with 10000ms timeout). This indicates the timeout timer was not cleared.`
+    );
+  } finally {
+    fs.rmSync(tmpBase, { recursive: true, force: true });
+  }
+});
+
 test('helper and bootstrap installStreamJsonTerminalWatcher helpers stay identical', () => {
   const helperBlock = extractBlock('cat <<\'NODE\' > "$_helper"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
   const bootstrapBlock = extractBlock('cat <<\'NODE\' > "$_bootstrap"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');

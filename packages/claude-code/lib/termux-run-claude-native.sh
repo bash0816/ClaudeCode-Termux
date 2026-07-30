@@ -729,10 +729,15 @@ async function main() {
       let timedOut = false;
       const rawResultTimeoutMs = Number(process.env.CLAUDE_TERMUX_PRINT_RESULT_TIMEOUT_MS);
       const resultTimeoutMs = (Number.isFinite(rawResultTimeoutMs) && rawResultTimeoutMs > 0) ? rawResultTimeoutMs : 300000;
+      let timeoutHandle;
       const timeoutPromise = new Promise(resolve => {
-        setTimeout(() => { timedOut = true; resolve(); }, resultTimeoutMs);
+        timeoutHandle = setTimeout(() => { timedOut = true; resolve(); }, resultTimeoutMs);
       });
-      await Promise.race([streamJsonWatcher.waitForResult(), timeoutPromise]);
+      try {
+        await Promise.race([streamJsonWatcher.waitForResult(), timeoutPromise]);
+      } finally {
+        clearTimeout(timeoutHandle);
+      }
       if (timedOut) {
         forceTimeoutExit(1);
         return;
@@ -1544,10 +1549,15 @@ async function main() {
       let timedOut = false;
       const rawResultTimeoutMs = Number(process.env.CLAUDE_TERMUX_PRINT_RESULT_TIMEOUT_MS);
       const resultTimeoutMs = (Number.isFinite(rawResultTimeoutMs) && rawResultTimeoutMs > 0) ? rawResultTimeoutMs : 300000;
+      let timeoutHandle;
       const timeoutPromise = new Promise(resolve => {
-        setTimeout(() => { timedOut = true; resolve(); }, resultTimeoutMs);
+        timeoutHandle = setTimeout(() => { timedOut = true; resolve(); }, resultTimeoutMs);
       });
-      await Promise.race([streamJsonWatcher.waitForResult(), timeoutPromise]);
+      try {
+        await Promise.race([streamJsonWatcher.waitForResult(), timeoutPromise]);
+      } finally {
+        clearTimeout(timeoutHandle);
+      }
       if (timedOut) {
         forceTimeoutExit(1);
         return;
