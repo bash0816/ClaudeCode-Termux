@@ -1447,3 +1447,48 @@ test('Bun.spawn forwards options, preserves numeric fds, and delegates child con
     mock.restoreAll();
   }
 });
+
+test('Bun.spawn prefers stdio array over top-level stdio options', () => {
+  for (const blockMarker of ['cat <<\'NODE\' > "$_helper"', 'cat <<\'NODE\' > "$_bootstrap"']) {
+    const block = extractBlock(blockMarker, '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+    const calls = [];
+    mock.method(child_process, 'spawn', (...args) => {
+      calls.push(args);
+      return { pid: 123, stdout: null, on() { return this; } };
+    });
+    try {
+      const Bun = loadBunShim(extractShimSource(block));
+      Bun.spawn(['cmd'], {
+        stdio: [0, 1, 2],
+        stdin: 'pipe',
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      assert.deepEqual(JSON.parse(JSON.stringify(calls[0][2])), {
+        stdio: [0, 1, 2],
+        detached: false,
+      });
+    } finally {
+      mock.restoreAll();
+    }
+  }
+});
+
+test('Bun.spawn forwards top-level stdin in the first stdio position', () => {
+  for (const blockMarker of ['cat <<\'NODE\' > "$_helper"', 'cat <<\'NODE\' > "$_bootstrap"']) {
+    const block = extractBlock(blockMarker, '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+    const calls = [];
+    mock.method(child_process, 'spawn', (...args) => {
+      calls.push(args);
+      return { pid: 123, stdout: null, on() { return this; } };
+    });
+    try {
+      const Bun = loadBunShim(extractShimSource(block));
+      Bun.spawn(['cmd'], { stdin: 'inherit', stdout: 'pipe', stderr: 'ignore' });
+      assert.equal(calls[0][2].stdio[0], 'inherit');
+      assert.deepEqual(JSON.parse(JSON.stringify(calls[0][2].stdio)), ['inherit', 'pipe', 'ignore']);
+    } finally {
+      mock.restoreAll();
+    }
+  }
+});
