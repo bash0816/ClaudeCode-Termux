@@ -1,6 +1,7 @@
 'use strict';
 
 const test = require('node:test');
+const { mock } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('crypto');
 const child_process = require('child_process');
@@ -1337,4 +1338,112 @@ test('installStreamJsonTerminalWatcher waits for write callback before completin
   assert.ok(callbackFired, 'callback should have been fired');
 
   watcher.restore();
+});
+
+function extractShimSource(block) {
+  const startMarker = 'const _realChild = require(\'child_process\');';
+  const endMarker = 'Object.assign(globalThis.__claudeBunShim, globalThis.Bun);';
+  const start = block.indexOf(startMarker);
+  assert.notEqual(start, -1, 'missing Bun shim start');
+  const end = block.indexOf(endMarker, start);
+  assert.notEqual(end, -1, 'missing Bun shim end');
+  return block.slice(start, end + endMarker.length);
+}
+
+function loadBunShim(source) {
+  const context = vm.createContext({
+    stringWidth: () => 0,
+    wrapAnsi: value => value,
+    stripANSI: value => value,
+    stableHash: () => 0,
+    __claudeYaml: {},
+    Buffer,
+    require,
+  });
+  context.__claudeBunShim = {};
+  context.__claudeYaml = {};
+  context.Bun = {};
+  context.module = { exports: {} };
+  vm.runInContext(`${source}\nmodule.exports = globalThis.__claudeBunShim;`, context);
+  return context.module.exports;
+}
+
+test('helper and bootstrap Bun shim source is identical', () => {
+  const helperBlock = extractBlock('cat <<\'NODE\' > "$_helper"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+  const bootstrapBlock = extractBlock('cat <<\'NODE\' > "$_bootstrap"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+  assert.equal(extractShimSource(helperBlock), extractShimSource(bootstrapBlock));
+});
+
+test('Bun.file always throws ENOENT', () => {
+  for (const blockMarker of ['cat <<\'NODE\' > "$_helper"', 'cat <<\'NODE\' > "$_bootstrap"']) {
+    const block = extractBlock(blockMarker, '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+    const Bun = loadBunShim(extractShimSource(block));
+    assert.throws(() => Bun.file('/some/path'), error =>
+      error.code === 'ENOENT' && error.errno === -2);
+  }
+});
+
+test('Bun.spawn rejects bg-pty-host with spawn ENOENT', () => {
+  for (const blockMarker of ['cat <<\'NODE\' > "$_helper"', 'cat <<\'NODE\' > "$_bootstrap"']) {
+    const block = extractBlock(blockMarker, '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+    const Bun = loadBunShim(extractShimSource(block));
+    assert.throws(
+      () => Bun.spawn(['claude', '--bg-pty-host', 'sock', '80', '24'], {}),
+      error => error.code === 'ENOENT' && error.errno === -2 && error.syscall === 'spawn',
+    );
+  }
+});
+
+test('Bun.spawn supports top-level and array stdio forms', async () => {
+  const block = extractBlock('cat <<\'NODE\' > "$_helper"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+  const Bun = loadBunShim(extractShimSource(block));
+  const topLevel = Bun.spawn(['echo', 'hello'], { stdout: 'pipe', stderr: 'ignore' });
+  assert.equal(await topLevel.stdout.text(), 'hello\n');
+  assert.equal(await topLevel.exited, 0);
+  const arrayForm = Bun.spawn(['echo', 'hello'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  assert.equal(await arrayForm.stdout.text(), 'hello\n');
+  assert.equal(await arrayForm.exited, 0);
+});
+
+test('Bun.spawn forwards options, preserves numeric fds, and delegates child controls', () => {
+  const block = extractBlock('cat <<\'NODE\' > "$_helper"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+  const calls = [];
+  const handlers = {};
+  const child = {
+    pid: 123,
+    stdout: null,
+    on(event, handler) { handlers[event] = handler; return this; },
+    unref() { calls.push(['unref']); },
+    kill(signal) { calls.push(['kill', signal]); },
+  };
+  mock.method(child_process, 'spawn', (...args) => {
+    calls.push(args);
+    return child;
+  });
+  try {
+    const Bun = loadBunShim(extractShimSource(block));
+    const result = Bun.spawn(['cmd', 'arg'], {
+      detached: true,
+      argv0: 'argv0-value',
+      cwd: '/tmp/work',
+      env: { TEST: 'yes' },
+      stdio: [0, 1, 2],
+    });
+    assert.deepEqual(JSON.parse(JSON.stringify(calls[0])), [
+      'cmd',
+      ['arg'],
+      {
+        stdio: [0, 1, 2],
+        cwd: '/tmp/work',
+        env: { TEST: 'yes' },
+        detached: true,
+        argv0: 'argv0-value',
+      },
+    ]);
+    result.unref();
+    result.kill('SIGTERM');
+    assert.deepEqual(JSON.parse(JSON.stringify(calls.slice(1))), [['unref'], ['kill', 'SIGTERM']]);
+  } finally {
+    mock.restoreAll();
+  }
 });
