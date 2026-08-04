@@ -301,8 +301,35 @@ test('cleanupStaleEntryFiles removes only stale extracted files for the same off
 function buildSyntheticBundleSource() {
   const typeofBun = Array.from({ length: 6 }, () => 'typeof Bun').join('; ');
   const bunProps = Array.from({ length: 37 }, (_, index) => `Bun.p${index}`).join('; ');
-  return `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0 }`;
+  return `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; function dYs(){return(e,t,r)=>{let{cmd:n,prefixArgs:o}=ox({pinToCurrentBinary:!0}),i=[n,...o,"--bg-pty-host",r.ptySock];return i}} }`;
 }
+
+test('rewriteNativeChunkSource disables the bg-pty-host factory', () => {
+  process.env.CURRENT_CLAUDE_VERSION = '2.1.198';
+  try {
+    const { rewriteNativeChunkSource } = loadHelperApi();
+    const patched = rewriteNativeChunkSource(buildSyntheticBundleSource());
+    const start = patched.indexOf('function dYs(){');
+    assert.notEqual(start, -1);
+    let depth = 0;
+    let end = -1;
+    for (let index = start; index < patched.length; index += 1) {
+      if (patched[index] === '{') depth += 1;
+      if (patched[index] === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          end = index + 1;
+          break;
+        }
+      }
+    }
+    assert.notEqual(end, -1);
+    const rewrittenFactory = eval('(' + patched.slice(start, end) + ')');
+    assert.equal(rewrittenFactory(), undefined);
+  } finally {
+    delete process.env.CURRENT_CLAUDE_VERSION;
+  }
+});
 
 test('rewriteNativeChunkSource rewrites the synthetic bundle slice (version 2.1.198)', () => {
   process.env.CURRENT_CLAUDE_VERSION = '2.1.198';
@@ -329,7 +356,7 @@ test('rewriteNativeChunkSource rewrites the synthetic bundle slice (version 2.1.
     const { rewriteNativeChunkSource } = loadHelperApi();
     const typeofBun = Array.from({ length: 7 }, () => 'typeof Bun').join('; ');
     const bunProps = Array.from({ length: 40 }, (_, index) => `Bun.p${index}`).join('; ');
-    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0 }`;
+    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; function dYs(){return(e,t,r)=>{let{cmd:n,prefixArgs:o}=ox({pinToCurrentBinary:!0}),i=[n,...o,"--bg-pty-host",r.ptySock];return i}} }`;
     const patched = rewriteNativeChunkSource(source);
 
     assert.match(patched, /var __claudeBun = globalThis\.__claudeBunShim;/);
@@ -350,7 +377,7 @@ test('rewriteNativeChunkSource rewrites the synthetic bundle slice (version 2.1.
     const { rewriteNativeChunkSource } = loadHelperApi();
     const typeofBun = Array.from({ length: 7 }, () => 'typeof Bun').join('; ');
     const bunProps = Array.from({ length: 41 }, (_, index) => `Bun.p${index}`).join('; ');
-    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0 }`;
+    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; function dYs(){return(e,t,r)=>{let{cmd:n,prefixArgs:o}=ox({pinToCurrentBinary:!0}),i=[n,...o,"--bg-pty-host",r.ptySock];return i}} }`;
     const patched = rewriteNativeChunkSource(source);
 
     assert.match(patched, /var __claudeBun = globalThis\.__claudeBunShim;/);
@@ -371,7 +398,7 @@ test('rewriteNativeChunkSource rewrites the synthetic bundle slice (version 2.1.
     const { rewriteNativeChunkSource } = loadHelperApi();
     const typeofBun = Array.from({ length: 7 }, () => 'typeof Bun').join('; ');
     const bunProps = Array.from({ length: 41 }, (_, index) => `Bun.p${index}`).join('; ');
-    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0 }`;
+    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0; function dYs(){return(e,t,r)=>{let{cmd:n,prefixArgs:o}=ox({pinToCurrentBinary:!0}),i=[n,...o,"--bg-pty-host",r.ptySock];return i}} }`;
     const patched = rewriteNativeChunkSource(source);
 
     assert.match(patched, /var __claudeBun = globalThis\.__claudeBunShim;/);
@@ -392,7 +419,7 @@ test('rewriteNativeChunkSource rewrites the synthetic bundle slice (version 2.1.
     const { rewriteNativeChunkSource } = loadHelperApi();
     const typeofBun = Array.from({ length: 7 }, () => 'typeof Bun').join('; ');
     const bunProps = Array.from({ length: 38 }, (_, index) => `Bun.p${index}`).join('; ');
-    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0 }`;
+    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0; function dYs(){return(e,t,r)=>{let{cmd:n,prefixArgs:o}=ox({pinToCurrentBinary:!0}),i=[n,...o,"--bg-pty-host",r.ptySock];return i}} }`;
     const patched = rewriteNativeChunkSource(source);
 
     assert.match(patched, /var __claudeBun = globalThis\.__claudeBunShim;/);
@@ -413,7 +440,7 @@ test('rewriteNativeChunkSource rejects stale Bun property access count for versi
     const { rewriteNativeChunkSource } = loadHelperApi();
     const typeofBun = Array.from({ length: 7 }, () => 'typeof Bun').join('; ');
     const bunProps = Array.from({ length: 41 }, (_, index) => `Bun.p${index}`).join('; ');
-    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0 }`;
+    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0; function dYs(){return(e,t,r)=>{let{cmd:n,prefixArgs:o}=ox({pinToCurrentBinary:!0}),i=[n,...o,"--bg-pty-host",r.ptySock];return i}} }`;
 
     assert.throws(
       () => rewriteNativeChunkSource(source),
@@ -430,7 +457,7 @@ test('rewriteNativeChunkSource rewrites the synthetic bundle slice (version 2.1.
     const { rewriteNativeChunkSource } = loadHelperApi();
     const typeofBun = Array.from({ length: 7 }, () => 'typeof Bun').join('; ');
     const bunProps = Array.from({ length: 39 }, (_, index) => `Bun.p${index}`).join('; ');
-    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0 }`;
+    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0; function dYs(){return(e,t,r)=>{let{cmd:n,prefixArgs:o}=ox({pinToCurrentBinary:!0}),i=[n,...o,"--bg-pty-host",r.ptySock];return i}} }`;
     const patched = rewriteNativeChunkSource(source);
 
     assert.match(patched, /var __claudeBun = globalThis\.__claudeBunShim;/);
@@ -451,7 +478,7 @@ test('rewriteNativeChunkSource rejects stale Bun property access count for versi
     const { rewriteNativeChunkSource } = loadHelperApi();
     const typeofBun = Array.from({ length: 7 }, () => 'typeof Bun').join('; ');
     const bunProps = Array.from({ length: 38 }, (_, index) => `Bun.p${index}`).join('; ');
-    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0 }`;
+    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0; function dYs(){return(e,t,r)=>{let{cmd:n,prefixArgs:o}=ox({pinToCurrentBinary:!0}),i=[n,...o,"--bg-pty-host",r.ptySock];return i}} }`;
 
     assert.throws(
       () => rewriteNativeChunkSource(source),
@@ -468,7 +495,7 @@ test('rewriteNativeChunkSource rewrites the synthetic bundle slice (version 2.1.
     const { rewriteNativeChunkSource } = loadHelperApi();
     const typeofBun = Array.from({ length: 7 }, () => 'typeof Bun').join('; ');
     const bunProps = Array.from({ length: 40 }, (_, index) => `Bun.p${index}`).join('; ');
-    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0 }`;
+    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0; function dYs(){return(e,t,r)=>{let{cmd:n,prefixArgs:o}=ox({pinToCurrentBinary:!0}),i=[n,...o,"--bg-pty-host",r.ptySock];return i}} }`;
     const patched = rewriteNativeChunkSource(source);
 
     assert.match(patched, /var __claudeBun = globalThis\.__claudeBunShim;/);
@@ -488,7 +515,7 @@ test('rewriteNativeChunkSource rejects stale Bun property access count for versi
     const { rewriteNativeChunkSource } = loadHelperApi();
     const typeofBun = Array.from({ length: 7 }, () => 'typeof Bun').join('; ');
     const bunProps = Array.from({ length: 39 }, (_, index) => `Bun.p${index}`).join('; ');
-    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0 }`;
+    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0; function dYs(){return(e,t,r)=>{let{cmd:n,prefixArgs:o}=ox({pinToCurrentBinary:!0}),i=[n,...o,"--bg-pty-host",r.ptySock];return i}} }`;
 
     assert.throws(
       () => rewriteNativeChunkSource(source),
@@ -505,7 +532,7 @@ test('rewriteNativeChunkSource rewrites the synthetic bundle slice (version 2.1.
     const { rewriteNativeChunkSource } = loadHelperApi();
     const typeofBun = Array.from({ length: 7 }, () => 'typeof Bun').join('; ');
     const bunProps = Array.from({ length: 42 }, (_, index) => `Bun.p${index}`).join('; ');
-    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0 }`;
+    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0; function dYs(){return(e,t,r)=>{let{cmd:n,prefixArgs:o}=ox({pinToCurrentBinary:!0}),i=[n,...o,"--bg-pty-host",r.ptySock];return i}} }`;
     const patched = rewriteNativeChunkSource(source);
 
     assert.match(patched, /var __claudeBun = globalThis\.__claudeBunShim;/);
@@ -525,7 +552,7 @@ test('rewriteNativeChunkSource rejects stale Bun property access count for versi
     const { rewriteNativeChunkSource } = loadHelperApi();
     const typeofBun = Array.from({ length: 7 }, () => 'typeof Bun').join('; ');
     const bunProps = Array.from({ length: 41 }, (_, index) => `Bun.p${index}`).join('; ');
-    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0 }`;
+    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0; function dYs(){return(e,t,r)=>{let{cmd:n,prefixArgs:o}=ox({pinToCurrentBinary:!0}),i=[n,...o,"--bg-pty-host",r.ptySock];return i}} }`;
 
     assert.throws(
       () => rewriteNativeChunkSource(source),
@@ -572,6 +599,7 @@ function buildScenarioFixtureSource() {
   return `function(exports, require, module, __filename, __dirname) {
     ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps};
     npmInstallDeprecated:!0; npmInstallDeprecated:!0;
+    function dYs(){return(e,t,r)=>{let{cmd:n,prefixArgs:o}=ox({pinToCurrentBinary:!0}),i=[n,...o,"--bg-pty-host",r.ptySock];return i}}
     const scenario = process.env.TEST_SCENARIO;
     if (scenario === 'sync-exit') { process.stdout.write('ok'); process.exit(0); return; }
     if (scenario === 'async-exit') {
@@ -1380,17 +1408,6 @@ test('Bun.file always throws ENOENT', () => {
     const Bun = loadBunShim(extractShimSource(block));
     assert.throws(() => Bun.file('/some/path'), error =>
       error.code === 'ENOENT' && error.errno === -2);
-  }
-});
-
-test('Bun.spawn rejects bg-pty-host with spawn ENOENT', () => {
-  for (const blockMarker of ['cat <<\'NODE\' > "$_helper"', 'cat <<\'NODE\' > "$_bootstrap"']) {
-    const block = extractBlock(blockMarker, '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
-    const Bun = loadBunShim(extractShimSource(block));
-    assert.throws(
-      () => Bun.spawn(['claude', '--bg-pty-host', 'sock', '80', '24'], {}),
-      error => error.code === 'ENOENT' && error.errno === -2 && error.syscall === 'spawn',
-    );
   }
 });
 

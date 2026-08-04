@@ -627,6 +627,13 @@ function rewriteNativeChunkSource(source) {
     'npmInstallDeprecated flag',
     _npmInstallDeprecatedExpected,
   );
+  patched = replaceRequired(
+    patched,
+    /function ([A-Za-z_$][\w$]*)\(\)\{(return\([A-Za-z_$][\w$]*,[A-Za-z_$][\w$]*,[A-Za-z_$][\w$]*\)=>\{let\{cmd:([A-Za-z_$][\w$]*),prefixArgs:([A-Za-z_$][\w$]*)\}=[A-Za-z_$][\w$]*\(\{pinToCurrentBinary:!0\}\),[A-Za-z_$][\w$]*=\[\3,\.\.\.\4,"--bg-pty-host")/g,
+    'function $1(){return undefined;$2',
+    'bg-pty-host factory disable',
+    1,
+  );
   return patched;
 }
 
@@ -802,13 +809,6 @@ async function main() {
           const opts = options || {};
           const stdioArrayRaw = opts.stdio;
           const cmdArray = Array.isArray(cmd) ? cmd : [cmd];
-          if (cmdArray.some(a => a === '--bg-pty-host')) {
-            const err = new Error('ENOENT: --bg-pty-host is not supported by the Termux compatibility shim');
-            err.code = 'ENOENT';
-            err.errno = -2;
-            err.syscall = 'spawn';
-            throw err;
-          }
           const normalizeStdio = (v) => {
             if (typeof v === 'number' && Number.isInteger(v) && v >= 0) return v;
             return (v === 'ignore' || v === 'pipe' || v === 'inherit') ? v : 'pipe';
@@ -1492,6 +1492,13 @@ function rewriteNativeChunkSource(source) {
     'npmInstallDeprecated flag',
     _npmInstallDeprecatedExpected,
   );
+  patched = replaceRequired(
+    patched,
+    /function ([A-Za-z_$][\w$]*)\(\)\{(return\([A-Za-z_$][\w$]*,[A-Za-z_$][\w$]*,[A-Za-z_$][\w$]*\)=>\{let\{cmd:([A-Za-z_$][\w$]*),prefixArgs:([A-Za-z_$][\w$]*)\}=[A-Za-z_$][\w$]*\(\{pinToCurrentBinary:!0\}\),[A-Za-z_$][\w$]*=\[\3,\.\.\.\4,"--bg-pty-host")/g,
+    'function $1(){return undefined;$2',
+    'bg-pty-host factory disable',
+    1,
+  );
   return patched;
 }
 
@@ -1668,13 +1675,6 @@ async function main() {
           const opts = options || {};
           const stdioArrayRaw = opts.stdio;
           const cmdArray = Array.isArray(cmd) ? cmd : [cmd];
-          if (cmdArray.some(a => a === '--bg-pty-host')) {
-            const err = new Error('ENOENT: --bg-pty-host is not supported by the Termux compatibility shim');
-            err.code = 'ENOENT';
-            err.errno = -2;
-            err.syscall = 'spawn';
-            throw err;
-          }
           const normalizeStdio = (v) => {
             if (typeof v === 'number' && Number.isInteger(v) && v >= 0) return v;
             return (v === 'ignore' || v === 'pipe' || v === 'inherit') ? v : 'pipe';
