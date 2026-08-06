@@ -627,6 +627,13 @@ function rewriteNativeChunkSource(source) {
     'npmInstallDeprecated flag',
     _npmInstallDeprecatedExpected,
   );
+  patched = replaceRequired(
+    patched,
+    /function ([A-Za-z_$][\w$]*)\(\)\{(return\([A-Za-z_$][\w$]*,[A-Za-z_$][\w$]*,[A-Za-z_$][\w$]*\)=>\{let\{cmd:([A-Za-z_$][\w$]*),prefixArgs:([A-Za-z_$][\w$]*)\}=[A-Za-z_$][\w$]*\(\{pinToCurrentBinary:!0\}\),[A-Za-z_$][\w$]*=\[\3,\.\.\.\4,"--bg-pty-host")/g,
+    'function $1(){return undefined;$2',
+    'bg-pty-host factory disable',
+    1,
+  );
   return patched;
 }
 
@@ -795,9 +802,47 @@ async function main() {
           gte: (a, b) => _cmp(a, b) >= 0,
           lt: (a, b) => _cmp(a, b) < 0,
           lte: (a, b) => _cmp(a, b) <= 0,
-          };
+        };
         })(),
         YAML: globalThis.__claudeYaml,
+        spawn: (cmd, options) => {
+          const opts = options || {};
+          const stdioArrayRaw = opts.stdio;
+          const cmdArray = Array.isArray(cmd) ? cmd : [cmd];
+          const normalizeStdio = (v) => {
+            if (typeof v === 'number' && Number.isInteger(v) && v >= 0) return v;
+            return (v === 'ignore' || v === 'pipe' || v === 'inherit') ? v : 'pipe';
+          };
+          const stdioMapped = Array.isArray(stdioArrayRaw)
+            ? stdioArrayRaw.map(normalizeStdio)
+            : [normalizeStdio(opts.stdin), normalizeStdio(opts.stdout), normalizeStdio(opts.stderr)];
+          const child = _realChild.spawn(cmdArray[0], cmdArray.slice(1), {
+            stdio: stdioMapped,
+            cwd: opts.cwd,
+            env: opts.env,
+            detached: !!opts.detached,
+            argv0: opts.argv0,
+          });
+          const stdoutChunks = [];
+          if (child.stdout) child.stdout.on('data', d => stdoutChunks.push(d));
+          let resolveExited;
+          const exited = new Promise(resolve => { resolveExited = resolve; });
+          child.on('exit', (code, signal) => resolveExited(code !== null ? code : (signal ? 128 : 0)));
+          child.on('error', () => resolveExited(1));
+          return {
+            pid: child.pid,
+            exited,
+            stdout: { text: async () => { await exited; return Buffer.concat(stdoutChunks).toString('utf8'); } },
+            unref: () => { try { child.unref(); } catch {} },
+            kill: (signal) => { try { child.kill(signal); } catch {} },
+          };
+        },
+        file: (path) => {
+          const err = new Error(`ENOENT: Bun.file(${String(path)}) is not supported by the Termux compatibility shim`);
+          err.code = 'ENOENT';
+          err.errno = -2;
+          throw err;
+        },
     };
     Object.assign(globalThis.__claudeBunShim, globalThis.Bun);
     if (typeof globalThis.__claudeBunShim.gc !== 'function') {
@@ -1447,6 +1492,13 @@ function rewriteNativeChunkSource(source) {
     'npmInstallDeprecated flag',
     _npmInstallDeprecatedExpected,
   );
+  patched = replaceRequired(
+    patched,
+    /function ([A-Za-z_$][\w$]*)\(\)\{(return\([A-Za-z_$][\w$]*,[A-Za-z_$][\w$]*,[A-Za-z_$][\w$]*\)=>\{let\{cmd:([A-Za-z_$][\w$]*),prefixArgs:([A-Za-z_$][\w$]*)\}=[A-Za-z_$][\w$]*\(\{pinToCurrentBinary:!0\}\),[A-Za-z_$][\w$]*=\[\3,\.\.\.\4,"--bg-pty-host")/g,
+    'function $1(){return undefined;$2',
+    'bg-pty-host factory disable',
+    1,
+  );
   return patched;
 }
 
@@ -1619,6 +1671,44 @@ async function main() {
         };
         })(),
         YAML: globalThis.__claudeYaml,
+        spawn: (cmd, options) => {
+          const opts = options || {};
+          const stdioArrayRaw = opts.stdio;
+          const cmdArray = Array.isArray(cmd) ? cmd : [cmd];
+          const normalizeStdio = (v) => {
+            if (typeof v === 'number' && Number.isInteger(v) && v >= 0) return v;
+            return (v === 'ignore' || v === 'pipe' || v === 'inherit') ? v : 'pipe';
+          };
+          const stdioMapped = Array.isArray(stdioArrayRaw)
+            ? stdioArrayRaw.map(normalizeStdio)
+            : [normalizeStdio(opts.stdin), normalizeStdio(opts.stdout), normalizeStdio(opts.stderr)];
+          const child = _realChild.spawn(cmdArray[0], cmdArray.slice(1), {
+            stdio: stdioMapped,
+            cwd: opts.cwd,
+            env: opts.env,
+            detached: !!opts.detached,
+            argv0: opts.argv0,
+          });
+          const stdoutChunks = [];
+          if (child.stdout) child.stdout.on('data', d => stdoutChunks.push(d));
+          let resolveExited;
+          const exited = new Promise(resolve => { resolveExited = resolve; });
+          child.on('exit', (code, signal) => resolveExited(code !== null ? code : (signal ? 128 : 0)));
+          child.on('error', () => resolveExited(1));
+          return {
+            pid: child.pid,
+            exited,
+            stdout: { text: async () => { await exited; return Buffer.concat(stdoutChunks).toString('utf8'); } },
+            unref: () => { try { child.unref(); } catch {} },
+            kill: (signal) => { try { child.kill(signal); } catch {} },
+          };
+        },
+        file: (path) => {
+          const err = new Error(`ENOENT: Bun.file(${String(path)}) is not supported by the Termux compatibility shim`);
+          err.code = 'ENOENT';
+          err.errno = -2;
+          throw err;
+        },
     };
     Object.assign(globalThis.__claudeBunShim, globalThis.Bun);
     if (typeof globalThis.__claudeBunShim.gc !== 'function') {

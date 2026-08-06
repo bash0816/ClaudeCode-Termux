@@ -1,6 +1,7 @@
 'use strict';
 
 const test = require('node:test');
+const { mock } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('crypto');
 const child_process = require('child_process');
@@ -300,8 +301,35 @@ test('cleanupStaleEntryFiles removes only stale extracted files for the same off
 function buildSyntheticBundleSource() {
   const typeofBun = Array.from({ length: 6 }, () => 'typeof Bun').join('; ');
   const bunProps = Array.from({ length: 37 }, (_, index) => `Bun.p${index}`).join('; ');
-  return `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0 }`;
+  return `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; function dYs(){return(e,t,r)=>{let{cmd:n,prefixArgs:o}=ox({pinToCurrentBinary:!0}),i=[n,...o,"--bg-pty-host",r.ptySock];return i}} }`;
 }
+
+test('rewriteNativeChunkSource disables the bg-pty-host factory', () => {
+  process.env.CURRENT_CLAUDE_VERSION = '2.1.198';
+  try {
+    const { rewriteNativeChunkSource } = loadHelperApi();
+    const patched = rewriteNativeChunkSource(buildSyntheticBundleSource());
+    const start = patched.indexOf('function dYs(){');
+    assert.notEqual(start, -1);
+    let depth = 0;
+    let end = -1;
+    for (let index = start; index < patched.length; index += 1) {
+      if (patched[index] === '{') depth += 1;
+      if (patched[index] === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          end = index + 1;
+          break;
+        }
+      }
+    }
+    assert.notEqual(end, -1);
+    const rewrittenFactory = eval('(' + patched.slice(start, end) + ')');
+    assert.equal(rewrittenFactory(), undefined);
+  } finally {
+    delete process.env.CURRENT_CLAUDE_VERSION;
+  }
+});
 
 test('rewriteNativeChunkSource rewrites the synthetic bundle slice (version 2.1.198)', () => {
   process.env.CURRENT_CLAUDE_VERSION = '2.1.198';
@@ -328,7 +356,7 @@ test('rewriteNativeChunkSource rewrites the synthetic bundle slice (version 2.1.
     const { rewriteNativeChunkSource } = loadHelperApi();
     const typeofBun = Array.from({ length: 7 }, () => 'typeof Bun').join('; ');
     const bunProps = Array.from({ length: 40 }, (_, index) => `Bun.p${index}`).join('; ');
-    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0 }`;
+    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; function dYs(){return(e,t,r)=>{let{cmd:n,prefixArgs:o}=ox({pinToCurrentBinary:!0}),i=[n,...o,"--bg-pty-host",r.ptySock];return i}} }`;
     const patched = rewriteNativeChunkSource(source);
 
     assert.match(patched, /var __claudeBun = globalThis\.__claudeBunShim;/);
@@ -349,7 +377,7 @@ test('rewriteNativeChunkSource rewrites the synthetic bundle slice (version 2.1.
     const { rewriteNativeChunkSource } = loadHelperApi();
     const typeofBun = Array.from({ length: 7 }, () => 'typeof Bun').join('; ');
     const bunProps = Array.from({ length: 41 }, (_, index) => `Bun.p${index}`).join('; ');
-    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0 }`;
+    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; function dYs(){return(e,t,r)=>{let{cmd:n,prefixArgs:o}=ox({pinToCurrentBinary:!0}),i=[n,...o,"--bg-pty-host",r.ptySock];return i}} }`;
     const patched = rewriteNativeChunkSource(source);
 
     assert.match(patched, /var __claudeBun = globalThis\.__claudeBunShim;/);
@@ -370,7 +398,7 @@ test('rewriteNativeChunkSource rewrites the synthetic bundle slice (version 2.1.
     const { rewriteNativeChunkSource } = loadHelperApi();
     const typeofBun = Array.from({ length: 7 }, () => 'typeof Bun').join('; ');
     const bunProps = Array.from({ length: 41 }, (_, index) => `Bun.p${index}`).join('; ');
-    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0 }`;
+    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0; function dYs(){return(e,t,r)=>{let{cmd:n,prefixArgs:o}=ox({pinToCurrentBinary:!0}),i=[n,...o,"--bg-pty-host",r.ptySock];return i}} }`;
     const patched = rewriteNativeChunkSource(source);
 
     assert.match(patched, /var __claudeBun = globalThis\.__claudeBunShim;/);
@@ -391,7 +419,7 @@ test('rewriteNativeChunkSource rewrites the synthetic bundle slice (version 2.1.
     const { rewriteNativeChunkSource } = loadHelperApi();
     const typeofBun = Array.from({ length: 7 }, () => 'typeof Bun').join('; ');
     const bunProps = Array.from({ length: 38 }, (_, index) => `Bun.p${index}`).join('; ');
-    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0 }`;
+    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0; function dYs(){return(e,t,r)=>{let{cmd:n,prefixArgs:o}=ox({pinToCurrentBinary:!0}),i=[n,...o,"--bg-pty-host",r.ptySock];return i}} }`;
     const patched = rewriteNativeChunkSource(source);
 
     assert.match(patched, /var __claudeBun = globalThis\.__claudeBunShim;/);
@@ -412,7 +440,7 @@ test('rewriteNativeChunkSource rejects stale Bun property access count for versi
     const { rewriteNativeChunkSource } = loadHelperApi();
     const typeofBun = Array.from({ length: 7 }, () => 'typeof Bun').join('; ');
     const bunProps = Array.from({ length: 41 }, (_, index) => `Bun.p${index}`).join('; ');
-    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0 }`;
+    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0; function dYs(){return(e,t,r)=>{let{cmd:n,prefixArgs:o}=ox({pinToCurrentBinary:!0}),i=[n,...o,"--bg-pty-host",r.ptySock];return i}} }`;
 
     assert.throws(
       () => rewriteNativeChunkSource(source),
@@ -429,7 +457,7 @@ test('rewriteNativeChunkSource rewrites the synthetic bundle slice (version 2.1.
     const { rewriteNativeChunkSource } = loadHelperApi();
     const typeofBun = Array.from({ length: 7 }, () => 'typeof Bun').join('; ');
     const bunProps = Array.from({ length: 39 }, (_, index) => `Bun.p${index}`).join('; ');
-    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0 }`;
+    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0; function dYs(){return(e,t,r)=>{let{cmd:n,prefixArgs:o}=ox({pinToCurrentBinary:!0}),i=[n,...o,"--bg-pty-host",r.ptySock];return i}} }`;
     const patched = rewriteNativeChunkSource(source);
 
     assert.match(patched, /var __claudeBun = globalThis\.__claudeBunShim;/);
@@ -450,7 +478,7 @@ test('rewriteNativeChunkSource rejects stale Bun property access count for versi
     const { rewriteNativeChunkSource } = loadHelperApi();
     const typeofBun = Array.from({ length: 7 }, () => 'typeof Bun').join('; ');
     const bunProps = Array.from({ length: 38 }, (_, index) => `Bun.p${index}`).join('; ');
-    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0 }`;
+    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0; function dYs(){return(e,t,r)=>{let{cmd:n,prefixArgs:o}=ox({pinToCurrentBinary:!0}),i=[n,...o,"--bg-pty-host",r.ptySock];return i}} }`;
 
     assert.throws(
       () => rewriteNativeChunkSource(source),
@@ -467,7 +495,7 @@ test('rewriteNativeChunkSource rewrites the synthetic bundle slice (version 2.1.
     const { rewriteNativeChunkSource } = loadHelperApi();
     const typeofBun = Array.from({ length: 7 }, () => 'typeof Bun').join('; ');
     const bunProps = Array.from({ length: 40 }, (_, index) => `Bun.p${index}`).join('; ');
-    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0 }`;
+    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0; function dYs(){return(e,t,r)=>{let{cmd:n,prefixArgs:o}=ox({pinToCurrentBinary:!0}),i=[n,...o,"--bg-pty-host",r.ptySock];return i}} }`;
     const patched = rewriteNativeChunkSource(source);
 
     assert.match(patched, /var __claudeBun = globalThis\.__claudeBunShim;/);
@@ -487,7 +515,7 @@ test('rewriteNativeChunkSource rejects stale Bun property access count for versi
     const { rewriteNativeChunkSource } = loadHelperApi();
     const typeofBun = Array.from({ length: 7 }, () => 'typeof Bun').join('; ');
     const bunProps = Array.from({ length: 39 }, (_, index) => `Bun.p${index}`).join('; ');
-    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0 }`;
+    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0; function dYs(){return(e,t,r)=>{let{cmd:n,prefixArgs:o}=ox({pinToCurrentBinary:!0}),i=[n,...o,"--bg-pty-host",r.ptySock];return i}} }`;
 
     assert.throws(
       () => rewriteNativeChunkSource(source),
@@ -504,7 +532,7 @@ test('rewriteNativeChunkSource rewrites the synthetic bundle slice (version 2.1.
     const { rewriteNativeChunkSource } = loadHelperApi();
     const typeofBun = Array.from({ length: 7 }, () => 'typeof Bun').join('; ');
     const bunProps = Array.from({ length: 42 }, (_, index) => `Bun.p${index}`).join('; ');
-    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0 }`;
+    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0; function dYs(){return(e,t,r)=>{let{cmd:n,prefixArgs:o}=ox({pinToCurrentBinary:!0}),i=[n,...o,"--bg-pty-host",r.ptySock];return i}} }`;
     const patched = rewriteNativeChunkSource(source);
 
     assert.match(patched, /var __claudeBun = globalThis\.__claudeBunShim;/);
@@ -524,7 +552,7 @@ test('rewriteNativeChunkSource rejects stale Bun property access count for versi
     const { rewriteNativeChunkSource } = loadHelperApi();
     const typeofBun = Array.from({ length: 7 }, () => 'typeof Bun').join('; ');
     const bunProps = Array.from({ length: 41 }, (_, index) => `Bun.p${index}`).join('; ');
-    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0 }`;
+    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0; function dYs(){return(e,t,r)=>{let{cmd:n,prefixArgs:o}=ox({pinToCurrentBinary:!0}),i=[n,...o,"--bg-pty-host",r.ptySock];return i}} }`;
 
     assert.throws(
       () => rewriteNativeChunkSource(source),
@@ -571,6 +599,7 @@ function buildScenarioFixtureSource() {
   return `function(exports, require, module, __filename, __dirname) {
     ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps};
     npmInstallDeprecated:!0; npmInstallDeprecated:!0;
+    function dYs(){return(e,t,r)=>{let{cmd:n,prefixArgs:o}=ox({pinToCurrentBinary:!0}),i=[n,...o,"--bg-pty-host",r.ptySock];return i}}
     const scenario = process.env.TEST_SCENARIO;
     if (scenario === 'sync-exit') { process.stdout.write('ok'); process.exit(0); return; }
     if (scenario === 'async-exit') {
@@ -1337,4 +1366,146 @@ test('installStreamJsonTerminalWatcher waits for write callback before completin
   assert.ok(callbackFired, 'callback should have been fired');
 
   watcher.restore();
+});
+
+function extractShimSource(block) {
+  const startMarker = 'const _realChild = require(\'child_process\');';
+  const endMarker = 'Object.assign(globalThis.__claudeBunShim, globalThis.Bun);';
+  const start = block.indexOf(startMarker);
+  assert.notEqual(start, -1, 'missing Bun shim start');
+  const end = block.indexOf(endMarker, start);
+  assert.notEqual(end, -1, 'missing Bun shim end');
+  return block.slice(start, end + endMarker.length);
+}
+
+function loadBunShim(source) {
+  const context = vm.createContext({
+    stringWidth: () => 0,
+    wrapAnsi: value => value,
+    stripANSI: value => value,
+    stableHash: () => 0,
+    __claudeYaml: {},
+    Buffer,
+    require,
+  });
+  context.__claudeBunShim = {};
+  context.__claudeYaml = {};
+  context.Bun = {};
+  context.module = { exports: {} };
+  vm.runInContext(`${source}\nmodule.exports = globalThis.__claudeBunShim;`, context);
+  return context.module.exports;
+}
+
+test('helper and bootstrap Bun shim source is identical', () => {
+  const helperBlock = extractBlock('cat <<\'NODE\' > "$_helper"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+  const bootstrapBlock = extractBlock('cat <<\'NODE\' > "$_bootstrap"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+  assert.equal(extractShimSource(helperBlock), extractShimSource(bootstrapBlock));
+});
+
+test('Bun.file always throws ENOENT', () => {
+  for (const blockMarker of ['cat <<\'NODE\' > "$_helper"', 'cat <<\'NODE\' > "$_bootstrap"']) {
+    const block = extractBlock(blockMarker, '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+    const Bun = loadBunShim(extractShimSource(block));
+    assert.throws(() => Bun.file('/some/path'), error =>
+      error.code === 'ENOENT' && error.errno === -2);
+  }
+});
+
+test('Bun.spawn supports top-level and array stdio forms', async () => {
+  const block = extractBlock('cat <<\'NODE\' > "$_helper"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+  const Bun = loadBunShim(extractShimSource(block));
+  const topLevel = Bun.spawn(['echo', 'hello'], { stdout: 'pipe', stderr: 'ignore' });
+  assert.equal(await topLevel.stdout.text(), 'hello\n');
+  assert.equal(await topLevel.exited, 0);
+  const arrayForm = Bun.spawn(['echo', 'hello'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  assert.equal(await arrayForm.stdout.text(), 'hello\n');
+  assert.equal(await arrayForm.exited, 0);
+});
+
+test('Bun.spawn forwards options, preserves numeric fds, and delegates child controls', () => {
+  const block = extractBlock('cat <<\'NODE\' > "$_helper"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+  const calls = [];
+  const handlers = {};
+  const child = {
+    pid: 123,
+    stdout: null,
+    on(event, handler) { handlers[event] = handler; return this; },
+    unref() { calls.push(['unref']); },
+    kill(signal) { calls.push(['kill', signal]); },
+  };
+  mock.method(child_process, 'spawn', (...args) => {
+    calls.push(args);
+    return child;
+  });
+  try {
+    const Bun = loadBunShim(extractShimSource(block));
+    const result = Bun.spawn(['cmd', 'arg'], {
+      detached: true,
+      argv0: 'argv0-value',
+      cwd: '/tmp/work',
+      env: { TEST: 'yes' },
+      stdio: [0, 1, 2],
+    });
+    assert.deepEqual(JSON.parse(JSON.stringify(calls[0])), [
+      'cmd',
+      ['arg'],
+      {
+        stdio: [0, 1, 2],
+        cwd: '/tmp/work',
+        env: { TEST: 'yes' },
+        detached: true,
+        argv0: 'argv0-value',
+      },
+    ]);
+    result.unref();
+    result.kill('SIGTERM');
+    assert.deepEqual(JSON.parse(JSON.stringify(calls.slice(1))), [['unref'], ['kill', 'SIGTERM']]);
+  } finally {
+    mock.restoreAll();
+  }
+});
+
+test('Bun.spawn prefers stdio array over top-level stdio options', () => {
+  for (const blockMarker of ['cat <<\'NODE\' > "$_helper"', 'cat <<\'NODE\' > "$_bootstrap"']) {
+    const block = extractBlock(blockMarker, '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+    const calls = [];
+    mock.method(child_process, 'spawn', (...args) => {
+      calls.push(args);
+      return { pid: 123, stdout: null, on() { return this; } };
+    });
+    try {
+      const Bun = loadBunShim(extractShimSource(block));
+      Bun.spawn(['cmd'], {
+        stdio: [0, 1, 2],
+        stdin: 'pipe',
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      assert.deepEqual(JSON.parse(JSON.stringify(calls[0][2])), {
+        stdio: [0, 1, 2],
+        detached: false,
+      });
+    } finally {
+      mock.restoreAll();
+    }
+  }
+});
+
+test('Bun.spawn forwards top-level stdin in the first stdio position', () => {
+  for (const blockMarker of ['cat <<\'NODE\' > "$_helper"', 'cat <<\'NODE\' > "$_bootstrap"']) {
+    const block = extractBlock(blockMarker, '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+    const calls = [];
+    mock.method(child_process, 'spawn', (...args) => {
+      calls.push(args);
+      return { pid: 123, stdout: null, on() { return this; } };
+    });
+    try {
+      const Bun = loadBunShim(extractShimSource(block));
+      Bun.spawn(['cmd'], { stdin: 'inherit', stdout: 'pipe', stderr: 'ignore' });
+      assert.equal(calls[0][2].stdio[0], 'inherit');
+      assert.deepEqual(JSON.parse(JSON.stringify(calls[0][2].stdio)), ['inherit', 'pipe', 'ignore']);
+    } finally {
+      mock.restoreAll();
+    }
+  }
 });
