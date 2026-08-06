@@ -563,6 +563,43 @@ test('rewriteNativeChunkSource rejects stale Bun property access count for versi
   }
 });
 
+test('rewriteNativeChunkSource rewrites the synthetic bundle slice (version 2.1.223)', () => {
+  process.env.CURRENT_CLAUDE_VERSION = '2.1.223';
+  try {
+    const { rewriteNativeChunkSource } = loadHelperApi();
+    const typeofBun = Array.from({ length: 7 }, () => 'typeof Bun').join('; ');
+    const bunProps = Array.from({ length: 43 }, (_, index) => `Bun.p${index}`).join('; ');
+    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0; function dYs(){return(e,t,r)=>{let{cmd:n,prefixArgs:o}=ox({pinToCurrentBinary:!0}),i=[n,...o,"--bg-pty-host",r.ptySock];return i}} }`;
+    const patched = rewriteNativeChunkSource(source);
+
+    assert.match(patched, /var __claudeBun = globalThis\.__claudeBunShim;/);
+    assert.match(patched, /typeof __claudeBun/);
+    assert.match(patched, /typeof globalThis\.__claudeBun/);
+    assert.match(patched, /globalThis\.__claudeBun/);
+    assert.match(patched, /__claudeBun\./);
+    assert.equal((patched.match(/__claudeBun\./g) || []).length, 43);
+  } finally {
+    delete process.env.CURRENT_CLAUDE_VERSION;
+  }
+});
+
+test('rewriteNativeChunkSource rejects stale Bun property access count for version 2.1.223', () => {
+  process.env.CURRENT_CLAUDE_VERSION = '2.1.223';
+  try {
+    const { rewriteNativeChunkSource } = loadHelperApi();
+    const typeofBun = Array.from({ length: 7 }, () => 'typeof Bun').join('; ');
+    const bunProps = Array.from({ length: 42 }, (_, index) => `Bun.p${index}`).join('; ');
+    const source = `function(exports, require, module, __filename, __dirname) { ${typeofBun}; typeof globalThis.Bun; globalThis.Bun; ${bunProps}; npmInstallDeprecated:!0; npmInstallDeprecated:!0; function dYs(){return(e,t,r)=>{let{cmd:n,prefixArgs:o}=ox({pinToCurrentBinary:!0}),i=[n,...o,"--bg-pty-host",r.ptySock];return i}} }`;
+
+    assert.throws(
+      () => rewriteNativeChunkSource(source),
+      /unexpected Bun property access count 42/,
+    );
+  } finally {
+    delete process.env.CURRENT_CLAUDE_VERSION;
+  }
+});
+
 test('rewriteNativeChunkSource rejects unexpected replacement counts', () => {
   const { rewriteNativeChunkSource } = loadHelperApi();
   const source = buildSyntheticBundleSource().replace('Bun.p30;', '');
