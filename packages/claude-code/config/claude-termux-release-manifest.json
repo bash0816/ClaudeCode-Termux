@@ -2,7 +2,7 @@
   "manifest_version": 1,
   "package_name": "@bash0816/claude-code",
   "latest_audited_version": "2.1.222",
-  "latest_candidate_version": "2.1.222-1",
+  "latest_candidate_version": "2.1.223",
   "previous_stable_version": "2.1.220-2",
   "stable_pinned_version": "2.1.193",
   "manifest_url": "https://raw.githubusercontent.com/bash0816/ClaudeCode-Termux/main/config/claude-termux-release-manifest.json"
