@@ -66,6 +66,35 @@ Normal launch also checks the same manifest with a short timeout and prints a no
 
 通常起動時も、同じ manifest を短い timeout で確認し、新しい監査済み version があれば通知します。
 
+## Known Issues / 既知の問題
+
+Background sessions (`/background`, `claude agents`, the on-demand daemon) do not work on this
+Termux wrapper: the Bun `Terminal` (PTY) API is not implemented by the compatibility shim. Since
+`2.1.223-1`, this feature is disabled by default (`CLAUDE_CODE_DISABLE_AGENT_VIEW=1`) because
+attempting to use it can cause an in-progress foreground conversation to be unexpectedly moved to
+the background and become unreachable.
+
+この Termux wrapper では、background session 機能(`/background`、`claude agents`、on-demand
+daemon)が動作しません。互換 shim には Bun の `Terminal`(PTY)API が実装されていないためです。
+`2.1.223-1` からはこの機能をデフォルトで無効化しています(`CLAUDE_CODE_DISABLE_AGENT_VIEW=1`)。
+これは、この機能を使おうとすると、**進行中のフォアグラウンド会話が予告なくバックグラウンドへ
+移動し、到達不能になることがある**ためです。
+
+If you want to re-enable it anyway (understanding it may cause this issue), set the variable to
+exactly `0` before launching:
+
+理解した上であえて再有効化したい場合は、起動前に厳密に `0` を設定してください:
+
+```sh
+CLAUDE_CODE_DISABLE_AGENT_VIEW=0 claude
+```
+
+Any value other than `1`/`true`/`yes`/`on` (case-insensitive) re-enables the feature, so a typo
+like `disable` or `Y` will silently turn protection off. Use exactly `0` to be safe.
+
+`1`/`true`/`yes`/`on`(大文字小文字を区別しません)以外の値は全て機能を再有効化してしまうため、
+`disable` や `Y` のような typo でも保護が黙って外れます。安全のため厳密に `0` を指定してください。
+
 ## Policy / 方針
 
 - Only audited versions in `config/claude-native-audited-versions.json` can run.
