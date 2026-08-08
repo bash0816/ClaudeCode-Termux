@@ -13,6 +13,11 @@ const vm = require('vm');
 const scriptPath = path.join(__dirname, 'termux-run-claude-native.sh');
 const script = fs.readFileSync(scriptPath, 'utf8');
 
+// Fixtures below don't include the /background isEnabled pattern, so
+// rewriteNativeChunkSource must run with the patch disabled (its default)
+// regardless of what the ambient shell happens to export.
+delete process.env.CLAUDE_CODE_DISABLE_AGENT_VIEW;
+
 function extractBlock(marker, trailer) {
   const start = script.indexOf(marker);
   assert.notEqual(start, -1, `missing marker: ${marker}`);
