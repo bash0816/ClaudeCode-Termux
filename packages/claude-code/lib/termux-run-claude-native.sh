@@ -635,6 +635,18 @@ function rewriteNativeChunkSource(source) {
     'bg-pty-host factory disable',
     1,
   );
+  const _agentViewDisabled = ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.CLAUDE_CODE_DISABLE_AGENT_VIEW ?? '').toLowerCase().trim(),
+  );
+  if (_agentViewDisabled) {
+    patched = replaceRequired(
+      patched,
+      /(\{type:"local-jsx",name:"background",aliases:\["bg"\][^}]*?isEnabled:\(\)=>)!0(\})/g,
+      '$1!1$2',
+      '/background command isEnabled disable',
+      1,
+    );
+  }
   return patched;
 }
 
@@ -1501,6 +1513,18 @@ function rewriteNativeChunkSource(source) {
     'bg-pty-host factory disable',
     1,
   );
+  const _agentViewDisabled = ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.CLAUDE_CODE_DISABLE_AGENT_VIEW ?? '').toLowerCase().trim(),
+  );
+  if (_agentViewDisabled) {
+    patched = replaceRequired(
+      patched,
+      /(\{type:"local-jsx",name:"background",aliases:\["bg"\][^}]*?isEnabled:\(\)=>)!0(\})/g,
+      '$1!1$2',
+      '/background command isEnabled disable',
+      1,
+    );
+  }
   return patched;
 }
 
