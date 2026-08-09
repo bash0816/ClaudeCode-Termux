@@ -86,7 +86,7 @@ Only versions registered in the audited metadata can run.
 |---------|--------|
 | `2.1.224` | ✅ **Recommended / 推奨** — latest |
 | `2.1.223-1` | ✅ rollback candidate — `@candidate` dist-tag |
-| `2.1.193` | ✅ stable — `@stable` dist-tag |
+| `2.1.220-2` | ✅ stable — `@stable` dist-tag |
 <!-- SUPPORTED_VERSIONS_TABLE_END -->
 
 ### Fable 5 Model Fix / Fable 5 モデル選択肢修正
