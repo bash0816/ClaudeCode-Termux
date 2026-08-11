@@ -619,16 +619,19 @@ function rewriteNativeChunkSource(source) {
   const _npmInstallDeprecatedExpected = (() => {
     const _ver = String(process.env.CURRENT_CLAUDE_VERSION || '');
     const _m = _ver.match(/^(\d+)\.(\d+)\.(\d+)/);
+    if (_m && (Number(_m[1]) > 2 || Number(_m[2]) > 1 || Number(_m[3]) >= 227)) return 0;
     if (_m && (Number(_m[1]) > 2 || Number(_m[2]) > 1 || Number(_m[3]) >= 203)) return 2;
     return 1;
   })();
-  patched = replaceRequired(
-    patched,
-    /\bnpmInstallDeprecated:!0\b/g,
-    'npmInstallDeprecated:!1',
-    'npmInstallDeprecated flag',
-    _npmInstallDeprecatedExpected,
-  );
+  if (_npmInstallDeprecatedExpected > 0) {
+    patched = replaceRequired(
+      patched,
+      /\bnpmInstallDeprecated:!0\b/g,
+      'npmInstallDeprecated:!1',
+      'npmInstallDeprecated flag',
+      _npmInstallDeprecatedExpected,
+    );
+  }
   patched = replaceRequired(
     patched,
     /function ([A-Za-z_$][\w$]*)\(\)\{(return\([A-Za-z_$][\w$]*,[A-Za-z_$][\w$]*,[A-Za-z_$][\w$]*\)=>\{let\{cmd:([A-Za-z_$][\w$]*),prefixArgs:([A-Za-z_$][\w$]*)\}=[A-Za-z_$][\w$]*\(\{pinToCurrentBinary:!0\}\),[A-Za-z_$][\w$]*=\[\3,\.\.\.\4,"--bg-pty-host")/g,
@@ -1498,16 +1501,19 @@ function rewriteNativeChunkSource(source) {
   const _npmInstallDeprecatedExpected = (() => {
     const _ver = String(process.env.CURRENT_CLAUDE_VERSION || '');
     const _m = _ver.match(/^(\d+)\.(\d+)\.(\d+)/);
+    if (_m && (Number(_m[1]) > 2 || Number(_m[2]) > 1 || Number(_m[3]) >= 227)) return 0;
     if (_m && (Number(_m[1]) > 2 || Number(_m[2]) > 1 || Number(_m[3]) >= 203)) return 2;
     return 1;
   })();
-  patched = replaceRequired(
-    patched,
-    /\bnpmInstallDeprecated:!0\b/g,
-    'npmInstallDeprecated:!1',
-    'npmInstallDeprecated flag',
-    _npmInstallDeprecatedExpected,
-  );
+  if (_npmInstallDeprecatedExpected > 0) {
+    patched = replaceRequired(
+      patched,
+      /\bnpmInstallDeprecated:!0\b/g,
+      'npmInstallDeprecated:!1',
+      'npmInstallDeprecated flag',
+      _npmInstallDeprecatedExpected,
+    );
+  }
   patched = replaceRequired(
     patched,
     /function ([A-Za-z_$][\w$]*)\(\)\{(return\([A-Za-z_$][\w$]*,[A-Za-z_$][\w$]*,[A-Za-z_$][\w$]*\)=>\{let\{cmd:([A-Za-z_$][\w$]*),prefixArgs:([A-Za-z_$][\w$]*)\}=[A-Za-z_$][\w$]*\(\{pinToCurrentBinary:!0\}\),[A-Za-z_$][\w$]*=\[\3,\.\.\.\4,"--bg-pty-host")/g,
