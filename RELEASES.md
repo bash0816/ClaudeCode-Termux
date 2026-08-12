@@ -1,3 +1,26 @@
+## 2.1.227 — 2026-08-13 ✅ Current audited / 現在の監査済み版
+
+upstream claude-code 2.1.227 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
+
+**Upstream highlights / 主な変更（upstream）**
+
+## What's changed
+
+- Fixed feature flags being evaluated without the user's subscription tier when a session started with an expired login token, which could wrongly prompt Max plan users to enable usage credits for Fable
+- Fixed every Bash command failing under `claude-code-action` with `allowed_non_write_users` on GitHub-hosted runners
+- Fixed `/tui` bringing back a conversation that had been rewound to before its first message
+- Improved slash-command menu: blue now marks only the selected row, matched characters are bolded instead of recolored, and emoji or accented names keep their glyphs
+- Improved performance: fewer event-loop stalls on file-not-found suggestions and at-mention size checks
+
+```sh
+npm install -g @bash0816/claude-code@latest
+```
+
+```sh
+npm install -g @bash0816/claude-code@2.1.226
+```
+
+---
 ## 2.1.226 — 2026-08-10 ✅ Current audited / 現在の監査済み版
 
 upstream claude-code 2.1.226 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
