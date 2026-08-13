@@ -680,6 +680,58 @@ async function main() {
   }
   const printWaitMs = Number(process.env.CLAUDE_TERMUX_PRINT_WAIT_MS || 5000);
 
+  function installPlainTextWriteWatcher() {
+    const hadOwnWrite = Object.prototype.hasOwnProperty.call(process.stdout, 'write');
+    const originalWriteDescriptor = hadOwnWrite ? Object.getOwnPropertyDescriptor(process.stdout, 'write') : undefined;
+    const originalWrite = process.stdout.write.bind(process.stdout);
+    let foundOutput = false;
+    let resultPromiseResolve = null;
+    let restored = false;
+
+    process.stdout.write = function wrappedWrite(chunk, encoding, callback) {
+      let cb = callback;
+      let enc = encoding;
+      if (typeof encoding === 'function') {
+        cb = encoding;
+        enc = undefined;
+      }
+      const combinedCallback = (err) => {
+        if (!err && !foundOutput) {
+          const len = typeof chunk === 'string'
+            ? Buffer.byteLength(chunk, typeof enc === 'string' ? enc : 'utf8')
+            : (Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(String(chunk ?? ''), 'utf8'));
+          if (len > 0) {
+            foundOutput = true;
+            if (typeof resultPromiseResolve === 'function') resultPromiseResolve();
+          }
+        }
+        if (typeof cb === 'function') cb(err);
+      };
+      return originalWrite(chunk, enc, combinedCallback);
+    };
+
+    return {
+      waitForResult() {
+        if (foundOutput) return Promise.resolve();
+        return new Promise((resolve) => {
+          resultPromiseResolve = resolve;
+        });
+      },
+      hasOutput() {
+        return foundOutput;
+      },
+      restore() {
+        if (restored) return;
+        restored = true;
+        if (hadOwnWrite) {
+          Object.defineProperty(process.stdout, 'write', originalWriteDescriptor);
+        } else {
+          delete process.stdout.write;
+        }
+      },
+    };
+  }
+
   function installStreamJsonTerminalWatcher() {
     const hadOwnWrite = Object.prototype.hasOwnProperty.call(process.stdout, 'write');
     const originalWriteDescriptor = hadOwnWrite ? Object.getOwnPropertyDescriptor(process.stdout, 'write') : undefined;
@@ -765,6 +817,25 @@ async function main() {
       if (timedOut) {
         forceTimeoutExit(1);
         return;
+      }
+      return;
+    }
+    if (streamJsonWatcher && typeof streamJsonWatcher.hasOutput === 'function') {
+      if (streamJsonWatcher.hasOutput()) {
+        return;
+      }
+      const gatingExitCode = process.exitCode;
+      const rawResultTimeoutMs = Number(process.env.CLAUDE_TERMUX_PRINT_RESULT_TIMEOUT_MS);
+      const extendedTimeoutMs = (Number.isFinite(rawResultTimeoutMs) && rawResultTimeoutMs > 0) ? rawResultTimeoutMs : 300000;
+      const noOutputTimeoutMs = (gatingExitCode !== undefined && gatingExitCode !== 0) ? printWaitMs : extendedTimeoutMs;
+      let timeoutHandle;
+      const timeoutPromise = new Promise(resolve => {
+        timeoutHandle = setTimeout(resolve, noOutputTimeoutMs);
+      });
+      try {
+        await Promise.race([streamJsonWatcher.waitForResult(), timeoutPromise]);
+      } finally {
+        clearTimeout(timeoutHandle);
       }
       return;
     }
@@ -882,6 +953,8 @@ async function main() {
 
     if (isStreamJsonPrintMode(argv)) {
       streamJsonWatcher = installStreamJsonTerminalWatcher();
+    } else {
+      streamJsonWatcher = installPlainTextWriteWatcher();
     }
 
     const moduleLike = { exports: {} };
@@ -1561,6 +1634,58 @@ async function main() {
     asyncErrors.push(error);
   }
 
+  function installPlainTextWriteWatcher() {
+    const hadOwnWrite = Object.prototype.hasOwnProperty.call(process.stdout, 'write');
+    const originalWriteDescriptor = hadOwnWrite ? Object.getOwnPropertyDescriptor(process.stdout, 'write') : undefined;
+    const originalWrite = process.stdout.write.bind(process.stdout);
+    let foundOutput = false;
+    let resultPromiseResolve = null;
+    let restored = false;
+
+    process.stdout.write = function wrappedWrite(chunk, encoding, callback) {
+      let cb = callback;
+      let enc = encoding;
+      if (typeof encoding === 'function') {
+        cb = encoding;
+        enc = undefined;
+      }
+      const combinedCallback = (err) => {
+        if (!err && !foundOutput) {
+          const len = typeof chunk === 'string'
+            ? Buffer.byteLength(chunk, typeof enc === 'string' ? enc : 'utf8')
+            : (Buffer.isBuffer(chunk) ? chunk.length : Buffer.byteLength(String(chunk ?? ''), 'utf8'));
+          if (len > 0) {
+            foundOutput = true;
+            if (typeof resultPromiseResolve === 'function') resultPromiseResolve();
+          }
+        }
+        if (typeof cb === 'function') cb(err);
+      };
+      return originalWrite(chunk, enc, combinedCallback);
+    };
+
+    return {
+      waitForResult() {
+        if (foundOutput) return Promise.resolve();
+        return new Promise((resolve) => {
+          resultPromiseResolve = resolve;
+        });
+      },
+      hasOutput() {
+        return foundOutput;
+      },
+      restore() {
+        if (restored) return;
+        restored = true;
+        if (hadOwnWrite) {
+          Object.defineProperty(process.stdout, 'write', originalWriteDescriptor);
+        } else {
+          delete process.stdout.write;
+        }
+      },
+    };
+  }
+
   function installStreamJsonTerminalWatcher() {
     const hadOwnWrite = Object.prototype.hasOwnProperty.call(process.stdout, 'write');
     const originalWriteDescriptor = hadOwnWrite ? Object.getOwnPropertyDescriptor(process.stdout, 'write') : undefined;
@@ -1647,6 +1772,26 @@ async function main() {
       if (timedOut) {
         forceTimeoutExit(1);
         return;
+      }
+      return;
+    }
+    if (streamJsonWatcher && typeof streamJsonWatcher.hasOutput === 'function') {
+      if (streamJsonWatcher.hasOutput()) {
+        return;
+      }
+      const printWaitMs = Number(process.env.CLAUDE_TERMUX_PRINT_WAIT_MS || 5000);
+      const gatingExitCode = process.exitCode;
+      const rawResultTimeoutMs = Number(process.env.CLAUDE_TERMUX_PRINT_RESULT_TIMEOUT_MS);
+      const extendedTimeoutMs = (Number.isFinite(rawResultTimeoutMs) && rawResultTimeoutMs > 0) ? rawResultTimeoutMs : 300000;
+      const noOutputTimeoutMs = (gatingExitCode !== undefined && gatingExitCode !== 0) ? printWaitMs : extendedTimeoutMs;
+      let timeoutHandle;
+      const timeoutPromise = new Promise(resolve => {
+        timeoutHandle = setTimeout(resolve, noOutputTimeoutMs);
+      });
+      try {
+        await Promise.race([streamJsonWatcher.waitForResult(), timeoutPromise]);
+      } finally {
+        clearTimeout(timeoutHandle);
       }
       return;
     }
@@ -1765,6 +1910,8 @@ async function main() {
 
     if (isStreamJsonPrintMode(argv)) {
       streamJsonWatcher = installStreamJsonTerminalWatcher();
+    } else if (process.env.CLAUDE_TERMUX_PRINT_MODE === '1') {
+      streamJsonWatcher = installPlainTextWriteWatcher();
     }
 
     const moduleLike = { exports: {} };

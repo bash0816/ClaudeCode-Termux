@@ -709,6 +709,14 @@ function buildScenarioFixtureSource() {
       process.exit(0);
       return;
     }
+    if (scenario === 'plain-late-write') {
+      setTimeout(() => { process.stdout.write('late-output'); }, 800);
+      return;
+    }
+    if (scenario === 'plain-no-output-error') {
+      process.exitCode = 1;
+      return;
+    }
     process.stdout.write('ok');
   }`;
 }
@@ -814,6 +822,46 @@ test('bootstrap branch (-p + CLAUDE_TERMUX_STDIN=inherit): normal/sync-exit/asyn
     } finally {
       fs.rmSync(r.tmpBase, { recursive: true, force: true });
     }
+  }
+});
+
+test('helper branch plain mode waits for late write beyond default printWaitMs', () => {
+  const r = runScenario({ printMode: true, stdinInherit: false, scenario: 'plain-late-write' });
+  try {
+    assert.ok((r.stdout || '').includes('late-output'), `stdout=${r.stdout} stderr=${r.stderr}`);
+    assert.equal(r.status, 0, `status=${r.status} stderr=${r.stderr}`);
+  } finally {
+    fs.rmSync(r.tmpBase, { recursive: true, force: true });
+  }
+});
+
+test('bootstrap branch plain mode waits for late write beyond default printWaitMs', () => {
+  const r = runScenario({ printMode: true, stdinInherit: true, scenario: 'plain-late-write' });
+  try {
+    assert.ok((r.stdout || '').includes('late-output'), `stdout=${r.stdout} stderr=${r.stderr}`);
+    assert.equal(r.status, 0, `status=${r.status} stderr=${r.stderr}`);
+  } finally {
+    fs.rmSync(r.tmpBase, { recursive: true, force: true });
+  }
+});
+
+test('helper branch plain mode with no output and non-zero exitCode exits promptly (no extended wait)', () => {
+  const r = runScenario({ printMode: true, stdinInherit: false, scenario: 'plain-no-output-error' });
+  try {
+    assert.equal(r.status, 1, `status=${r.status} stderr=${r.stderr}`);
+    assert.ok(r.elapsedMs < 5000, `expected prompt exit, got elapsedMs=${r.elapsedMs}`);
+  } finally {
+    fs.rmSync(r.tmpBase, { recursive: true, force: true });
+  }
+});
+
+test('bootstrap branch plain mode with no output and non-zero exitCode exits promptly (no extended wait)', () => {
+  const r = runScenario({ printMode: true, stdinInherit: true, scenario: 'plain-no-output-error' });
+  try {
+    assert.equal(r.status, 1, `status=${r.status} stderr=${r.stderr}`);
+    assert.ok(r.elapsedMs < 5000, `expected prompt exit, got elapsedMs=${r.elapsedMs}`);
+  } finally {
+    fs.rmSync(r.tmpBase, { recursive: true, force: true });
   }
 });
 
