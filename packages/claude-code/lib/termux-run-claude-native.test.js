@@ -709,11 +709,22 @@ function buildScenarioFixtureSource() {
       process.exit(0);
       return;
     }
+    if (scenario === 'plain-late-write') {
+      setTimeout(() => { process.stdout.write('late-output'); }, 800);
+      return;
+    }
+    if (scenario === 'plain-no-output-error') {
+      process.exitCode = 1;
+      return;
+    }
+    if (scenario === 'plain-no-output-success') {
+      return;
+    }
     process.stdout.write('ok');
   }`;
 }
 
-function runScenario({ printMode, stdinInherit, scenario, extraArgs }) {
+function runScenario({ printMode, stdinInherit, scenario, extraArgs, extraEnv }) {
   const tmpBase = fs.mkdtempSync(path.join(os.tmpdir(), 'claude-stdin-test-'));
   const sourceBin = path.join(tmpBase, 'fake-source.js');
   const fixtureSource = buildScenarioFixtureSource();
@@ -735,6 +746,7 @@ function runScenario({ printMode, stdinInherit, scenario, extraArgs }) {
     CLAUDE_TERMUX_PRINT_WAIT_MS: '300',
     TMPDIR: tmpBase,
     TEST_SCENARIO: scenario,
+    ...(extraEnv || {}),
   };
   if (stdinInherit) env.CLAUDE_TERMUX_STDIN = 'inherit';
   else delete env.CLAUDE_TERMUX_STDIN;
@@ -814,6 +826,76 @@ test('bootstrap branch (-p + CLAUDE_TERMUX_STDIN=inherit): normal/sync-exit/asyn
     } finally {
       fs.rmSync(r.tmpBase, { recursive: true, force: true });
     }
+  }
+});
+
+test('helper branch plain mode waits for late write beyond default printWaitMs', () => {
+  const r = runScenario({ printMode: true, stdinInherit: false, scenario: 'plain-late-write' });
+  try {
+    assert.ok((r.stdout || '').includes('late-output'), `stdout=${r.stdout} stderr=${r.stderr}`);
+    assert.equal(r.status, 0, `status=${r.status} stderr=${r.stderr}`);
+  } finally {
+    fs.rmSync(r.tmpBase, { recursive: true, force: true });
+  }
+});
+
+test('bootstrap branch plain mode waits for late write beyond default printWaitMs', () => {
+  const r = runScenario({ printMode: true, stdinInherit: true, scenario: 'plain-late-write' });
+  try {
+    assert.ok((r.stdout || '').includes('late-output'), `stdout=${r.stdout} stderr=${r.stderr}`);
+    assert.equal(r.status, 0, `status=${r.status} stderr=${r.stderr}`);
+  } finally {
+    fs.rmSync(r.tmpBase, { recursive: true, force: true });
+  }
+});
+
+test('helper branch plain mode with no output and non-zero exitCode exits promptly (no extended wait)', () => {
+  const r = runScenario({ printMode: true, stdinInherit: false, scenario: 'plain-no-output-error' });
+  try {
+    assert.equal(r.status, 1, `status=${r.status} stderr=${r.stderr}`);
+    assert.ok(r.elapsedMs < 5000, `expected prompt exit, got elapsedMs=${r.elapsedMs}`);
+  } finally {
+    fs.rmSync(r.tmpBase, { recursive: true, force: true });
+  }
+});
+
+test('bootstrap branch plain mode with no output and non-zero exitCode exits promptly (no extended wait)', () => {
+  const r = runScenario({ printMode: true, stdinInherit: true, scenario: 'plain-no-output-error' });
+  try {
+    assert.equal(r.status, 1, `status=${r.status} stderr=${r.stderr}`);
+    assert.ok(r.elapsedMs < 5000, `expected prompt exit, got elapsedMs=${r.elapsedMs}`);
+  } finally {
+    fs.rmSync(r.tmpBase, { recursive: true, force: true });
+  }
+});
+
+test('helper branch plain mode with no output and successful exit waits up to configured ceiling', () => {
+  const r = runScenario({
+    printMode: true,
+    stdinInherit: false,
+    scenario: 'plain-no-output-success',
+    extraEnv: { CLAUDE_TERMUX_PRINT_RESULT_TIMEOUT_MS: '400' },
+  });
+  try {
+    assert.equal(r.status, 0, `status=${r.status} stderr=${r.stderr}`);
+    assert.ok(r.elapsedMs >= 350, `expected extended wait close to 400ms ceiling, got elapsedMs=${r.elapsedMs}`);
+  } finally {
+    fs.rmSync(r.tmpBase, { recursive: true, force: true });
+  }
+});
+
+test('bootstrap branch plain mode with no output and successful exit waits up to configured ceiling', () => {
+  const r = runScenario({
+    printMode: true,
+    stdinInherit: true,
+    scenario: 'plain-no-output-success',
+    extraEnv: { CLAUDE_TERMUX_PRINT_RESULT_TIMEOUT_MS: '400' },
+  });
+  try {
+    assert.equal(r.status, 0, `status=${r.status} stderr=${r.stderr}`);
+    assert.ok(r.elapsedMs >= 350, `expected extended wait close to 400ms ceiling, got elapsedMs=${r.elapsedMs}`);
+  } finally {
+    fs.rmSync(r.tmpBase, { recursive: true, force: true });
   }
 });
 
@@ -1073,6 +1155,31 @@ test('helper and bootstrap installStreamJsonTerminalWatcher helpers stay identic
   );
 
   assert.equal(helperWatcher, bootstrapWatcher, 'installStreamJsonTerminalWatcher must be identical in both heredocs');
+});
+
+test('helper and bootstrap installPlainTextWriteWatcher helpers stay identical', () => {
+  const helperBlock = extractBlock('cat <<\'NODE\' > "$_helper"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+  const bootstrapBlock = extractBlock('cat <<\'NODE\' > "$_bootstrap"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+
+  const extractFn = (block) => {
+    const startMarker = 'function installPlainTextWriteWatcher() {';
+    const start = block.indexOf(startMarker);
+    assert.ok(start > -1, 'installPlainTextWriteWatcher function not found');
+    let depth = 0;
+    let i = start + startMarker.length - 1;
+    for (; i < block.length; i++) {
+      if (block[i] === '{') depth++;
+      if (block[i] === '}') {
+        depth--;
+        if (depth === 0) break;
+      }
+    }
+    return block.slice(start, i + 1);
+  };
+
+  const helperFn = extractFn(helperBlock);
+  const bootstrapFn = extractFn(bootstrapBlock);
+  assert.equal(helperFn, bootstrapFn, 'installPlainTextWriteWatcher must be identical in helper and bootstrap');
 });
 
 test('helper and bootstrap forceTimeoutExit helpers stay identical', () => {
