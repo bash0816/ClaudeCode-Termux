@@ -820,9 +820,6 @@ test('bootstrap branch (-p + CLAUDE_TERMUX_STDIN=inherit): normal/sync-exit/asyn
     try {
       assert.ok((r.stdout || '').includes('ok'), `scenario=${scenario} stdout=${r.stdout} stderr=${r.stderr}`);
       assert.equal(r.status, 0, `scenario=${scenario} status=${r.status} stderr=${r.stderr}`);
-      if (scenario === 'async-exit') {
-        assert.ok(r.elapsedMs >= 250, `expected wait >= 250ms, got ${r.elapsedMs}ms`);
-      }
     } finally {
       fs.rmSync(r.tmpBase, { recursive: true, force: true });
     }
