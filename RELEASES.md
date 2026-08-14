@@ -1,3 +1,22 @@
+## 2.1.231 — 2026-08-14 ✅ Current audited / 現在の監査済み版
+
+upstream claude-code 2.1.231 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
+
+**Upstream highlights / 主な変更（upstream）**
+
+## What's changed
+
+- Fixed MCP OAuth sign-in failing with a redirect URI mismatch for servers that use a pre-registered OAuth client, such as Slack
+
+```sh
+npm install -g @bash0816/claude-code@latest
+```
+
+```sh
+npm install -g @bash0816/claude-code@2.1.228
+```
+
+---
 ## 2.1.228 — 2026-08-13 ✅ Current audited / 現在の監査済み版
 
 upstream claude-code 2.1.228 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
