@@ -107,6 +107,5 @@ jobs:
               --base main \
               --head "$branch" \
               --title "Track claude-code ${version} candidate" \
-              --reviewer bash0816 \
               --body "$(printf 'Automated upstream claude-code intake.\n\n- upstream: @anthropic-ai/claude-code@%s\n- status: offset_discovered\n- Next: Device B verification -> promote-verified-version.js -> npm publish' "$version")"
           fi
