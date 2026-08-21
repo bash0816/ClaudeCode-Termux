@@ -572,6 +572,7 @@ function rewriteNativeChunkSource(source) {
   const _typeofBunExpected = (() => {
     const _ver = String(process.env.CURRENT_CLAUDE_VERSION || '');
     const _m = _ver.match(/^(\d+)\.(\d+)\.(\d+)/);
+    if (_m && (Number(_m[1]) > 2 || Number(_m[2]) > 1 || Number(_m[3]) >= 237)) return 8;
     if (_m && (Number(_m[1]) > 2 || Number(_m[2]) > 1 || Number(_m[3]) >= 200)) return 7;
     return 6;
   })();
@@ -1528,6 +1529,7 @@ function rewriteNativeChunkSource(source) {
   const _typeofBunExpected = (() => {
     const _ver = String(process.env.CURRENT_CLAUDE_VERSION || '');
     const _m = _ver.match(/^(\d+)\.(\d+)\.(\d+)/);
+    if (_m && (Number(_m[1]) > 2 || Number(_m[2]) > 1 || Number(_m[3]) >= 237)) return 8;
     if (_m && (Number(_m[1]) > 2 || Number(_m[2]) > 1 || Number(_m[3]) >= 200)) return 7;
     return 6;
   })();
