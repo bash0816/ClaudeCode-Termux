@@ -733,7 +733,7 @@
       "entry_end_offset": 322298246,
       "tarball_integrity": "sha512-+m44UaA9YMj+LvZUF5WWNQoz2rcNxlFbpbJPNWFvQRyBWEINGMddDiJEHqW0YuJWDwlrYWq4KlCRBB2UnaTRaw==",
       "tarball_sha256": "6d4e8bad1f1792a950fc03ce2dd5133e99f79645e61e526b4abbaa168daca2c0",
-      "status": "offset_discovered"
+      "status": "termux_verified"
     },
     "2.1.238": {
       "wrapper_spec": "@anthropic-ai/claude-code@2.1.238",
