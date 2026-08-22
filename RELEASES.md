@@ -1,3 +1,23 @@
+## 2.1.237 — 2026-08-22 ✅ Current audited / 現在の監査済み版
+
+upstream claude-code 2.1.237 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
+
+**Upstream highlights / 主な変更（upstream）**
+
+## What's changed
+
+- Fixed prompt caching for sessions using an LLM gateway or custom base URL
+- Added a built-in "Concise" output style: Claude leads with results and skips preamble and narration, while doing the work just as thoroughly. Select it under Output style in /config.
+
+```sh
+npm install -g @bash0816/claude-code@latest
+```
+
+```sh
+npm install -g @bash0816/claude-code@2.1.235
+```
+
+---
 ## 2.1.235 — 2026-08-20 ✅ Current audited / 現在の監査済み版
 
 upstream claude-code 2.1.235 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
