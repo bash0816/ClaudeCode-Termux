@@ -76,6 +76,9 @@ function fetchNativeTarball(spec, packDir) {
     if (!tarballUrl) {
       throw new Error(`npm view did not return dist.tarball for ${spec}`);
     }
+    if (!/^https:\/\//.test(tarballUrl)) {
+      throw new Error(`Unexpected tarball URL scheme for ${spec}`);
+    }
     run('curl', [
       '--fail',
       '--location',
@@ -83,6 +86,7 @@ function fetchNativeTarball(spec, packDir) {
       '--connect-timeout', String(curlConnectTimeout),
       '--max-time', String(curlMaxTime),
       '--output', directTarball,
+      '--',
       tarballUrl,
     ]);
     if (fs.existsSync(directTarball)) {
