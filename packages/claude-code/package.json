@@ -1,6 +1,6 @@
 {
   "name": "@bash0816/claude-code",
-  "version": "2.1.241",
+  "version": "2.1.245",
   "description": "Unofficial Termux-native Claude Code wrapper with audited native replay",
   "license": "GPL-3.0-only",
   "bin": {
@@ -15,7 +15,7 @@
     "LICENSE"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=20.6.0"
   },
   "keywords": [
     "claude-code",

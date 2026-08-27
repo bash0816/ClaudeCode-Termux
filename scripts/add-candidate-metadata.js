@@ -39,15 +39,31 @@ function assertSameVersionKeys() {
 
 function main() {
   const offsets = loadJson(path.resolve(offsetFile));
+  const entryFormat = offsets.entry_format === 'esm-chunked' ? 'esm-chunked' : 'legacy-cjs';
+
   const versionEntry = {
     wrapper_spec: `@anthropic-ai/claude-code@${version}`,
     native_spec: `@anthropic-ai/claude-code-linux-arm64@${version}`,
-    entry_js_offset: offsets.entry_js_offset,
-    entry_end_offset: offsets.entry_end_offset,
+    entry_format: entryFormat,
     tarball_integrity: offsets.tarball_integrity,
     tarball_sha256: offsets.tarball_sha256,
     status: 'offset_discovered',
   };
+
+  if (entryFormat === 'esm-chunked') {
+    if (!(offsets.num_modules > 0)) {
+      throw new Error('esm-chunked offsets missing num_modules');
+    }
+    if (!(offsets.byte_count > 0)) {
+      throw new Error('esm-chunked offsets missing byte_count');
+    }
+  } else {
+    if (!(offsets.entry_js_offset > 0) || !(offsets.entry_end_offset > offsets.entry_js_offset)) {
+      throw new Error('legacy-cjs offsets missing entry_js_offset/entry_end_offset');
+    }
+    versionEntry.entry_js_offset = offsets.entry_js_offset;
+    versionEntry.entry_end_offset = offsets.entry_end_offset;
+  }
 
   const updatedFiles = [];
 

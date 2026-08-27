@@ -770,6 +770,14 @@
       "tarball_integrity": "sha512-tHsJhjwcoFyKTCQfYCclKjLtbnbbGKvcrzxUhMb6NDlPw9RrawmjSWUAdla7PtEVPaJsGkjGo4O2MQTlYIT+PA==",
       "tarball_sha256": "41de896e672667bc5b5060419d5a1ff5cfe15b77659d1418b10df5095e38419a",
       "status": "termux_verified"
+    },
+    "2.1.245": {
+      "wrapper_spec": "@anthropic-ai/claude-code@2.1.245",
+      "native_spec": "@anthropic-ai/claude-code-linux-arm64@2.1.245",
+      "entry_format": "esm-chunked",
+      "tarball_integrity": "sha512-Qbn5HnZbYeW4GdifVkDGfcVKqj3/f3U9sfVd3LEaUZh08CcS8D/ptJ76zuBfQUGHJHfToAdNVfak86uJ84b1Dg==",
+      "tarball_sha256": "668662e7b5d91a93cff6c75736e60f3d5d3bed4cbe077ae4feefc63ad1253f4d",
+      "status": "offset_discovered"
     }
   }
 }

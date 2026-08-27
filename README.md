@@ -122,6 +122,12 @@ config/claude-termux-release-manifest.json
 packages/claude-code/config/claude-termux-release-manifest.json
 ```
 
+## Known Limitations / 既知の制限
+
+**English:** Remote Control (controlling a session from claude.ai/code or the Claude mobile app) does not work in this Termux wrapper. The wrapper replaces the `ws` (WebSocket) module with a no-op stub, so the underlying connection Remote Control needs is never established. The TUI may show `Remote Control disconnected` on startup; this is expected and does not affect normal interactive use, `-p` (print mode), or other CLI commands.
+
+**日本語:** このTermuxラッパーでは Remote Control（claude.ai/code や Claude モバイルアプリからのセッション操作）は動作しません。ラッパーが `ws`（WebSocket）モジュールを何もしない no-op スタブに置き換えているため、Remote Control が必要とする接続が確立されません。TUI 起動時に `Remote Control disconnected` と表示されることがありますが、これは想定内の挙動であり、通常の対話操作・`-p`（print mode）・その他の CLI コマンドには影響しません。
+
 ## Verify / 確認
 
 ```sh

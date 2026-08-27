@@ -81,7 +81,7 @@ function loadHelperApi() {
   const rewriteSource = extractFunction(
     helperBlock,
     'function rewriteNativeChunkSource(source) {',
-    '\n\nasync function main() {',
+    '\n\nasync function esmChunkedMain() {',
   );
 
   const context = vm.createContext({ module: { exports: {} }, exports: {}, fs, path, process });
@@ -113,12 +113,12 @@ test('helper and bootstrap rewrite helpers stay identical', () => {
   const helperRewrite = extractFunction(
     helperBlock,
     'function rewriteNativeChunkSource(source) {',
-    '\n\nasync function main() {',
+    '\n\nasync function esmChunkedMain() {',
   );
   const bootstrapRewrite = extractFunction(
     bootstrapBlock,
     'function rewriteNativeChunkSource(source) {',
-    '\n\nasync function main() {',
+    '\n\nasync function esmChunkedMain() {',
   );
   const helperWrapAnsi = extractFunction(
     helperBlock,
