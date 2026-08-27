@@ -3,8 +3,14 @@ set -eu
 
 SOURCE_BIN="${SOURCE_BIN:?SOURCE_BIN is required}"
 WORKDIR="${WORKDIR:-${HOME}/.claude-termux-native-package/launcher-workdir}"
-ENTRY_JS_OFFSET="${ENTRY_JS_OFFSET:?ENTRY_JS_OFFSET is required}"
-ENTRY_END_OFFSET="${ENTRY_END_OFFSET:?ENTRY_END_OFFSET is required}"
+ENTRY_FORMAT="${ENTRY_FORMAT:-legacy-cjs}"
+if [ "${ENTRY_FORMAT}" = "esm-chunked" ]; then
+  ENTRY_JS_OFFSET="${ENTRY_JS_OFFSET:-0}"
+  ENTRY_END_OFFSET="${ENTRY_END_OFFSET:-0}"
+else
+  ENTRY_JS_OFFSET="${ENTRY_JS_OFFSET:?ENTRY_JS_OFFSET is required}"
+  ENTRY_END_OFFSET="${ENTRY_END_OFFSET:?ENTRY_END_OFFSET is required}"
+fi
 CURRENT_CLAUDE_VERSION="${CURRENT_CLAUDE_VERSION:?CURRENT_CLAUDE_VERSION is required}"
 CLAUDE_TERMUX_PACKAGE_DIR="${CLAUDE_TERMUX_PACKAGE_DIR:?CLAUDE_TERMUX_PACKAGE_DIR is required}"
 TERMUX_TMPDIR="${TMPDIR:-/data/data/com.termux/files/usr/tmp}"
@@ -45,6 +51,7 @@ export SSL_CERT_FILE
 export DISABLE_AUTOUPDATER
 export SOURCE_BIN
 export WORKDIR
+export ENTRY_FORMAT
 export ENTRY_JS_OFFSET
 export ENTRY_END_OFFSET
 export CURRENT_CLAUDE_VERSION
@@ -656,7 +663,60 @@ function rewriteNativeChunkSource(source) {
   return patched;
 }
 
-async function main() {
+async function esmChunkedMain() {
+  const { prepareProcessOwnedDir } = require(path.join(process.env.CLAUDE_TERMUX_PACKAGE_DIR, 'lib', 'bunfs-extract.js'));
+  const { register } = require('node:module');
+  const { pathToFileURL } = require('node:url');
+
+  const { ownedDir, entryRelPath } = prepareProcessOwnedDir(sourceBin, workdir);
+  const libDir = path.join(process.env.CLAUDE_TERMUX_PACKAGE_DIR, 'lib');
+
+  globalThis.__claudeYaml = createYamlShim();
+  globalThis.Bun = {
+    version: '1.1.8',
+    stringWidth,
+    wrapAnsi,
+    stripANSI,
+    hash: stableHash,
+    which: (cmd) => {
+      try {
+        return require('child_process').execFileSync('which', [String(cmd)], { encoding: 'utf8' }).trim() || null;
+      } catch { return null; }
+    },
+    gc: () => {},
+    YAML: globalThis.__claudeYaml,
+  };
+  Object.defineProperty(process.versions, 'bun', { value: '1.1.8', configurable: true });
+  globalThis.__claudeBunShim = globalThis.Bun;
+  globalThis.__claudeBun = globalThis.Bun;
+
+  register(pathToFileURL(path.join(libDir, 'bunfs-esm-loader.mjs')).href, {
+    parentURL: pathToFileURL(__filename).href,
+    data: {
+      processOwnedDir: ownedDir,
+      sourceBin,
+      childProcessGuardPath: path.join(libDir, 'bunfs-child-process-guard.mjs'),
+      vmGuardPath: path.join(libDir, 'bunfs-vm-guard.mjs'),
+      wsStubPath: path.join(libDir, 'bunfs-ws-stub.mjs'),
+    },
+  });
+
+  const entryUrl = pathToFileURL(path.join(ownedDir, entryRelPath)).href;
+
+  // 2.1.245実チャンクのエントリは、内部のmain相当処理をトップレベルでawaitせず
+  // fire-and-forgetで起動する(Bunランタイム前提の実装)。そのためawait import()は
+  // 内部の非同期処理が完了する前に解決してしまい、legacy-cjs経路のような
+  // process.exitパッチ+ここでの強制exit呼び出しを行うと、まだ実行中の内部処理を
+  // 強制終了させ出力が失われる(実機で確認済み)。process.exit/killは一切パッチせず、
+  // 実際のCLIコードが自ら呼ぶprocess.exit()に任せてNodeの自然なイベントループ終了を
+  // 待つ(この関数はawait import()完了後、何もせずreturnするだけでよい)。
+  // 同じ理由で、ここでglobalThis.Bun/__claudeYamlを削除するcleanupも行わない
+  // (fire-and-forgetの内部処理がimport()解決後も継続してBunを参照するため、
+  // 早期に消すと実機で"Bun is not defined"を引き起こす。プロセス終了まで残す)。
+  await import(entryUrl);
+}
+
+async function legacyCjsMain() {
   let extractedFile;
   extractedFile = ensureEntryFile();
   const code = fs.readFileSync(extractedFile, 'utf8');
@@ -998,6 +1058,10 @@ async function main() {
     if (hadGlobalBun) globalThis.Bun = originalGlobalBun;
     else delete globalThis.Bun;
   }
+}
+
+function main() {
+  return process.env.ENTRY_FORMAT === 'esm-chunked' ? esmChunkedMain() : legacyCjsMain();
 }
 
 main().catch(error => {
@@ -1613,7 +1677,60 @@ function rewriteNativeChunkSource(source) {
   return patched;
 }
 
-async function main() {
+async function esmChunkedMain() {
+  const { prepareProcessOwnedDir } = require(path.join(process.env.CLAUDE_TERMUX_PACKAGE_DIR, 'lib', 'bunfs-extract.js'));
+  const { register } = require('node:module');
+  const { pathToFileURL } = require('node:url');
+
+  const { ownedDir, entryRelPath } = prepareProcessOwnedDir(sourceBin, workdir);
+  const libDir = path.join(process.env.CLAUDE_TERMUX_PACKAGE_DIR, 'lib');
+
+  globalThis.__claudeYaml = createYamlShim();
+  globalThis.Bun = {
+    version: '1.1.8',
+    stringWidth,
+    wrapAnsi,
+    stripANSI,
+    hash: stableHash,
+    which: (cmd) => {
+      try {
+        return require('child_process').execFileSync('which', [String(cmd)], { encoding: 'utf8' }).trim() || null;
+      } catch { return null; }
+    },
+    gc: () => {},
+    YAML: globalThis.__claudeYaml,
+  };
+  Object.defineProperty(process.versions, 'bun', { value: '1.1.8', configurable: true });
+  globalThis.__claudeBunShim = globalThis.Bun;
+  globalThis.__claudeBun = globalThis.Bun;
+
+  register(pathToFileURL(path.join(libDir, 'bunfs-esm-loader.mjs')).href, {
+    parentURL: pathToFileURL(__filename).href,
+    data: {
+      processOwnedDir: ownedDir,
+      sourceBin,
+      childProcessGuardPath: path.join(libDir, 'bunfs-child-process-guard.mjs'),
+      vmGuardPath: path.join(libDir, 'bunfs-vm-guard.mjs'),
+      wsStubPath: path.join(libDir, 'bunfs-ws-stub.mjs'),
+    },
+  });
+
+  const entryUrl = pathToFileURL(path.join(ownedDir, entryRelPath)).href;
+
+  // 2.1.245実チャンクのエントリは、内部のmain相当処理をトップレベルでawaitせず
+  // fire-and-forgetで起動する(Bunランタイム前提の実装)。そのためawait import()は
+  // 内部の非同期処理が完了する前に解決してしまい、legacy-cjs経路のような
+  // process.exitパッチ+ここでの強制exit呼び出しを行うと、まだ実行中の内部処理を
+  // 強制終了させ出力が失われる(実機で確認済み)。process.exit/killは一切パッチせず、
+  // 実際のCLIコードが自ら呼ぶprocess.exit()に任せてNodeの自然なイベントループ終了を
+  // 待つ(この関数はawait import()完了後、何もせずreturnするだけでよい)。
+  // 同じ理由で、ここでglobalThis.Bun/__claudeYamlを削除するcleanupも行わない
+  // (fire-and-forgetの内部処理がimport()解決後も継続してBunを参照するため、
+  // 早期に消すと実機で"Bun is not defined"を引き起こす。プロセス終了まで残す)。
+  await import(entryUrl);
+}
+
+async function legacyCjsMain() {
   let extractedFile;
   extractedFile = ensureEntryFile();
   const code = fs.readFileSync(extractedFile, 'utf8');
@@ -1961,8 +2078,19 @@ async function main() {
   }
 }
 
+function main() {
+  return process.env.ENTRY_FORMAT === 'esm-chunked' ? esmChunkedMain() : legacyCjsMain();
+}
+
 main()
   .then(() => {
+    // esm-chunked経路は内部のfire-and-forget非同期処理が実際のprocess.exit()を
+    // 自ら呼ぶまでNodeのイベントループを生かしておく必要があるため、TUIモードと
+    // 同様にここでは強制exitしない(実機で確認済み: 強制exitすると--helpの出力等が
+    // 完了前に打ち切られる)。
+    if (process.env.ENTRY_FORMAT === 'esm-chunked') {
+      return;
+    }
     if (process.env.CLAUDE_TERMUX_TUI === '1' && process.exitCode === undefined) {
       return;
     }
