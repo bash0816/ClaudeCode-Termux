@@ -139,7 +139,8 @@ run_test_command() {
   local cmd_name="$3"
   local expected_exit_code="${4:-0}"
 
-  local cmd_start=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+  local cmd_start
+  cmd_start=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
   local stdout_file="$LOGS_DIR/cmd${cmd_num}-${cmd_name}-stdout.log"
   local stderr_file="$LOGS_DIR/cmd${cmd_num}-${cmd_name}-stderr.log"
   local env_file="$LOGS_DIR/cmd${cmd_num}-${cmd_name}-env.log"
@@ -162,7 +163,8 @@ run_test_command() {
     sh packages/claude-code/bin/claude $cmd_args \
     > "$stdout_file" 2> "$stderr_file" || exit_code=$?
 
-  local cmd_end=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+  local cmd_end
+  cmd_end=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 
   # メタ情報に終了時刻とexit codeを追記
   {
@@ -172,8 +174,10 @@ run_test_command() {
   } >> "$meta_file"
 
   # stdout/stderr の行数を記録
-  local stdout_lines=$(wc -l < "$stdout_file" 2>/dev/null || echo 0)
-  local stderr_lines=$(wc -l < "$stderr_file" 2>/dev/null || echo 0)
+  local stdout_lines
+  stdout_lines=$(wc -l < "$stdout_file" 2>/dev/null || echo 0)
+  local stderr_lines
+  stderr_lines=$(wc -l < "$stderr_file" 2>/dev/null || echo 0)
 
   echo "  Exit code: $exit_code (expected: $expected_exit_code)"
   echo "  Stdout lines: $stdout_lines"
@@ -344,10 +348,10 @@ EOF
   # 4つのコマンドの結果を記録
   for cmd_num in 1 2 3 4; do
     case $cmd_num in
-      1) cmd_args="--version"; cmd_name="version"; expected_code=0 ;;
-      2) cmd_args="--help"; cmd_name="help"; expected_code=0 ;;
-      3) cmd_args="--nonexistent-flag"; cmd_name="nonexistent-flag"; expected_code=1 ;;
-      4) cmd_args="doctor"; cmd_name="doctor"; expected_code=0 ;;
+      1) cmd_args="--version"; cmd_name="version" ;;
+      2) cmd_args="--help"; cmd_name="help" ;;
+      3) cmd_args="--nonexistent-flag"; cmd_name="nonexistent-flag" ;;
+      4) cmd_args="doctor"; cmd_name="doctor" ;;
     esac
 
     meta_file="$LOGS_DIR/cmd${cmd_num}-${cmd_name}-meta.log"
