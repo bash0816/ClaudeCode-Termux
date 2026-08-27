@@ -777,7 +777,7 @@
       "entry_format": "esm-chunked",
       "tarball_integrity": "sha512-Qbn5HnZbYeW4GdifVkDGfcVKqj3/f3U9sfVd3LEaUZh08CcS8D/ptJ76zuBfQUGHJHfToAdNVfak86uJ84b1Dg==",
       "tarball_sha256": "668662e7b5d91a93cff6c75736e60f3d5d3bed4cbe077ae4feefc63ad1253f4d",
-      "status": "offset_discovered"
+      "status": "termux_verified"
     }
   }
 }
