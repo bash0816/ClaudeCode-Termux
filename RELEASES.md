@@ -1,3 +1,22 @@
+## 2.1.245 — 2026-08-28 ✅ Current audited / 現在の監査済み版
+
+upstream claude-code 2.1.245 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
+
+**Upstream highlights / 主な変更（upstream）**
+
+## What's changed
+
+- Fixed a crash on startup on Linux distributions that ship glibc 2.44 (for example Arch Linux, CachyOS and Fedora Rawhide)
+
+```sh
+npm install -g @bash0816/claude-code@latest
+```
+
+```sh
+npm install -g @bash0816/claude-code@2.1.241
+```
+
+---
 ## 2.1.241 — 2026-08-24 ✅ Current audited / 現在の監査済み版
 
 upstream claude-code 2.1.241 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
