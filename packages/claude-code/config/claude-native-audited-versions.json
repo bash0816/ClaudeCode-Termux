@@ -788,6 +788,16 @@
       "status": "offset_discovered",
       "num_modules": 1946,
       "byte_count": 136124175
+    },
+    "2.1.250": {
+      "wrapper_spec": "@anthropic-ai/claude-code@2.1.250",
+      "native_spec": "@anthropic-ai/claude-code-linux-arm64@2.1.250",
+      "entry_format": "esm-chunked",
+      "tarball_integrity": "sha512-NVbdmP9kLenUGdPjSS9p+XTY0CqC+pjWo3sJMM4DrCOlUeJLqKcAB9f9+IvG5PHBAfDbcEstXjeGqDVavsvLMA==",
+      "tarball_sha256": "7ee8b8d4d3eda2da01b8a376ce42e229480b1faca76708d553d938df36b160c5",
+      "status": "offset_discovered",
+      "num_modules": 1946,
+      "byte_count": 136131043
     }
   }
 }
