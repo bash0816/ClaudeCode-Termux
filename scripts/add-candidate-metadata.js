@@ -57,6 +57,8 @@ function main() {
     if (!(offsets.byte_count > 0)) {
       throw new Error('esm-chunked offsets missing byte_count');
     }
+    versionEntry.num_modules = offsets.num_modules;
+    versionEntry.byte_count = offsets.byte_count;
   } else {
     if (!(offsets.entry_js_offset > 0) || !(offsets.entry_end_offset > offsets.entry_js_offset)) {
       throw new Error('legacy-cjs offsets missing entry_js_offset/entry_end_offset');

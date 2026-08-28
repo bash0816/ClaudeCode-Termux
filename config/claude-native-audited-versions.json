@@ -785,7 +785,9 @@
       "entry_format": "esm-chunked",
       "tarball_integrity": "sha512-2qwjgGuzlVfkJC7UWUjl86hiv5Ok5vtVxAZ/5fpdhzQKuBLlxrJJu3z5tVI+VrO/x/hcqx5kJuy9/O9K4eT+Kg==",
       "tarball_sha256": "bd2e2b6ebace34039b073b0f586d521ec09c895fa2a39de8d1c86423ae5884ca",
-      "status": "offset_discovered"
+      "status": "offset_discovered",
+      "num_modules": 1946,
+      "byte_count": 136124175
     }
   }
 }
