@@ -2,7 +2,6 @@
 'use strict';
 
 const cp = require('child_process');
-const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -109,4 +108,3 @@ function fetchNativeTarball(spec, packDir) {
   }
   return path.join(packDir, packEntry.filename);
 }
-
