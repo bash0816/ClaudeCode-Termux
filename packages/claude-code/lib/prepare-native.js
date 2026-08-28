@@ -165,6 +165,12 @@ function validateEsmChunkedOffsets(file, audited) {
     if (graph.entryName !== '/$bunfs/root/cli') {
       throw new Error(`esm-chunked entry module name mismatch for ${version}: ${graph.entryName}`);
     }
+    if (audited.num_modules !== undefined && graph.numModules !== audited.num_modules) {
+      throw new Error(`esm-chunked num_modules mismatch for ${version}: expected ${audited.num_modules}, got ${graph.numModules}`);
+    }
+    if (audited.byte_count !== undefined && graph.byteCount !== audited.byte_count) {
+      throw new Error(`esm-chunked byte_count mismatch for ${version}: expected ${audited.byte_count}, got ${graph.byteCount}`);
+    }
     const prefix = readEntryContentPrefix(graph.fd, graph.entryModule, 256).toString('utf8');
     const codeStart = prefix.replace(/^(\s*\/\/[^\n]*\n)+/, '').replace(/^\(/, '');
     if (codeStart.startsWith('function(exports, require, module, __filename, __dirname) {')) {
