@@ -1690,7 +1690,7 @@ function rewriteNativeChunkSource(source) {
 
 async function esmChunkedMain() {
   const { prepareProcessOwnedDir } = require(path.join(process.env.CLAUDE_TERMUX_PACKAGE_DIR, 'lib', 'bunfs-extract.js'));
-  const { register } = require('node:module');
+  const { registerHooks } = require('node:module');
   const { pathToFileURL } = require('node:url');
 
   const { ownedDir, entryRelPath } = prepareProcessOwnedDir(sourceBin, workdir);
