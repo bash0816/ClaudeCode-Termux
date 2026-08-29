@@ -63,6 +63,9 @@ function validateEsmChunkedOffsets(file, audited, version) {
     if (graph.entryName !== '/$bunfs/root/cli') {
       throw new Error(`esm-chunked entry module name mismatch for ${version}: ${graph.entryName}`);
     }
+    if (!Object.prototype.hasOwnProperty.call(audited, 'cycle_hoists')) {
+      throw new Error(`esm-chunked audited metadata for ${version} is missing cycle_hoists field`);
+    }
     if (audited.num_modules !== undefined && graph.numModules !== audited.num_modules) {
       throw new Error(`esm-chunked num_modules mismatch for ${version}: expected ${audited.num_modules}, got ${graph.numModules}`);
     }

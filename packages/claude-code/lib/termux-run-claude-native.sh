@@ -690,6 +690,17 @@ async function esmChunkedMain() {
   globalThis.__claudeBunShim = globalThis.Bun;
   globalThis.__claudeBun = globalThis.Bun;
 
+  let cycleHoists = [];
+  try {
+    const auditedVersions = require(path.join(process.env.CLAUDE_TERMUX_PACKAGE_DIR, 'config', 'claude-native-audited-versions.json'));
+    const entry = auditedVersions.versions?.[process.env.CURRENT_CLAUDE_VERSION];
+    if (entry && Array.isArray(entry.cycle_hoists)) {
+      cycleHoists = entry.cycle_hoists;
+    }
+  } catch {
+    // 読み込み失敗時は空配列のまま(fail-closed、既存の同期require経路にフォールバック)
+  }
+
   register(pathToFileURL(path.join(libDir, 'bunfs-esm-loader.mjs')).href, {
     parentURL: pathToFileURL(__filename).href,
     data: {
@@ -698,6 +709,7 @@ async function esmChunkedMain() {
       childProcessGuardPath: path.join(libDir, 'bunfs-child-process-guard.mjs'),
       vmGuardPath: path.join(libDir, 'bunfs-vm-guard.mjs'),
       wsStubPath: path.join(libDir, 'bunfs-ws-stub.mjs'),
+      cycleHoists,
     },
   });
 
@@ -1704,6 +1716,17 @@ async function esmChunkedMain() {
   globalThis.__claudeBunShim = globalThis.Bun;
   globalThis.__claudeBun = globalThis.Bun;
 
+  let cycleHoists = [];
+  try {
+    const auditedVersions = require(path.join(process.env.CLAUDE_TERMUX_PACKAGE_DIR, 'config', 'claude-native-audited-versions.json'));
+    const entry = auditedVersions.versions?.[process.env.CURRENT_CLAUDE_VERSION];
+    if (entry && Array.isArray(entry.cycle_hoists)) {
+      cycleHoists = entry.cycle_hoists;
+    }
+  } catch {
+    // 読み込み失敗時は空配列のまま(fail-closed、既存の同期require経路にフォールバック)
+  }
+
   register(pathToFileURL(path.join(libDir, 'bunfs-esm-loader.mjs')).href, {
     parentURL: pathToFileURL(__filename).href,
     data: {
@@ -1712,6 +1735,7 @@ async function esmChunkedMain() {
       childProcessGuardPath: path.join(libDir, 'bunfs-child-process-guard.mjs'),
       vmGuardPath: path.join(libDir, 'bunfs-vm-guard.mjs'),
       wsStubPath: path.join(libDir, 'bunfs-ws-stub.mjs'),
+      cycleHoists,
     },
   });
 

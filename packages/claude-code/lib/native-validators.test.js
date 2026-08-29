@@ -90,6 +90,7 @@ test('validateEsmChunkedOffsets accepts matching num_modules and byte_count', ()
         num_modules: graph.numModules,
         byte_count: graph.byteCount,
         entry_format: 'esm-chunked',
+        cycle_hoists: [],
       };
       assert.doesNotThrow(() => validateEsmChunkedOffsets(file, audited, '9.9.9'));
     } finally {
@@ -115,6 +116,7 @@ test('validateEsmChunkedOffsets rejects mismatched num_modules', () => {
         num_modules: graph.numModules + 1, // intentionally wrong
         byte_count: graph.byteCount,
         entry_format: 'esm-chunked',
+        cycle_hoists: [],
       };
       assert.throws(
         () => validateEsmChunkedOffsets(file, audited, '9.9.9'),
@@ -143,6 +145,7 @@ test('validateEsmChunkedOffsets rejects mismatched byte_count', () => {
         num_modules: graph.numModules,
         byte_count: graph.byteCount + 1, // intentionally wrong
         entry_format: 'esm-chunked',
+        cycle_hoists: [],
       };
       assert.throws(
         () => validateEsmChunkedOffsets(file, audited, '9.9.9'),

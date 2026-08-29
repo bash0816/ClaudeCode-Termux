@@ -345,6 +345,7 @@ test('load() hoists the cycle-breaking import.meta.require call in chunk-vmw9kxh
       childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
       vmGuardPath: path.join(tempDir, 'vm-guard.mjs'),
       wsStubPath: path.join(tempDir, 'ws-stub.mjs'),
+      cycleHoists: [{ file: 'chunk-vmw9kxhv.js', targetModule: 'chunk-y0jj307t.js', expectedOccurrences: 1, assertProperties: [] }],
     });
 
     const fileUrl = pathToFileURL(targetFile).href;
@@ -397,6 +398,9 @@ test('import.meta.require resolves /$bunfs/root/ specifiers via loader integrati
         childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
         vmGuardPath: path.join(tempDir, 'vm-guard.mjs'),
         wsStubPath: path.join(tempDir, 'ws-stub.mjs'),
+        cycleHoists: [
+          { file: 'chunk-vmw9kxhv.js', targetModule: 'chunk-y0jj307t.js', expectedOccurrences: 1, assertProperties: [] },
+        ],
       },
     });
 

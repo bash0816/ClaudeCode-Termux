@@ -107,7 +107,189 @@ function discoverLegacyCjsOffsets(buf) {
   };
 }
 
-function discoverEsmChunkedOffsets(binary) {
+function analyzeCycleHoists(ownedDirForAnalysis, options = {}) {
+  const acorn = require('acorn');
+  const walk = require('acorn-walk');
+
+  const EXPECTED_ACORN_VERSION = '8.15.0';
+  const actualAcornVersion = options.acornVersionOverride || require('acorn/package.json').version;
+  if (actualAcornVersion !== EXPECTED_ACORN_VERSION) {
+    throw new Error(`analyzeCycleHoists: acorn version mismatch: expected ${EXPECTED_ACORN_VERSION}, got ${actualAcornVersion}`);
+  }
+
+  const PREFIX = '/$bunfs/root/';
+  const files = fs.readdirSync(ownedDirForAnalysis).filter((f) => f.endsWith('.js'));
+
+  function stripPrefix(specifier) {
+    return specifier.startsWith(PREFIX) ? specifier.slice(PREFIX.length) : null;
+  }
+
+  const staticEdges = new Map();
+  const requireEdges = new Map();
+  const asts = new Map();
+  let parseFailureCount = 0;
+  const parseFailureFiles = [];
+
+  for (const f of files) {
+    const src = fs.readFileSync(path.join(ownedDirForAnalysis, f), 'utf8');
+    let ast;
+    try {
+      ast = acorn.parse(src, { ecmaVersion: 'latest', sourceType: 'module', allowImportExportEverywhere: true });
+    } catch (e) {
+      parseFailureCount += 1;
+      parseFailureFiles.push(f);
+      continue;
+    }
+    asts.set(f, { ast, src });
+
+    const si = new Set();
+    const ri = new Set();
+
+    for (const stmt of ast.body) {
+      if (stmt.type === 'ImportDeclaration' && typeof stmt.source?.value === 'string') {
+        const t = stripPrefix(stmt.source.value);
+        if (t) si.add(t);
+      }
+      if (
+        (stmt.type === 'ExportNamedDeclaration' || stmt.type === 'ExportAllDeclaration') &&
+        typeof stmt.source?.value === 'string'
+      ) {
+        const t = stripPrefix(stmt.source.value);
+        if (t) si.add(t);
+      }
+    }
+
+    walk.simple(ast, {
+      CallExpression(node) {
+        if (
+          node.callee.type === 'MemberExpression' &&
+          node.callee.object.type === 'MetaProperty' &&
+          node.callee.property.name === 'require' &&
+          node.arguments.length === 1 &&
+          node.arguments[0].type === 'Literal' &&
+          typeof node.arguments[0].value === 'string'
+        ) {
+          const t = stripPrefix(node.arguments[0].value);
+          if (t) ri.add(t);
+        }
+      },
+    });
+
+    staticEdges.set(f, si);
+    requireEdges.set(f, ri);
+  }
+
+  // fail-closed: 1件でもパース失敗があれば即座にエラー終了(例外を許容しない)
+  if (parseFailureCount > 0) {
+    throw new Error(`analyzeCycleHoists: ${parseFailureCount} file(s) failed to parse (${parseFailureFiles.join(', ')}); refusing to generate cycle_hoists (fail-closed)`);
+  }
+
+  function reaches(from, target, graph) {
+    const seen = new Set([from]);
+    const stack = [from];
+    while (stack.length) {
+      const cur = stack.pop();
+      for (const d of graph.get(cur) || []) {
+        if (d === target) return true;
+        if (!seen.has(d)) { seen.add(d); stack.push(d); }
+      }
+    }
+    return false;
+  }
+
+  const staticOnly = [];
+  for (const [f, reqs] of requireEdges) {
+    for (const r of reqs) {
+      if (!staticEdges.has(r)) continue;
+      if (reaches(r, f, staticEdges)) staticOnly.push([f, r]);
+    }
+  }
+
+  function isFunctionNode(n) {
+    return n.type === 'FunctionDeclaration' || n.type === 'FunctionExpression' || n.type === 'ArrowFunctionExpression';
+  }
+  function isIIFE(fnNode, parent) {
+    return parent && parent.type === 'CallExpression' && parent.callee === fnNode;
+  }
+  function isTopLevelEager(ancestors) {
+    for (let i = ancestors.length - 2; i >= 0; i -= 1) {
+      const anc = ancestors[i];
+      if (isFunctionNode(anc)) {
+        const parentOfFn = ancestors[i - 1];
+        if (isIIFE(anc, parentOfFn)) continue;
+        return false;
+      }
+    }
+    return true;
+  }
+
+  const byFile = new Map();
+  for (const [f, r] of staticOnly) {
+    if (!byFile.has(f)) byFile.set(f, new Set());
+    byFile.get(f).add(r);
+  }
+
+  const cycleHoists = [];
+
+  for (const [f, targets] of byFile) {
+    const { ast, src } = asts.get(f);
+    const callsForTarget = new Map();
+
+    walk.fullAncestor(ast, (node, ancestors) => {
+      if (
+        node.type === 'CallExpression' &&
+        node.callee.type === 'MemberExpression' &&
+        node.callee.object.type === 'MetaProperty' &&
+        node.callee.property.name === 'require' &&
+        node.arguments.length === 1 &&
+        node.arguments[0].type === 'Literal' &&
+        typeof node.arguments[0].value === 'string'
+      ) {
+        const t = stripPrefix(node.arguments[0].value);
+        if (!t || !targets.has(t)) return;
+        const eager = isTopLevelEager(ancestors);
+        if (!callsForTarget.has(t)) callsForTarget.set(t, []);
+        callsForTarget.get(t).push({ eager, node });
+      }
+    });
+
+    for (const t of targets) {
+      const calls = callsForTarget.get(t);
+      if (!calls || calls.length === 0) continue;
+      const hasEager = calls.some((c) => c.eager);
+      if (!hasEager) continue; // 全遅延なら記録しない
+
+      const literal = `import.meta.require("/$bunfs/root/${t}")`;
+      const expectedOccurrences = src.split(literal).length - 1;
+
+      // assertProperties: eagerな呼出しサイトの直後にある .propertyName を収集
+      const assertProperties = new Set();
+      for (const c of calls) {
+        if (!c.eager) continue;
+        const afterCall = src.slice(c.node.end, c.node.end + 100);
+        const m = afterCall.match(/^\.([A-Za-z_$][A-Za-z0-9_$]*)/);
+        if (m) assertProperties.add(m[1]);
+      }
+
+      cycleHoists.push({
+        file: f,
+        targetModule: t,
+        expectedOccurrences,
+        assertProperties: [...assertProperties],
+      });
+    }
+  }
+
+  return cycleHoists;
+}
+
+function discoverCycleHoists(binary, ownedDirForAnalysis) {
+  const { extractToProcessOwnedDir } = require(path.join(__dirname, '..', 'packages', 'claude-code', 'lib', 'bunfs-extract.js'));
+  extractToProcessOwnedDir(binary, ownedDirForAnalysis);
+  return analyzeCycleHoists(ownedDirForAnalysis);
+}
+
+function discoverEsmChunkedOffsets(binary, packDir) {
   // StandaloneModuleGraphコンテナ自体はlegacy-cjs(単一CJSラッパー)・esm-chunked
   // (1387個のESMチャンク)のどちらのバージョンにも存在する(実測確認: 2.1.241でも
   // 11モジュールのグラフが見つかる)。コンテナの有無では形式を判別できないため、
@@ -127,24 +309,27 @@ function discoverEsmChunkedOffsets(binary) {
     if (codeStart.startsWith(cjsWrapperPrefix)) {
       throw new Error('entry module is legacy-cjs wrapped, not esm-chunked');
     }
+    const cycleAnalysisDir = path.join(packDir, 'cycle-analysis');
+    const cycleHoists = discoverCycleHoists(binary, cycleAnalysisDir);
     return {
       entry_format: 'esm-chunked',
       num_modules: graph.numModules,
       byte_count: graph.byteCount,
+      cycle_hoists: cycleHoists,
     };
   } finally {
     fs.closeSync(graph.fd);
   }
 }
 
-function discoverOffsets(binary) {
+function discoverOffsets(binary, packDir) {
   const binarySize = fs.statSync(binary).size;
 
   // esm-chunked検出はトレイラー起点の範囲readSyncのみで完結し、ファイル全体を
   // メモリへ読み込まない(389MB超のバイナリでOOMを避けるため、こちらを先に試す)。
   let esmChunkedError;
   try {
-    const esmChunked = discoverEsmChunkedOffsets(binary);
+    const esmChunked = discoverEsmChunkedOffsets(binary, packDir);
     return { binary, binary_size: binarySize, ...esmChunked };
   } catch (error) {
     esmChunkedError = error;
@@ -181,7 +366,7 @@ function main() {
     fs.rmSync(nativeDest, { recursive: true, force: true });
     fs.cpSync(path.join(extractDir, 'package'), nativeDest, { recursive: true });
 
-    const offsets = discoverOffsets(sourceBin);
+    const offsets = discoverOffsets(sourceBin, packDir);
     const result = {
       version,
       wrapper_spec: `@anthropic-ai/claude-code@${version}`,
@@ -214,9 +399,19 @@ function main() {
   }
 }
 
-try {
-  main();
-} catch (error) {
-  console.error(error && error.stack ? error.stack : String(error));
-  process.exit(1);
+module.exports = {
+  discoverOffsets,
+  discoverEsmChunkedOffsets,
+  discoverLegacyCjsOffsets,
+  discoverCycleHoists,
+  analyzeCycleHoists,
+};
+
+if (require.main === module) {
+  try {
+    main();
+  } catch (error) {
+    console.error(error && error.stack ? error.stack : String(error));
+    process.exit(1);
+  }
 }

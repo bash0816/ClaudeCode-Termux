@@ -9,35 +9,50 @@ let CHILD_PROCESS_GUARD_PATH = null;
 let VM_GUARD_PATH = null;
 let WS_STUB_PATH = null;
 
+let CYCLE_HOISTS = [];
+
 export function initialize(data) {
   PROCESS_OWNED_DIR = data.processOwnedDir;
   SOURCE_BIN = data.sourceBin;
   CHILD_PROCESS_GUARD_PATH = data.childProcessGuardPath;
   VM_GUARD_PATH = data.vmGuardPath;
   WS_STUB_PATH = data.wsStubPath;
+  CYCLE_HOISTS = Array.isArray(data.cycleHoists) ? data.cycleHoists : [];
 }
 
-const CYCLE_HOIST_TARGET_FILE = 'chunk-vmw9kxhv.js';
-const CYCLE_HOIST_TARGET_DECL = 'var O9=import.meta.require("/$bunfs/root/chunk-y0jj307t.js")';
-const CYCLE_HOIST_TARGET_MODULE = 'chunk-y0jj307t.js';
-const CYCLE_HOIST_REPLACEMENT = 'var O9=__bunfsHoisted_0';
-
-function tryHoistCycleBreakingImport(filePath, source) {
+function tryHoistCycleBreakingImports(filePath, source) {
   const rel = path.relative(PROCESS_OWNED_DIR, filePath);
-  if (rel !== CYCLE_HOIST_TARGET_FILE) return null;
+  const records = CYCLE_HOISTS.filter((r) => r.file === rel);
+  if (records.length === 0) return null;
 
-  // 出現数が厳密に1件でなければ変換しない(fail-closed)
-  const occurrences = source.split(CYCLE_HOIST_TARGET_DECL).length - 1;
-  if (occurrences !== 1) return null;
+  let hoistedImportLines = '';
+  let newSource = source;
+  let varIndex = 0;
+  const targetToVar = new Map();
 
-  // 注入先の存在確認(resolve()と同じtraversalガードを流用)
-  const real = path.resolve(PROCESS_OWNED_DIR, CYCLE_HOIST_TARGET_MODULE);
-  if (path.relative(PROCESS_OWNED_DIR, real).startsWith('..')) return null;
-  if (!existsSync(real)) return null;
+  for (const record of records) {
+    const literal = `import.meta.require("/$bunfs/root/${record.targetModule}")`;
+    const occurrences = newSource.split(literal).length - 1;
+    if (occurrences !== record.expectedOccurrences) continue;
 
-  const hoistedImportLine = `import * as __bunfsHoisted_0 from ${JSON.stringify(pathToFileURL(real).href)};\n`;
-  const newSource = source.replace(CYCLE_HOIST_TARGET_DECL, CYCLE_HOIST_REPLACEMENT);
-  return { hoistedImportLine, source: newSource };
+    const real = path.resolve(PROCESS_OWNED_DIR, record.targetModule);
+    if (path.relative(PROCESS_OWNED_DIR, real).startsWith('..')) continue;
+    if (!existsSync(real)) continue;
+
+    let varName = targetToVar.get(record.targetModule);
+    if (!varName) {
+      varName = `__bunfsHoisted_${varIndex++}`;
+      targetToVar.set(record.targetModule, varName);
+      hoistedImportLines += `import * as ${varName} from ${JSON.stringify(pathToFileURL(real).href)};\n`;
+      if (record.assertProperties && record.assertProperties.length > 0) {
+        hoistedImportLines += `__bunfsAssertHoistedProps(${varName}, ${JSON.stringify(record.targetModule)}, ${JSON.stringify(record.assertProperties)});\n`;
+      }
+    }
+    newSource = newSource.replaceAll(literal, varName);
+  }
+
+  if (!targetToVar.size) return null;
+  return { hoistedImportLine: hoistedImportLines, source: newSource };
 }
 
 function buildImportMetaRequirePolyfillPrelude(anchorUrl) {
@@ -48,6 +63,22 @@ function buildImportMetaRequirePolyfillPrelude(anchorUrl) {
     `import __bunfsMetaRequirePath from "node:path";\n` +
     `import { existsSync as __bunfsMetaRequireExistsSync } from "node:fs";\n` +
     `import { readFileSync as __bunfsMetaRequireReadFileSync } from "node:fs";\n` +
+    `function __bunfsAssertHoistedProps(ns, targetModule, propNames) {\n` +
+    `  for (const p of propNames) {\n` +
+    `    let v;\n` +
+    `    try {\n` +
+    `      v = ns[p];\n` +
+    `    } catch (e) {\n` +
+    `      if (e instanceof ReferenceError) {\n` +
+    `        throw new Error("bunfs cycle-hoist: accessing \\"" + p + "\\" on " + targetModule + " threw ReferenceError (TDZ) - evaluation-order regression");\n` +
+    `      }\n` +
+    `      throw e;\n` +
+    `    }\n` +
+    `    if (v === undefined) {\n` +
+    `      throw new Error("bunfs cycle-hoist: \\"" + p + "\\" is undefined after hoisting from " + targetModule + " (evaluation-order regression?)");\n` +
+    `    }\n` +
+    `  }\n` +
+    `}\n` +
     `const __bunfsRealRequire = __bunfsCreateRequire(${JSON.stringify(anchorUrl)});\n` +
     `const __bunfsOwnedDir = ${JSON.stringify(PROCESS_OWNED_DIR)};\n` +
     `const __bunfsMetaRequire = (id) => {\n` +
@@ -112,7 +143,7 @@ export async function load(url, context, nextLoad) {
   let source = readFileSync(filePath, 'utf8');
 
   let hoistedImportLine = '';
-  const hoistResult = tryHoistCycleBreakingImport(filePath, source);
+  const hoistResult = tryHoistCycleBreakingImports(filePath, source);
   if (hoistResult) {
     hoistedImportLine = hoistResult.hoistedImportLine;
     source = hoistResult.source;
