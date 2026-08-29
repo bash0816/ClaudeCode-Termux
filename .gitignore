@@ -1,2 +1,3 @@
 *.tgz
 /.verify-*/
+/scripts/node_modules/

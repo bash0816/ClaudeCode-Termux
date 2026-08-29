@@ -71,6 +71,10 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Install scripts dependencies
+        working-directory: .
+        run: npm ci --prefix scripts
+
       - name: Syntax check
         run: |
           set -euo pipefail
