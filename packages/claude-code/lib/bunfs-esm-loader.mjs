@@ -163,9 +163,5 @@ export function load(url, context, nextLoad) {
   } else if (hoistedImportLine) {
     source = hoistedImportLine + source;
   }
-  const hasImport = /\bimport\s+/.test(source);
-  const hasExport = /\b(?:export|import\.meta\.require)\b/.test(source);
-  const hasCJSExports = /(\W|^)module\.exports\b/.test(source);
-  const format = !hasImport && !hasExport && hasCJSExports ? 'commonjs' : 'module';
-  return { format, source, shortCircuit: true };
+  return { format: 'module', source, shortCircuit: true };
 }

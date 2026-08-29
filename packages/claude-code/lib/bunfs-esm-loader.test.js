@@ -373,8 +373,11 @@ test('import.meta.require resolves /$bunfs/root/ specifiers via loader integrati
     fs.writeFileSync(path.join(tempDir, 'vm-guard.mjs'), 'export default {};');
     fs.writeFileSync(path.join(tempDir, 'ws-stub.mjs'), 'export default {};');
 
-    // Create CommonJS fixture that will be required (normal case)
-    fs.writeFileSync(path.join(tempDir, 'foo.js'), 'module.exports = { value: 42 };');
+    // Create ESM fixture that will be required via import.meta.require (normal case).
+    // PROCESS_OWNED_DIR only ever contains genuine ESM chunk files extracted from the
+    // Bun esm-chunked bundle (verified against a real 2.1.248 extraction: 0 of 1768
+    // chunk files are CommonJS), so load() always returns format: 'module' for this dir.
+    fs.writeFileSync(path.join(tempDir, 'foo.js'), 'export const value = 42;');
 
     // Create ESM files for each test scenario
     const okCallerPath = path.join(tempDir, 'ok-caller.mjs');
