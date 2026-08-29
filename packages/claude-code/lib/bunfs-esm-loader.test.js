@@ -33,15 +33,15 @@ test('resolve() handles child_process and node:child_process specifiers', async 
       wsStubPath: path.join(tempDir, 'ws-stub.mjs'),
     });
 
-    const nextResolve = async (spec, ctx) => ({ url: `unresolved:${spec}` });
+    const nextResolve = (spec, ctx) => ({ url: `unresolved:${spec}` });
 
     // child_process should resolve to childProcessGuardPath
-    const result1 = await loader.resolve('child_process', {}, nextResolve);
+    const result1 = loader.resolve('child_process', { parentURL: pathToFileURL(path.join(tempDir, 'dummy-chunk.js')).href }, nextResolve);
     assert.ok(result1.url.includes(guardPath));
     assert.equal(result1.shortCircuit, true);
 
     // node:child_process should also resolve to childProcessGuardPath
-    const result2 = await loader.resolve('node:child_process', {}, nextResolve);
+    const result2 = loader.resolve('node:child_process', { parentURL: pathToFileURL(path.join(tempDir, 'dummy-chunk.js')).href }, nextResolve);
     assert.ok(result2.url.includes(guardPath));
     assert.equal(result2.shortCircuit, true);
   } finally {
@@ -65,15 +65,15 @@ test('resolve() handles vm and node:vm specifiers', async () => {
       wsStubPath: path.join(tempDir, 'ws-stub.mjs'),
     });
 
-    const nextResolve = async (spec, ctx) => ({ url: `unresolved:${spec}` });
+    const nextResolve = (spec, ctx) => ({ url: `unresolved:${spec}` });
 
     // vm should resolve to vmGuardPath
-    const result1 = await loader.resolve('vm', {}, nextResolve);
+    const result1 = loader.resolve('vm', { parentURL: pathToFileURL(path.join(tempDir, 'dummy-chunk.js')).href }, nextResolve);
     assert.ok(result1.url.includes(vmGuardPath));
     assert.equal(result1.shortCircuit, true);
 
     // node:vm should also resolve to vmGuardPath
-    const result2 = await loader.resolve('node:vm', {}, nextResolve);
+    const result2 = loader.resolve('node:vm', { parentURL: pathToFileURL(path.join(tempDir, 'dummy-chunk.js')).href }, nextResolve);
     assert.ok(result2.url.includes(vmGuardPath));
     assert.equal(result2.shortCircuit, true);
   } finally {
@@ -97,9 +97,9 @@ test('resolve() handles ws specifier', async () => {
       wsStubPath: wsStubPath,
     });
 
-    const nextResolve = async (spec, ctx) => ({ url: `unresolved:${spec}` });
+    const nextResolve = (spec, ctx) => ({ url: `unresolved:${spec}` });
 
-    const result = await loader.resolve('ws', {}, nextResolve);
+    const result = loader.resolve('ws', { parentURL: pathToFileURL(path.join(tempDir, 'dummy-chunk.js')).href }, nextResolve);
     assert.ok(result.url.includes(wsStubPath));
     assert.equal(result.shortCircuit, true);
   } finally {
@@ -150,9 +150,9 @@ test('resolve() rejects path traversal with ..', async () => {
       wsStubPath: path.join(tempDir, 'ws-stub.mjs'),
     });
 
-    const nextResolve = async (spec, ctx) => ({ url: `unresolved:${spec}` });
+    const nextResolve = (spec, ctx) => ({ url: `unresolved:${spec}` });
 
-    await assert.rejects(
+    assert.throws(
       () => loader.resolve('/$bunfs/root/../../etc/passwd', {}, nextResolve),
       /rejected specifier|escapes/,
     );
@@ -175,9 +175,9 @@ test('resolve() rejects absolute paths', async () => {
       wsStubPath: path.join(tempDir, 'ws-stub.mjs'),
     });
 
-    const nextResolve = async (spec, ctx) => ({ url: `unresolved:${spec}` });
+    const nextResolve = (spec, ctx) => ({ url: `unresolved:${spec}` });
 
-    await assert.rejects(
+    assert.throws(
       () => loader.resolve('/$bunfs/root//etc/passwd', {}, nextResolve),
       /rejected specifier|escapes/,
     );
@@ -200,9 +200,9 @@ test('resolve() throws error for missing extracted module', async () => {
       wsStubPath: path.join(tempDir, 'ws-stub.mjs'),
     });
 
-    const nextResolve = async (spec, ctx) => ({ url: `unresolved:${spec}` });
+    const nextResolve = (spec, ctx) => ({ url: `unresolved:${spec}` });
 
-    await assert.rejects(
+    assert.throws(
       () => loader.resolve('/$bunfs/root/nonexistent.js', {}, nextResolve),
       /missing extracted module/,
     );
@@ -362,7 +362,7 @@ test('load() hoists the cycle-breaking import.meta.require call in chunk-vmw9kxh
 });
 
 test('import.meta.require resolves /$bunfs/root/ specifiers via loader integration', async () => {
-  const { register } = await import('node:module');
+  const { registerHooks } = await import('node:module');
   const loader = await import('./bunfs-esm-loader.mjs');
   const tempDir = path.join(os.tmpdir(), `bunfs-esm-loader-integration-${process.pid}-${Date.now()}`);
   fs.mkdirSync(tempDir, { recursive: true });
@@ -390,19 +390,17 @@ test('import.meta.require resolves /$bunfs/root/ specifiers via loader integrati
     const sourceBin = path.join(tempDir, 'dummy-bin');
     fs.writeFileSync(sourceBin, '#!/bin/false');
 
-    register(pathToFileURL(path.join(__dirname, 'bunfs-esm-loader.mjs')).href, {
-      parentURL: pathToFileURL(__filename).href,
-      data: {
-        processOwnedDir: tempDir,
-        sourceBin: sourceBin,
-        childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
-        vmGuardPath: path.join(tempDir, 'vm-guard.mjs'),
-        wsStubPath: path.join(tempDir, 'ws-stub.mjs'),
-        cycleHoists: [
-          { file: 'chunk-vmw9kxhv.js', targetModule: 'chunk-y0jj307t.js', expectedOccurrences: 1, assertProperties: [] },
-        ],
-      },
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: sourceBin,
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm-guard.mjs'),
+      wsStubPath: path.join(tempDir, 'ws-stub.mjs'),
+      cycleHoists: [
+        { file: 'chunk-vmw9kxhv.js', targetModule: 'chunk-y0jj307t.js', expectedOccurrences: 1, assertProperties: [] },
+      ],
     });
+    registerHooks({ resolve: loader.resolve, load: loader.load });
 
     // Test 1: Normal case - should load and resolve correctly
     const okModule = await import(pathToFileURL(okCallerPath).href);

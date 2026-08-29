@@ -665,7 +665,7 @@ function rewriteNativeChunkSource(source) {
 
 async function esmChunkedMain() {
   const { prepareProcessOwnedDir } = require(path.join(process.env.CLAUDE_TERMUX_PACKAGE_DIR, 'lib', 'bunfs-extract.js'));
-  const { register } = require('node:module');
+  const { registerHooks } = require('node:module');
   const { pathToFileURL } = require('node:url');
 
   const { ownedDir, entryRelPath } = prepareProcessOwnedDir(sourceBin, workdir);
@@ -701,17 +701,16 @@ async function esmChunkedMain() {
     // 読み込み失敗時は空配列のまま(fail-closed、既存の同期require経路にフォールバック)
   }
 
-  register(pathToFileURL(path.join(libDir, 'bunfs-esm-loader.mjs')).href, {
-    parentURL: pathToFileURL(__filename).href,
-    data: {
-      processOwnedDir: ownedDir,
-      sourceBin,
-      childProcessGuardPath: path.join(libDir, 'bunfs-child-process-guard.mjs'),
-      vmGuardPath: path.join(libDir, 'bunfs-vm-guard.mjs'),
-      wsStubPath: path.join(libDir, 'bunfs-ws-stub.mjs'),
-      cycleHoists,
-    },
+  const loaderMod = require(path.join(libDir, 'bunfs-esm-loader.mjs'));
+  loaderMod.initialize({
+    processOwnedDir: ownedDir,
+    sourceBin,
+    childProcessGuardPath: path.join(libDir, 'bunfs-child-process-guard.mjs'),
+    vmGuardPath: path.join(libDir, 'bunfs-vm-guard.mjs'),
+    wsStubPath: path.join(libDir, 'bunfs-ws-stub.mjs'),
+    cycleHoists,
   });
+  registerHooks({ resolve: loaderMod.resolve, load: loaderMod.load });
 
   const entryUrl = pathToFileURL(path.join(ownedDir, entryRelPath)).href;
 
@@ -1727,17 +1726,16 @@ async function esmChunkedMain() {
     // 読み込み失敗時は空配列のまま(fail-closed、既存の同期require経路にフォールバック)
   }
 
-  register(pathToFileURL(path.join(libDir, 'bunfs-esm-loader.mjs')).href, {
-    parentURL: pathToFileURL(__filename).href,
-    data: {
-      processOwnedDir: ownedDir,
-      sourceBin,
-      childProcessGuardPath: path.join(libDir, 'bunfs-child-process-guard.mjs'),
-      vmGuardPath: path.join(libDir, 'bunfs-vm-guard.mjs'),
-      wsStubPath: path.join(libDir, 'bunfs-ws-stub.mjs'),
-      cycleHoists,
-    },
+  const loaderMod = require(path.join(libDir, 'bunfs-esm-loader.mjs'));
+  loaderMod.initialize({
+    processOwnedDir: ownedDir,
+    sourceBin,
+    childProcessGuardPath: path.join(libDir, 'bunfs-child-process-guard.mjs'),
+    vmGuardPath: path.join(libDir, 'bunfs-vm-guard.mjs'),
+    wsStubPath: path.join(libDir, 'bunfs-ws-stub.mjs'),
+    cycleHoists,
   });
+  registerHooks({ resolve: loaderMod.resolve, load: loaderMod.load });
 
   const entryUrl = pathToFileURL(path.join(ownedDir, entryRelPath)).href;
 

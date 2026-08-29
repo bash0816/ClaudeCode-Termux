@@ -107,15 +107,21 @@ function buildImportMetaRequirePolyfillPrelude(anchorUrl) {
   );
 }
 
-export async function resolve(specifier, context, nextResolve) {
-  if (specifier === 'child_process' || specifier === 'node:child_process') {
-    return { url: pathToFileURL(CHILD_PROCESS_GUARD_PATH).href, shortCircuit: true, format: 'module' };
-  }
-  if (specifier === 'vm' || specifier === 'node:vm') {
-    return { url: pathToFileURL(VM_GUARD_PATH).href, shortCircuit: true, format: 'module' };
-  }
-  if (specifier === 'ws') {
-    return { url: pathToFileURL(WS_STUB_PATH).href, shortCircuit: true, format: 'module' };
+export function resolve(specifier, context, nextResolve) {
+  const parentURL = context && context.parentURL;
+  const ownedPrefix = pathToFileURL(PROCESS_OWNED_DIR + path.sep).href;
+  const fromChunk = typeof parentURL === 'string' && parentURL.startsWith(ownedPrefix);
+
+  if (fromChunk) {
+    if (specifier === 'child_process' || specifier === 'node:child_process') {
+      return { url: pathToFileURL(CHILD_PROCESS_GUARD_PATH).href, shortCircuit: true, format: 'module' };
+    }
+    if (specifier === 'vm' || specifier === 'node:vm') {
+      return { url: pathToFileURL(VM_GUARD_PATH).href, shortCircuit: true, format: 'module' };
+    }
+    if (specifier === 'ws') {
+      return { url: pathToFileURL(WS_STUB_PATH).href, shortCircuit: true, format: 'module' };
+    }
   }
   if (specifier.startsWith('/$bunfs/root/')) {
     const rel = specifier.slice('/$bunfs/root/'.length);
@@ -134,7 +140,7 @@ export async function resolve(specifier, context, nextResolve) {
   return nextResolve(specifier, context);
 }
 
-export async function load(url, context, nextLoad) {
+export function load(url, context, nextLoad) {
   const ownedPrefix = pathToFileURL(PROCESS_OWNED_DIR + path.sep).href;
   if (!url.startsWith(ownedPrefix)) {
     return nextLoad(url, context);
@@ -157,5 +163,9 @@ export async function load(url, context, nextLoad) {
   } else if (hoistedImportLine) {
     source = hoistedImportLine + source;
   }
-  return { format: 'module', source, shortCircuit: true };
+  const hasImport = /\bimport\s+/.test(source);
+  const hasExport = /\b(?:export|import\.meta\.require)\b/.test(source);
+  const hasCJSExports = /(\W|^)module\.exports\b/.test(source);
+  const format = !hasImport && !hasExport && hasCJSExports ? 'commonjs' : 'module';
+  return { format, source, shortCircuit: true };
 }

@@ -15,7 +15,7 @@
     "LICENSE"
   ],
   "engines": {
-    "node": ">=20.6.0"
+    "node": ">=22.15.0 <23.0.0 || >=23.5.0"
   },
   "keywords": [
     "claude-code",

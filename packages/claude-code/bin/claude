@@ -16,6 +16,16 @@ NODE="${MAGI_NODE:-node}"
 if [ -n "${MAGI_NODE:-}" ]; then
   export PATH="$(dirname -- "$NODE"):$PATH"
 fi
+
+if ! "$NODE" -e '
+const [major, minor] = process.versions.node.split(".").map(Number);
+const ok = major > 23 || (major === 23 && minor >= 5) || (major === 22 && minor >= 15);
+process.exit(ok ? 0 : 1);
+'; then
+  echo "Error: claude-code requires Node.js >=22.15.0 <23.0.0 or >=23.5.0 (module.registerHooks() API). Detected: $("$NODE" --version)" >&2
+  exit 1
+fi
+
 CONFIG_FILE="${PACKAGE_DIR}/config/claude-native-audited-versions.json"
 PACKAGE_VERSION=$("$NODE" -e 'const fs=require("fs"); const path=require("path"); const p=JSON.parse(fs.readFileSync(path.join(process.argv[1],"package.json"),"utf8")); process.stdout.write(p.version)' "${PACKAGE_DIR}")
 CLAUDE_VERSION="${CLAUDE_TERMUX_CLAUDE_VERSION:-${PACKAGE_VERSION}}"
