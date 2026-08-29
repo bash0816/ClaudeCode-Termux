@@ -448,6 +448,35 @@ test('import.meta.require resolves /$bunfs/root/ specifiers via loader integrati
     );
     const hoistedModule = await import(pathToFileURL(path.join(tempDir, 'chunk-vmw9kxhv.js')).href);
     assert.equal(hoistedModule.value, 'fixture');
+
+    fs.writeFileSync(path.join(tempDir, 'doc.md'), '# Hello\nSome markdown text.\n');
+    fs.writeFileSync(
+      path.join(tempDir, 'md-caller.mjs'),
+      'export const result = import.meta.require("/$bunfs/root/doc.md");\n',
+    );
+    const mdModule = await import(pathToFileURL(path.join(tempDir, 'md-caller.mjs')).href);
+    assert.equal(typeof mdModule.result, 'string');
+    assert.equal(mdModule.result, '# Hello\nSome markdown text.\n');
+
+    fs.writeFileSync(path.join(tempDir, 'note.txt'), 'plain text content');
+    fs.writeFileSync(
+      path.join(tempDir, 'txt-caller.mjs'),
+      'export const result = import.meta.require("/$bunfs/root/note.txt");\n',
+    );
+    const txtModule = await import(pathToFileURL(path.join(tempDir, 'txt-caller.mjs')).href);
+    assert.equal(typeof txtModule.result, 'string');
+    assert.equal(txtModule.result, 'plain text content');
+
+    fs.writeFileSync(
+      path.join(tempDir, 'chunk-alias.js'),
+      'export const ee = import.meta.require;\n',
+    );
+    fs.writeFileSync(
+      path.join(tempDir, 'alias-caller.mjs'),
+      'import { ee } from "/$bunfs/root/chunk-alias.js";\nexport const result = ee("/$bunfs/root/doc.md");\n',
+    );
+    const aliasModule = await import(pathToFileURL(path.join(tempDir, 'alias-caller.mjs')).href);
+    assert.equal(aliasModule.result, '# Hello\nSome markdown text.\n');
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }

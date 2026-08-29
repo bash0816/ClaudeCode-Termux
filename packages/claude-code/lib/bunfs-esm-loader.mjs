@@ -47,6 +47,7 @@ function buildImportMetaRequirePolyfillPrelude(anchorUrl) {
     `import { createRequire as __bunfsCreateRequire } from "node:module";\n` +
     `import __bunfsMetaRequirePath from "node:path";\n` +
     `import { existsSync as __bunfsMetaRequireExistsSync } from "node:fs";\n` +
+    `import { readFileSync as __bunfsMetaRequireReadFileSync } from "node:fs";\n` +
     `const __bunfsRealRequire = __bunfsCreateRequire(${JSON.stringify(anchorUrl)});\n` +
     `const __bunfsOwnedDir = ${JSON.stringify(PROCESS_OWNED_DIR)};\n` +
     `const __bunfsMetaRequire = (id) => {\n` +
@@ -63,6 +64,10 @@ function buildImportMetaRequirePolyfillPrelude(anchorUrl) {
     `    }\n` +
     `    if (!__bunfsMetaRequireExistsSync(real)) {\n` +
     `      throw new Error("bunfs meta-require: missing extracted module " + id + " -> " + real);\n` +
+    `    }\n` +
+    `    const ext = __bunfsMetaRequirePath.extname(real);\n` +
+    `    if (ext === ".md" || ext === ".txt") {\n` +
+    `      return __bunfsMetaRequireReadFileSync(real, "utf8");\n` +
     `    }\n` +
     `    return __bunfsRealRequire(real);\n` +
     `  }\n` +
