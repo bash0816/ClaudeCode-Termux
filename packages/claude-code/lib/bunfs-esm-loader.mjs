@@ -17,6 +17,29 @@ export function initialize(data) {
   WS_STUB_PATH = data.wsStubPath;
 }
 
+const CYCLE_HOIST_TARGET_FILE = 'chunk-vmw9kxhv.js';
+const CYCLE_HOIST_TARGET_DECL = 'var O9=import.meta.require("/$bunfs/root/chunk-y0jj307t.js")';
+const CYCLE_HOIST_TARGET_MODULE = 'chunk-y0jj307t.js';
+const CYCLE_HOIST_REPLACEMENT = 'var O9=__bunfsHoisted_0';
+
+function tryHoistCycleBreakingImport(filePath, source) {
+  const rel = path.relative(PROCESS_OWNED_DIR, filePath);
+  if (rel !== CYCLE_HOIST_TARGET_FILE) return null;
+
+  // 出現数が厳密に1件でなければ変換しない(fail-closed)
+  const occurrences = source.split(CYCLE_HOIST_TARGET_DECL).length - 1;
+  if (occurrences !== 1) return null;
+
+  // 注入先の存在確認(resolve()と同じtraversalガードを流用)
+  const real = path.resolve(PROCESS_OWNED_DIR, CYCLE_HOIST_TARGET_MODULE);
+  if (path.relative(PROCESS_OWNED_DIR, real).startsWith('..')) return null;
+  if (!existsSync(real)) return null;
+
+  const hoistedImportLine = `import * as __bunfsHoisted_0 from ${JSON.stringify(pathToFileURL(real).href)};\n`;
+  const newSource = source.replace(CYCLE_HOIST_TARGET_DECL, CYCLE_HOIST_REPLACEMENT);
+  return { hoistedImportLine, source: newSource };
+}
+
 function buildImportMetaRequirePolyfillPrelude(anchorUrl) {
   return (
     `import __bunfsGuardedChildProcess from ${JSON.stringify(pathToFileURL(CHILD_PROCESS_GUARD_PATH).href)};\n` +
@@ -82,10 +105,21 @@ export async function load(url, context, nextLoad) {
   }
   const filePath = fileURLToPath(url);
   let source = readFileSync(filePath, 'utf8');
+
+  let hoistedImportLine = '';
+  const hoistResult = tryHoistCycleBreakingImport(filePath, source);
+  if (hoistResult) {
+    hoistedImportLine = hoistResult.hoistedImportLine;
+    source = hoistResult.source;
+  }
+
   if (source.includes('import.meta.require')) {
     const anchorUrl = pathToFileURL(SOURCE_BIN).href;
-    source = buildImportMetaRequirePolyfillPrelude(anchorUrl) +
+    source = hoistedImportLine +
+      buildImportMetaRequirePolyfillPrelude(anchorUrl) +
       source.replaceAll('import.meta.require', '__bunfsMetaRequire');
+  } else if (hoistedImportLine) {
+    source = hoistedImportLine + source;
   }
   return { format: 'module', source, shortCircuit: true };
 }

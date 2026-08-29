@@ -328,6 +328,38 @@ test('load() calls nextLoad for URLs outside processOwnedDir', async () => {
   }
 });
 
+test('load() hoists the cycle-breaking import.meta.require call in chunk-vmw9kxhv.js', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-esm-loader-hoist-test-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+
+  fs.writeFileSync(path.join(tempDir, 'chunk-y0jj307t.js'), 'export const daemonColdStartGbDefault = () => "fixture";\n');
+  const targetFile = path.join(tempDir, 'chunk-vmw9kxhv.js');
+  const sourceCode = 'var O9=import.meta.require("/$bunfs/root/chunk-y0jj307t.js");\nexport const value = O9.daemonColdStartGbDefault();\n';
+  fs.writeFileSync(targetFile, sourceCode);
+
+  try {
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: '/dummy/bin',
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm-guard.mjs'),
+      wsStubPath: path.join(tempDir, 'ws-stub.mjs'),
+    });
+
+    const fileUrl = pathToFileURL(targetFile).href;
+    const result = await loader.load(fileUrl, {}, async () => ({ source: 'fallback' }));
+
+    assert.equal(result.format, 'module');
+    assert.ok(result.source.includes('import * as __bunfsHoisted_0 from'));
+    assert.ok(!result.source.includes('var O9=import.meta.require('));
+    assert.ok(result.source.includes('var O9=__bunfsHoisted_0'));
+    assert.equal(result.shortCircuit, true);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test('import.meta.require resolves /$bunfs/root/ specifiers via loader integration', async () => {
   const { register } = await import('node:module');
   const loader = await import('./bunfs-esm-loader.mjs');
@@ -383,6 +415,39 @@ test('import.meta.require resolves /$bunfs/root/ specifiers via loader integrati
       () => import(pathToFileURL(missingCallerPath).href),
       /missing extracted module/,
     );
+
+    // Cycle regression proof: a generic sync-require-into-in-flight-static-import cycle
+    // must throw ERR_REQUIRE_CYCLE_MODULE when NOT hoisted (proves our understanding of
+    // the bug mechanism is correct, independent of the real chunk-y0jj307t.js file).
+    fs.writeFileSync(
+      path.join(tempDir, 'chunk-cycle-demo-target.js'),
+      'import "/$bunfs/root/chunk-vmw9kxhv-a.js";\nexport const daemonColdStartGbDefault = () => "fixture";\n',
+    );
+    fs.writeFileSync(
+      path.join(tempDir, 'chunk-vmw9kxhv-a.js'),
+      'var O9X=import.meta.require("/$bunfs/root/chunk-cycle-demo-target.js");\nexport const value = O9X;\n',
+    );
+    await assert.rejects(
+      () => import(pathToFileURL(path.join(tempDir, 'chunk-vmw9kxhv-a.js')).href),
+      (err) => {
+        assert.equal(err.code, 'ERR_REQUIRE_CYCLE_MODULE');
+        return true;
+      },
+    );
+
+    // Cycle fix proof: the real chunk-vmw9kxhv.js / chunk-y0jj307t.js pair (exact filenames
+    // and declaration text that tryHoistCycleBreakingImport() targets) must resolve cleanly
+    // once hoisting is applied, and the hoisted namespace's property access must work.
+    fs.writeFileSync(
+      path.join(tempDir, 'chunk-y0jj307t.js'),
+      'import "/$bunfs/root/chunk-vmw9kxhv.js";\nexport const daemonColdStartGbDefault = () => "fixture";\n',
+    );
+    fs.writeFileSync(
+      path.join(tempDir, 'chunk-vmw9kxhv.js'),
+      'var O9=import.meta.require("/$bunfs/root/chunk-y0jj307t.js");\nexport const value = O9.daemonColdStartGbDefault();\n',
+    );
+    const hoistedModule = await import(pathToFileURL(path.join(tempDir, 'chunk-vmw9kxhv.js')).href);
+    assert.equal(hoistedModule.value, 'fixture');
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
