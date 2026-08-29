@@ -1,0 +1,9 @@
+{
+  "name": "claude-code-termux-scripts",
+  "private": true,
+  "description": "Maintainer-only tooling for tracking upstream @anthropic-ai/claude-code releases. Not published to npm; not part of the packages/claude-code distribution.",
+  "dependencies": {
+    "acorn": "8.15.0",
+    "acorn-walk": "8.3.4"
+  }
+}

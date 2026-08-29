@@ -68,6 +68,9 @@ jobs:
             echo "New version to intake: $latest"
           fi
 
+      - name: Install scripts dependencies
+        run: npm ci --prefix scripts
+
       - name: Discover offsets and integrity
         if: steps.mode.outputs.mode == 'new_intake'
         run: |

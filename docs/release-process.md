@@ -24,6 +24,8 @@
 
 新しいupstream版（`X.Y.Z`）の offset と tarball hash を調査し、両方の config に追加する。
 
+> ⚠️ **事前準備**: 以下のスクリプト実行の前に、`npm ci --prefix scripts` で監査スクリプトの依存関係(acorn など)をインストールしておく必要があります。
+
 ```
 config/claude-native-audited-versions.json
 packages/claude-code/config/claude-native-audited-versions.json
