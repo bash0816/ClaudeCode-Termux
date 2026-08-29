@@ -327,3 +327,63 @@ test('load() calls nextLoad for URLs outside processOwnedDir', async () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
+
+test('import.meta.require resolves /$bunfs/root/ specifiers via loader integration', async () => {
+  const { register } = await import('node:module');
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-esm-loader-integration-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+
+  try {
+    // Create guard files
+    fs.writeFileSync(path.join(tempDir, 'guard.mjs'), 'export default {};');
+    fs.writeFileSync(path.join(tempDir, 'vm-guard.mjs'), 'export default {};');
+    fs.writeFileSync(path.join(tempDir, 'ws-stub.mjs'), 'export default {};');
+
+    // Create CommonJS fixture that will be required (normal case)
+    fs.writeFileSync(path.join(tempDir, 'foo.js'), 'module.exports = { value: 42 };');
+
+    // Create ESM files for each test scenario
+    const okCallerPath = path.join(tempDir, 'ok-caller.mjs');
+    fs.writeFileSync(okCallerPath, 'export const result = import.meta.require("/$bunfs/root/foo.js").value;\n');
+
+    const traversalCallerPath = path.join(tempDir, 'traversal-caller.mjs');
+    fs.writeFileSync(traversalCallerPath, 'import.meta.require("/$bunfs/root/../../etc/passwd");\n');
+
+    const missingCallerPath = path.join(tempDir, 'missing-caller.mjs');
+    fs.writeFileSync(missingCallerPath, 'import.meta.require("/$bunfs/root/nonexistent.js");\n');
+
+    // Register loader (only once) with data
+    const sourceBin = path.join(tempDir, 'dummy-bin');
+    fs.writeFileSync(sourceBin, '#!/bin/false');
+
+    register(pathToFileURL(path.join(__dirname, 'bunfs-esm-loader.mjs')).href, {
+      parentURL: pathToFileURL(__filename).href,
+      data: {
+        processOwnedDir: tempDir,
+        sourceBin: sourceBin,
+        childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+        vmGuardPath: path.join(tempDir, 'vm-guard.mjs'),
+        wsStubPath: path.join(tempDir, 'ws-stub.mjs'),
+      },
+    });
+
+    // Test 1: Normal case - should load and resolve correctly
+    const okModule = await import(pathToFileURL(okCallerPath).href);
+    assert.equal(okModule.result, 42);
+
+    // Test 2: Path traversal rejection - should throw error
+    await assert.rejects(
+      () => import(pathToFileURL(traversalCallerPath).href),
+      /rejected specifier|escapes/,
+    );
+
+    // Test 3: Missing module rejection - should throw error
+    await assert.rejects(
+      () => import(pathToFileURL(missingCallerPath).href),
+      /missing extracted module/,
+    );
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});

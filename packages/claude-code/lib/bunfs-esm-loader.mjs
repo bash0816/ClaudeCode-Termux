@@ -22,10 +22,27 @@ function buildImportMetaRequirePolyfillPrelude(anchorUrl) {
     `import __bunfsGuardedChildProcess from ${JSON.stringify(pathToFileURL(CHILD_PROCESS_GUARD_PATH).href)};\n` +
     `import __bunfsGuardedVm from ${JSON.stringify(pathToFileURL(VM_GUARD_PATH).href)};\n` +
     `import { createRequire as __bunfsCreateRequire } from "node:module";\n` +
+    `import __bunfsMetaRequirePath from "node:path";\n` +
+    `import { existsSync as __bunfsMetaRequireExistsSync } from "node:fs";\n` +
     `const __bunfsRealRequire = __bunfsCreateRequire(${JSON.stringify(anchorUrl)});\n` +
+    `const __bunfsOwnedDir = ${JSON.stringify(PROCESS_OWNED_DIR)};\n` +
     `const __bunfsMetaRequire = (id) => {\n` +
     `  if (id === "child_process" || id === "node:child_process") return __bunfsGuardedChildProcess;\n` +
     `  if (id === "vm" || id === "node:vm") return __bunfsGuardedVm;\n` +
+    `  if (typeof id === "string" && id.startsWith("/$bunfs/root/")) {\n` +
+    `    const rel = id.slice("/$bunfs/root/".length);\n` +
+    `    if (rel.includes("..") || __bunfsMetaRequirePath.isAbsolute(rel)) {\n` +
+    `      throw new Error("bunfs meta-require: rejected specifier " + id);\n` +
+    `    }\n` +
+    `    const real = __bunfsMetaRequirePath.resolve(__bunfsOwnedDir, rel);\n` +
+    `    if (__bunfsMetaRequirePath.relative(__bunfsOwnedDir, real).startsWith("..")) {\n` +
+    `      throw new Error("bunfs meta-require: path escapes process-owned dir: " + id);\n` +
+    `    }\n` +
+    `    if (!__bunfsMetaRequireExistsSync(real)) {\n` +
+    `      throw new Error("bunfs meta-require: missing extracted module " + id + " -> " + real);\n` +
+    `    }\n` +
+    `    return __bunfsRealRequire(real);\n` +
+    `  }\n` +
     `  return __bunfsRealRequire(id);\n` +
     `};\n`
   );
