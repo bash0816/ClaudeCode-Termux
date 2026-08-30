@@ -855,3 +855,47 @@ test('T8: recoverMissing does not re-extract when real file exists', async () =>
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
+
+// T8-exec: recoverMissing の no-reextract-when-file-exists を実行確認
+test('T8-exec: recoverMissing returns true immediately for an existing file without calling reExtract, even under repeated calls', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-t8exec-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+
+  try {
+    const sourceBin = path.join(tempDir, 'bin');
+    fs.writeFileSync(sourceBin, 'binary');
+    fs.writeFileSync(path.join(tempDir, 'guard.mjs'), 'export default {};');
+    fs.writeFileSync(path.join(tempDir, 'vm-guard.mjs'), 'export default {};');
+    fs.writeFileSync(path.join(tempDir, 'ws-stub.mjs'), 'export default {};');
+
+    // 存在する実ファイル (require すれば内部依存 MODULE_NOT_FOUND を投げる想定の中身)
+    const realExists = path.join(tempDir, 'has-internal-dep.js');
+    fs.writeFileSync(realExists, "module.exports = require('/definitely/not/here.js');");
+
+    let reExtractCalls = 0;
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin,
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm-guard.mjs'),
+      wsStubPath: path.join(tempDir, 'ws-stub.mjs'),
+      reExtract: () => { reExtractCalls++; },
+    });
+
+    // ファイルが存在する限り、何度呼んでも即 true・再展開ゼロ
+    for (let i = 0; i < 5; i++) {
+      const r = loader.recoverMissing(realExists, i * 10000);
+      assert.equal(r, true, `call ${i} should return true (file exists)`);
+    }
+    assert.equal(reExtractCalls, 0, 'reExtract must never be called while the target file exists');
+
+    // 実際に require が内部依存で投げることも確認 (元例外が保持されるべき挙動の裏付け)
+    let threw = null;
+    try { require(realExists); } catch (e) { threw = e; }
+    assert.ok(threw, 'require of the file should throw due to its missing internal dependency');
+    assert.equal(reExtractCalls, 0, 'a require-time internal MODULE_NOT_FOUND must not trigger re-extraction');
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
