@@ -11,6 +11,32 @@ let WS_STUB_PATH = null;
 
 let CYCLE_HOISTS = [];
 
+let REEXTRACT = null;
+let reExtractConsecFailures = 0;
+let lastReExtractMs = 0;
+const MAX_CONSEC_FAILURES = 3;
+const REEXTRACT_THROTTLE_MS = 3000;
+
+function recoverMissing(realPath, now = Date.now()) {
+  if (existsSync(realPath)) return true;
+  if (!REEXTRACT || !SOURCE_BIN) return false;
+  if (reExtractConsecFailures >= MAX_CONSEC_FAILURES) return false;
+  if (now - lastReExtractMs < REEXTRACT_THROTTLE_MS) return existsSync(realPath);
+  lastReExtractMs = now;
+  try {
+    if (!existsSync(SOURCE_BIN)) { reExtractConsecFailures += 1; return false; }
+    REEXTRACT(SOURCE_BIN, PROCESS_OWNED_DIR);
+    console.error('[claude-code] recovered missing extracted module(s) by re-extracting from the native binary');
+  } catch (e) {
+    reExtractConsecFailures += 1;
+    console.error('[claude-code] re-extraction failed: ' + (e && e.message ? e.message : String(e)));
+    return false;
+  }
+  const ok = existsSync(realPath);
+  reExtractConsecFailures = ok ? 0 : reExtractConsecFailures + 1;
+  return ok;
+}
+
 export function initialize(data) {
   PROCESS_OWNED_DIR = data.processOwnedDir;
   SOURCE_BIN = data.sourceBin;
@@ -18,6 +44,11 @@ export function initialize(data) {
   VM_GUARD_PATH = data.vmGuardPath;
   WS_STUB_PATH = data.wsStubPath;
   CYCLE_HOISTS = Array.isArray(data.cycleHoists) ? data.cycleHoists : [];
+  REEXTRACT = typeof data.reExtract === 'function' ? data.reExtract : null;
+  globalThis.__bunfsRecoverMissing = recoverMissing;
+  // 回復状態のリセット (テスト隔離・再 initialize 対応)
+  reExtractConsecFailures = 0;
+  lastReExtractMs = 0;
 }
 
 function tryHoistCycleBreakingImports(filePath, source) {
@@ -37,7 +68,7 @@ function tryHoistCycleBreakingImports(filePath, source) {
 
     const real = path.resolve(PROCESS_OWNED_DIR, record.targetModule);
     if (path.relative(PROCESS_OWNED_DIR, real).startsWith('..')) continue;
-    if (!existsSync(real)) continue;
+    if (!existsSync(real) && !recoverMissing(real)) continue;
 
     let varName = targetToVar.get(record.targetModule);
     if (!varName) {
@@ -94,13 +125,27 @@ function buildImportMetaRequirePolyfillPrelude(anchorUrl) {
     `      throw new Error("bunfs meta-require: path escapes process-owned dir: " + id);\n` +
     `    }\n` +
     `    if (!__bunfsMetaRequireExistsSync(real)) {\n` +
-    `      throw new Error("bunfs meta-require: missing extracted module " + id + " -> " + real);\n` +
+    `      const _rec = (typeof globalThis.__bunfsRecoverMissing === "function") && globalThis.__bunfsRecoverMissing(real);\n` +
+    `      if (!_rec) throw new Error("bunfs meta-require: missing extracted module " + id + " -> " + real);\n` +
     `    }\n` +
     `    const ext = __bunfsMetaRequirePath.extname(real);\n` +
     `    if (ext === ".md" || ext === ".txt") {\n` +
-    `      return __bunfsMetaRequireReadFileSync(real, "utf8");\n` +
+    `      try { return __bunfsMetaRequireReadFileSync(real, "utf8"); }\n` +
+    `      catch (_e2) {\n` +
+    `        if (_e2 && _e2.code === "ENOENT" && !__bunfsMetaRequireExistsSync(real) && typeof globalThis.__bunfsRecoverMissing === "function" && globalThis.__bunfsRecoverMissing(real)) {\n` +
+    `          return __bunfsMetaRequireReadFileSync(real, "utf8");\n` +
+    `        }\n` +
+    `        throw _e2;\n` +
+    `      }\n` +
     `    }\n` +
-    `    return __bunfsRealRequire(real);\n` +
+    `    try {\n` +
+    `      return __bunfsRealRequire(real);\n` +
+    `    } catch (_e) {\n` +
+    `      if (!__bunfsMetaRequireExistsSync(real) && typeof globalThis.__bunfsRecoverMissing === "function" && globalThis.__bunfsRecoverMissing(real)) {\n` +
+    `        return __bunfsRealRequire(real);\n` +
+    `      }\n` +
+    `      throw _e;\n` +
+    `    }\n` +
     `  }\n` +
     `  return __bunfsRealRequire(id);\n` +
     `};\n`
@@ -132,7 +177,7 @@ export function resolve(specifier, context, nextResolve) {
     if (path.relative(PROCESS_OWNED_DIR, real).startsWith('..')) {
       throw new Error(`bunfs resolve: path escapes process-owned dir: ${specifier}`);
     }
-    if (!existsSync(real)) {
+    if (!existsSync(real) && !recoverMissing(real)) {
       throw new Error(`bunfs resolve: missing extracted module ${specifier} -> ${real}`);
     }
     return { url: pathToFileURL(real).href, shortCircuit: true, format: 'module' };
@@ -146,7 +191,17 @@ export function load(url, context, nextLoad) {
     return nextLoad(url, context);
   }
   const filePath = fileURLToPath(url);
-  let source = readFileSync(filePath, 'utf8');
+  let source;
+  try {
+    source = readFileSync(filePath, 'utf8');
+  } catch (e) {
+    // filePath 自身が消えている場合のみ回復 (エラーコードだけに依存しない)
+    if (e && e.code === 'ENOENT' && !existsSync(filePath) && recoverMissing(filePath)) {
+      source = readFileSync(filePath, 'utf8');
+    } else {
+      throw e;
+    }
+  }
 
   let hoistedImportLine = '';
   const hoistResult = tryHoistCycleBreakingImports(filePath, source);
@@ -165,3 +220,5 @@ export function load(url, context, nextLoad) {
   }
   return { format: 'module', source, shortCircuit: true };
 }
+
+export { recoverMissing };
