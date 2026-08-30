@@ -29,14 +29,15 @@ test('analyzeCycleHoists: structural cycle + eager call', () => {
       'var x = import.meta.require("/$bunfs/root/A.js").someExport;\nexport const y = "B";\n'
     );
 
-    const result = analyzeCycleHoists(tempDir);
-    assert.equal(result.length, 1);
-    assert.deepEqual(result[0], {
+    const { cycleHoists, skippedAssets } = analyzeCycleHoists(tempDir);
+    assert.equal(cycleHoists.length, 1);
+    assert.deepEqual(cycleHoists[0], {
       file: 'B.js',
       targetModule: 'A.js',
       expectedOccurrences: 1,
       assertProperties: ['someExport'],
     });
+    assert.deepEqual(skippedAssets, []);
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
@@ -57,8 +58,9 @@ test('analyzeCycleHoists: structural cycle + all-delayed calls', () => {
       'function f() { var x = import.meta.require("/$bunfs/root/A.js").someExport; }\nexport const y = "B";\n'
     );
 
-    const result = analyzeCycleHoists(tempDir);
-    assert.equal(result.length, 0);
+    const { cycleHoists, skippedAssets } = analyzeCycleHoists(tempDir);
+    assert.equal(cycleHoists.length, 0);
+    assert.deepEqual(skippedAssets, []);
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
@@ -79,8 +81,9 @@ test('analyzeCycleHoists: no cycle', () => {
       'export const z = "B";\n'
     );
 
-    const result = analyzeCycleHoists(tempDir);
-    assert.equal(result.length, 0);
+    const { cycleHoists, skippedAssets } = analyzeCycleHoists(tempDir);
+    assert.equal(cycleHoists.length, 0);
+    assert.deepEqual(skippedAssets, []);
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
@@ -104,6 +107,53 @@ test('analyzeCycleHoists: parse failure throws', () => {
     assert.throws(() => {
       analyzeCycleHoists(tempDir);
     }, /analyzeCycleHoists: .* file\(s\) failed to parse/);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('analyzeCycleHoists: chunk file parse failure still throws', () => {
+  const tempDir = makeTempDir('cycle-hoist-test-');
+  try {
+    fs.writeFileSync(path.join(tempDir, 'A.js'), 'export const a = 1;\n');
+    fs.writeFileSync(path.join(tempDir, 'chunk-bad.js'), 'this is {{{ invalid syntax');
+    assert.throws(() => analyzeCycleHoists(tempDir), /failed to parse/);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('analyzeCycleHoists: non-chunk zstd assets are skipped and sorted', () => {
+  const tempDir = makeTempDir('cycle-hoist-test-');
+  try {
+    fs.writeFileSync(path.join(tempDir, 'A.js'), 'export const a = 1;\n');
+    const zstd = Buffer.concat([Buffer.from([0x28, 0xb5, 0x2f, 0xfd]), Buffer.from('xxxxxx')]);
+    fs.writeFileSync(path.join(tempDir, 'z.js'), zstd);
+    fs.writeFileSync(path.join(tempDir, 'a.js'), zstd);
+    const { skippedAssets } = analyzeCycleHoists(tempDir);
+    assert.deepEqual(skippedAssets, ['a.js', 'z.js']);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('analyzeCycleHoists: non-chunk non-zstd parse failure still throws', () => {
+  const tempDir = makeTempDir('cycle-hoist-test-');
+  try {
+    fs.writeFileSync(path.join(tempDir, 'A.js'), 'export const a = 1;\n');
+    fs.writeFileSync(path.join(tempDir, 'g.js'), Buffer.concat([Buffer.from([0x1f, 0x8b, 0x08, 0x00]), Buffer.from('data')]));
+    assert.throws(() => analyzeCycleHoists(tempDir), /failed to parse/);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('analyzeCycleHoists: chunk file with zstd magic still throws', () => {
+  const tempDir = makeTempDir('cycle-hoist-test-');
+  try {
+    fs.writeFileSync(path.join(tempDir, 'A.js'), 'export const a = 1;\n');
+    fs.writeFileSync(path.join(tempDir, 'chunk-z.js'), Buffer.concat([Buffer.from([0x28, 0xb5, 0x2f, 0xfd]), Buffer.from('xxxxxx')]));
+    assert.throws(() => analyzeCycleHoists(tempDir), /failed to parse/);
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
