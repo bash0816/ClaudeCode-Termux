@@ -33,15 +33,15 @@ test('resolve() handles child_process and node:child_process specifiers', async 
       wsStubPath: path.join(tempDir, 'ws-stub.mjs'),
     });
 
-    const nextResolve = async (spec, ctx) => ({ url: `unresolved:${spec}` });
+    const nextResolve = (spec, ctx) => ({ url: `unresolved:${spec}` });
 
     // child_process should resolve to childProcessGuardPath
-    const result1 = await loader.resolve('child_process', {}, nextResolve);
+    const result1 = loader.resolve('child_process', { parentURL: pathToFileURL(path.join(tempDir, 'dummy-chunk.js')).href }, nextResolve);
     assert.ok(result1.url.includes(guardPath));
     assert.equal(result1.shortCircuit, true);
 
     // node:child_process should also resolve to childProcessGuardPath
-    const result2 = await loader.resolve('node:child_process', {}, nextResolve);
+    const result2 = loader.resolve('node:child_process', { parentURL: pathToFileURL(path.join(tempDir, 'dummy-chunk.js')).href }, nextResolve);
     assert.ok(result2.url.includes(guardPath));
     assert.equal(result2.shortCircuit, true);
   } finally {
@@ -65,15 +65,15 @@ test('resolve() handles vm and node:vm specifiers', async () => {
       wsStubPath: path.join(tempDir, 'ws-stub.mjs'),
     });
 
-    const nextResolve = async (spec, ctx) => ({ url: `unresolved:${spec}` });
+    const nextResolve = (spec, ctx) => ({ url: `unresolved:${spec}` });
 
     // vm should resolve to vmGuardPath
-    const result1 = await loader.resolve('vm', {}, nextResolve);
+    const result1 = loader.resolve('vm', { parentURL: pathToFileURL(path.join(tempDir, 'dummy-chunk.js')).href }, nextResolve);
     assert.ok(result1.url.includes(vmGuardPath));
     assert.equal(result1.shortCircuit, true);
 
     // node:vm should also resolve to vmGuardPath
-    const result2 = await loader.resolve('node:vm', {}, nextResolve);
+    const result2 = loader.resolve('node:vm', { parentURL: pathToFileURL(path.join(tempDir, 'dummy-chunk.js')).href }, nextResolve);
     assert.ok(result2.url.includes(vmGuardPath));
     assert.equal(result2.shortCircuit, true);
   } finally {
@@ -97,9 +97,9 @@ test('resolve() handles ws specifier', async () => {
       wsStubPath: wsStubPath,
     });
 
-    const nextResolve = async (spec, ctx) => ({ url: `unresolved:${spec}` });
+    const nextResolve = (spec, ctx) => ({ url: `unresolved:${spec}` });
 
-    const result = await loader.resolve('ws', {}, nextResolve);
+    const result = loader.resolve('ws', { parentURL: pathToFileURL(path.join(tempDir, 'dummy-chunk.js')).href }, nextResolve);
     assert.ok(result.url.includes(wsStubPath));
     assert.equal(result.shortCircuit, true);
   } finally {
@@ -150,9 +150,9 @@ test('resolve() rejects path traversal with ..', async () => {
       wsStubPath: path.join(tempDir, 'ws-stub.mjs'),
     });
 
-    const nextResolve = async (spec, ctx) => ({ url: `unresolved:${spec}` });
+    const nextResolve = (spec, ctx) => ({ url: `unresolved:${spec}` });
 
-    await assert.rejects(
+    assert.throws(
       () => loader.resolve('/$bunfs/root/../../etc/passwd', {}, nextResolve),
       /rejected specifier|escapes/,
     );
@@ -175,9 +175,9 @@ test('resolve() rejects absolute paths', async () => {
       wsStubPath: path.join(tempDir, 'ws-stub.mjs'),
     });
 
-    const nextResolve = async (spec, ctx) => ({ url: `unresolved:${spec}` });
+    const nextResolve = (spec, ctx) => ({ url: `unresolved:${spec}` });
 
-    await assert.rejects(
+    assert.throws(
       () => loader.resolve('/$bunfs/root//etc/passwd', {}, nextResolve),
       /rejected specifier|escapes/,
     );
@@ -200,9 +200,9 @@ test('resolve() throws error for missing extracted module', async () => {
       wsStubPath: path.join(tempDir, 'ws-stub.mjs'),
     });
 
-    const nextResolve = async (spec, ctx) => ({ url: `unresolved:${spec}` });
+    const nextResolve = (spec, ctx) => ({ url: `unresolved:${spec}` });
 
-    await assert.rejects(
+    assert.throws(
       () => loader.resolve('/$bunfs/root/nonexistent.js', {}, nextResolve),
       /missing extracted module/,
     );
@@ -323,6 +323,165 @@ test('load() calls nextLoad for URLs outside processOwnedDir', async () => {
 
     await loader.load('file:///some/other/path/module.js', {}, nextLoad);
     assert.equal(nextLoadCalled, true);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('load() hoists the cycle-breaking import.meta.require call in chunk-vmw9kxhv.js', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-esm-loader-hoist-test-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+
+  fs.writeFileSync(path.join(tempDir, 'chunk-y0jj307t.js'), 'export const daemonColdStartGbDefault = () => "fixture";\n');
+  const targetFile = path.join(tempDir, 'chunk-vmw9kxhv.js');
+  const sourceCode = 'var O9=import.meta.require("/$bunfs/root/chunk-y0jj307t.js");\nexport const value = O9.daemonColdStartGbDefault();\n';
+  fs.writeFileSync(targetFile, sourceCode);
+
+  try {
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: '/dummy/bin',
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm-guard.mjs'),
+      wsStubPath: path.join(tempDir, 'ws-stub.mjs'),
+      cycleHoists: [{ file: 'chunk-vmw9kxhv.js', targetModule: 'chunk-y0jj307t.js', expectedOccurrences: 1, assertProperties: [] }],
+    });
+
+    const fileUrl = pathToFileURL(targetFile).href;
+    const result = await loader.load(fileUrl, {}, async () => ({ source: 'fallback' }));
+
+    assert.equal(result.format, 'module');
+    assert.ok(result.source.includes('import * as __bunfsHoisted_0 from'));
+    assert.ok(!result.source.includes('var O9=import.meta.require('));
+    assert.ok(result.source.includes('var O9=__bunfsHoisted_0'));
+    assert.equal(result.shortCircuit, true);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('import.meta.require resolves /$bunfs/root/ specifiers via loader integration', async () => {
+  const { registerHooks } = await import('node:module');
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-esm-loader-integration-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+
+  try {
+    // Create guard files
+    fs.writeFileSync(path.join(tempDir, 'guard.mjs'), 'export default {};');
+    fs.writeFileSync(path.join(tempDir, 'vm-guard.mjs'), 'export default {};');
+    fs.writeFileSync(path.join(tempDir, 'ws-stub.mjs'), 'export default {};');
+
+    // Create ESM fixture that will be required via import.meta.require (normal case).
+    // PROCESS_OWNED_DIR only ever contains genuine ESM chunk files extracted from the
+    // Bun esm-chunked bundle (verified against a real 2.1.248 extraction: 0 of 1768
+    // chunk files are CommonJS), so load() always returns format: 'module' for this dir.
+    fs.writeFileSync(path.join(tempDir, 'foo.js'), 'export const value = 42;');
+
+    // Create ESM files for each test scenario
+    const okCallerPath = path.join(tempDir, 'ok-caller.mjs');
+    fs.writeFileSync(okCallerPath, 'export const result = import.meta.require("/$bunfs/root/foo.js").value;\n');
+
+    const traversalCallerPath = path.join(tempDir, 'traversal-caller.mjs');
+    fs.writeFileSync(traversalCallerPath, 'import.meta.require("/$bunfs/root/../../etc/passwd");\n');
+
+    const missingCallerPath = path.join(tempDir, 'missing-caller.mjs');
+    fs.writeFileSync(missingCallerPath, 'import.meta.require("/$bunfs/root/nonexistent.js");\n');
+
+    // Register loader (only once) with data
+    const sourceBin = path.join(tempDir, 'dummy-bin');
+    fs.writeFileSync(sourceBin, '#!/bin/false');
+
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: sourceBin,
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm-guard.mjs'),
+      wsStubPath: path.join(tempDir, 'ws-stub.mjs'),
+      cycleHoists: [
+        { file: 'chunk-vmw9kxhv.js', targetModule: 'chunk-y0jj307t.js', expectedOccurrences: 1, assertProperties: [] },
+      ],
+    });
+    registerHooks({ resolve: loader.resolve, load: loader.load });
+
+    // Test 1: Normal case - should load and resolve correctly
+    const okModule = await import(pathToFileURL(okCallerPath).href);
+    assert.equal(okModule.result, 42);
+
+    // Test 2: Path traversal rejection - should throw error
+    await assert.rejects(
+      () => import(pathToFileURL(traversalCallerPath).href),
+      /rejected specifier|escapes/,
+    );
+
+    // Test 3: Missing module rejection - should throw error
+    await assert.rejects(
+      () => import(pathToFileURL(missingCallerPath).href),
+      /missing extracted module/,
+    );
+
+    // Cycle regression proof: a generic sync-require-into-in-flight-static-import cycle
+    // must throw ERR_REQUIRE_CYCLE_MODULE when NOT hoisted (proves our understanding of
+    // the bug mechanism is correct, independent of the real chunk-y0jj307t.js file).
+    fs.writeFileSync(
+      path.join(tempDir, 'chunk-cycle-demo-target.js'),
+      'import "/$bunfs/root/chunk-vmw9kxhv-a.js";\nexport const daemonColdStartGbDefault = () => "fixture";\n',
+    );
+    fs.writeFileSync(
+      path.join(tempDir, 'chunk-vmw9kxhv-a.js'),
+      'var O9X=import.meta.require("/$bunfs/root/chunk-cycle-demo-target.js");\nexport const value = O9X;\n',
+    );
+    await assert.rejects(
+      () => import(pathToFileURL(path.join(tempDir, 'chunk-vmw9kxhv-a.js')).href),
+      (err) => {
+        assert.equal(err.code, 'ERR_REQUIRE_CYCLE_MODULE');
+        return true;
+      },
+    );
+
+    // Cycle fix proof: the real chunk-vmw9kxhv.js / chunk-y0jj307t.js pair (exact filenames
+    // and declaration text that tryHoistCycleBreakingImport() targets) must resolve cleanly
+    // once hoisting is applied, and the hoisted namespace's property access must work.
+    fs.writeFileSync(
+      path.join(tempDir, 'chunk-y0jj307t.js'),
+      'import "/$bunfs/root/chunk-vmw9kxhv.js";\nexport const daemonColdStartGbDefault = () => "fixture";\n',
+    );
+    fs.writeFileSync(
+      path.join(tempDir, 'chunk-vmw9kxhv.js'),
+      'var O9=import.meta.require("/$bunfs/root/chunk-y0jj307t.js");\nexport const value = O9.daemonColdStartGbDefault();\n',
+    );
+    const hoistedModule = await import(pathToFileURL(path.join(tempDir, 'chunk-vmw9kxhv.js')).href);
+    assert.equal(hoistedModule.value, 'fixture');
+
+    fs.writeFileSync(path.join(tempDir, 'doc.md'), '# Hello\nSome markdown text.\n');
+    fs.writeFileSync(
+      path.join(tempDir, 'md-caller.mjs'),
+      'export const result = import.meta.require("/$bunfs/root/doc.md");\n',
+    );
+    const mdModule = await import(pathToFileURL(path.join(tempDir, 'md-caller.mjs')).href);
+    assert.equal(typeof mdModule.result, 'string');
+    assert.equal(mdModule.result, '# Hello\nSome markdown text.\n');
+
+    fs.writeFileSync(path.join(tempDir, 'note.txt'), 'plain text content');
+    fs.writeFileSync(
+      path.join(tempDir, 'txt-caller.mjs'),
+      'export const result = import.meta.require("/$bunfs/root/note.txt");\n',
+    );
+    const txtModule = await import(pathToFileURL(path.join(tempDir, 'txt-caller.mjs')).href);
+    assert.equal(typeof txtModule.result, 'string');
+    assert.equal(txtModule.result, 'plain text content');
+
+    fs.writeFileSync(
+      path.join(tempDir, 'chunk-alias.js'),
+      'export const ee = import.meta.require;\n',
+    );
+    fs.writeFileSync(
+      path.join(tempDir, 'alias-caller.mjs'),
+      'import { ee } from "/$bunfs/root/chunk-alias.js";\nexport const result = ee("/$bunfs/root/doc.md");\n',
+    );
+    const aliasModule = await import(pathToFileURL(path.join(tempDir, 'alias-caller.mjs')).href);
+    assert.equal(aliasModule.result, '# Hello\nSome markdown text.\n');
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }

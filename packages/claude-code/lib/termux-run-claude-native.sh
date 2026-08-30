@@ -665,7 +665,7 @@ function rewriteNativeChunkSource(source) {
 
 async function esmChunkedMain() {
   const { prepareProcessOwnedDir } = require(path.join(process.env.CLAUDE_TERMUX_PACKAGE_DIR, 'lib', 'bunfs-extract.js'));
-  const { register } = require('node:module');
+  const { registerHooks } = require('node:module');
   const { pathToFileURL } = require('node:url');
 
   const { ownedDir, entryRelPath } = prepareProcessOwnedDir(sourceBin, workdir);
@@ -690,16 +690,27 @@ async function esmChunkedMain() {
   globalThis.__claudeBunShim = globalThis.Bun;
   globalThis.__claudeBun = globalThis.Bun;
 
-  register(pathToFileURL(path.join(libDir, 'bunfs-esm-loader.mjs')).href, {
-    parentURL: pathToFileURL(__filename).href,
-    data: {
-      processOwnedDir: ownedDir,
-      sourceBin,
-      childProcessGuardPath: path.join(libDir, 'bunfs-child-process-guard.mjs'),
-      vmGuardPath: path.join(libDir, 'bunfs-vm-guard.mjs'),
-      wsStubPath: path.join(libDir, 'bunfs-ws-stub.mjs'),
-    },
+  let cycleHoists = [];
+  try {
+    const auditedVersions = require(path.join(process.env.CLAUDE_TERMUX_PACKAGE_DIR, 'config', 'claude-native-audited-versions.json'));
+    const entry = auditedVersions.versions?.[process.env.CURRENT_CLAUDE_VERSION];
+    if (entry && Array.isArray(entry.cycle_hoists)) {
+      cycleHoists = entry.cycle_hoists;
+    }
+  } catch {
+    // 読み込み失敗時は空配列のまま(fail-closed、既存の同期require経路にフォールバック)
+  }
+
+  const loaderMod = require(path.join(libDir, 'bunfs-esm-loader.mjs'));
+  loaderMod.initialize({
+    processOwnedDir: ownedDir,
+    sourceBin,
+    childProcessGuardPath: path.join(libDir, 'bunfs-child-process-guard.mjs'),
+    vmGuardPath: path.join(libDir, 'bunfs-vm-guard.mjs'),
+    wsStubPath: path.join(libDir, 'bunfs-ws-stub.mjs'),
+    cycleHoists,
   });
+  registerHooks({ resolve: loaderMod.resolve, load: loaderMod.load });
 
   const entryUrl = pathToFileURL(path.join(ownedDir, entryRelPath)).href;
 
@@ -1679,7 +1690,7 @@ function rewriteNativeChunkSource(source) {
 
 async function esmChunkedMain() {
   const { prepareProcessOwnedDir } = require(path.join(process.env.CLAUDE_TERMUX_PACKAGE_DIR, 'lib', 'bunfs-extract.js'));
-  const { register } = require('node:module');
+  const { registerHooks } = require('node:module');
   const { pathToFileURL } = require('node:url');
 
   const { ownedDir, entryRelPath } = prepareProcessOwnedDir(sourceBin, workdir);
@@ -1704,16 +1715,27 @@ async function esmChunkedMain() {
   globalThis.__claudeBunShim = globalThis.Bun;
   globalThis.__claudeBun = globalThis.Bun;
 
-  register(pathToFileURL(path.join(libDir, 'bunfs-esm-loader.mjs')).href, {
-    parentURL: pathToFileURL(__filename).href,
-    data: {
-      processOwnedDir: ownedDir,
-      sourceBin,
-      childProcessGuardPath: path.join(libDir, 'bunfs-child-process-guard.mjs'),
-      vmGuardPath: path.join(libDir, 'bunfs-vm-guard.mjs'),
-      wsStubPath: path.join(libDir, 'bunfs-ws-stub.mjs'),
-    },
+  let cycleHoists = [];
+  try {
+    const auditedVersions = require(path.join(process.env.CLAUDE_TERMUX_PACKAGE_DIR, 'config', 'claude-native-audited-versions.json'));
+    const entry = auditedVersions.versions?.[process.env.CURRENT_CLAUDE_VERSION];
+    if (entry && Array.isArray(entry.cycle_hoists)) {
+      cycleHoists = entry.cycle_hoists;
+    }
+  } catch {
+    // 読み込み失敗時は空配列のまま(fail-closed、既存の同期require経路にフォールバック)
+  }
+
+  const loaderMod = require(path.join(libDir, 'bunfs-esm-loader.mjs'));
+  loaderMod.initialize({
+    processOwnedDir: ownedDir,
+    sourceBin,
+    childProcessGuardPath: path.join(libDir, 'bunfs-child-process-guard.mjs'),
+    vmGuardPath: path.join(libDir, 'bunfs-vm-guard.mjs'),
+    wsStubPath: path.join(libDir, 'bunfs-ws-stub.mjs'),
+    cycleHoists,
   });
+  registerHooks({ resolve: loaderMod.resolve, load: loaderMod.load });
 
   const entryUrl = pathToFileURL(path.join(ownedDir, entryRelPath)).href;
 

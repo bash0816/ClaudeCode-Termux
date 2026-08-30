@@ -90,6 +90,8 @@ jobs:
           node --check ../../scripts/retag-latest-dist-tags.js
           node --test ../../scripts/retag-latest-dist-tags.test.js
           node --test lib/termux-run-claude-native.test.js
+          node --test lib/bunfs-esm-loader.test.js
+          node --test lib/native-validators.test.js
 
       - name: Verify audited metadata
         run: |
