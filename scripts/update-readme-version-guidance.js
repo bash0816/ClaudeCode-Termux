@@ -116,16 +116,6 @@ function updateRootReadme(content, versions, latestAudited, previousStable, stab
   // Supported Versions table (between comment markers)
   content = updateSupportedVersionsTable(content, latestAudited, previousStable, stablePinned);
 
-  // Text references to latest audited version
-  content = content.replace(
-    /This repo's published latest audited\nrelease is `[^`]+`\./,
-    `This repo's published latest audited\nrelease is \`${latestAudited}\`.`
-  );
-  content = content.replace(
-    /この repo の公開 latest audited release は `[^`]+` です。/,
-    `この repo の公開 latest audited release は \`${latestAudited}\` です。`
-  );
-
   // Expected output example
   const expectedBlock = [
     formatTextBlock(['<installed_audited_version> (Claude Code)']),
