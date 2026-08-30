@@ -55,6 +55,7 @@ export ENTRY_FORMAT
 export ENTRY_JS_OFFSET
 export ENTRY_END_OFFSET
 export CURRENT_CLAUDE_VERSION
+export ENABLE_TOOL_SEARCH="${ENABLE_TOOL_SEARCH:-false}"
 
 _pf=0
 for _a in "$@"; do
@@ -664,7 +665,7 @@ function rewriteNativeChunkSource(source) {
 }
 
 async function esmChunkedMain() {
-  const { prepareProcessOwnedDir } = require(path.join(process.env.CLAUDE_TERMUX_PACKAGE_DIR, 'lib', 'bunfs-extract.js'));
+  const { prepareProcessOwnedDir, extractToProcessOwnedDir } = require(path.join(process.env.CLAUDE_TERMUX_PACKAGE_DIR, 'lib', 'bunfs-extract.js'));
   const { registerHooks } = require('node:module');
   const { pathToFileURL } = require('node:url');
 
@@ -709,6 +710,7 @@ async function esmChunkedMain() {
     vmGuardPath: path.join(libDir, 'bunfs-vm-guard.mjs'),
     wsStubPath: path.join(libDir, 'bunfs-ws-stub.mjs'),
     cycleHoists,
+    reExtract: (sb, od) => extractToProcessOwnedDir(sb, od),
   });
   registerHooks({ resolve: loaderMod.resolve, load: loaderMod.load });
 
@@ -1689,7 +1691,7 @@ function rewriteNativeChunkSource(source) {
 }
 
 async function esmChunkedMain() {
-  const { prepareProcessOwnedDir } = require(path.join(process.env.CLAUDE_TERMUX_PACKAGE_DIR, 'lib', 'bunfs-extract.js'));
+  const { prepareProcessOwnedDir, extractToProcessOwnedDir } = require(path.join(process.env.CLAUDE_TERMUX_PACKAGE_DIR, 'lib', 'bunfs-extract.js'));
   const { registerHooks } = require('node:module');
   const { pathToFileURL } = require('node:url');
 
@@ -1734,6 +1736,7 @@ async function esmChunkedMain() {
     vmGuardPath: path.join(libDir, 'bunfs-vm-guard.mjs'),
     wsStubPath: path.join(libDir, 'bunfs-ws-stub.mjs'),
     cycleHoists,
+    reExtract: (sb, od) => extractToProcessOwnedDir(sb, od),
   });
   registerHooks({ resolve: loaderMod.resolve, load: loaderMod.load });
 

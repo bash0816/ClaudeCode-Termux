@@ -486,3 +486,372 @@ test('import.meta.require resolves /$bunfs/root/ specifiers via loader integrati
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
+
+// Recovery tests for missing module scenario
+
+// T1: resolve() がチャンク欠落を回復する
+test('T1: resolve() recovers chunk deletion by calling reExtract', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-recovery-t1-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+
+  try {
+    const sourceBin = path.join(tempDir, 'bin');
+    fs.writeFileSync(sourceBin, 'binary content');
+    const guardPath = path.join(tempDir, 'guard.mjs');
+    fs.writeFileSync(guardPath, 'export default {};');
+    fs.writeFileSync(path.join(tempDir, 'vm-guard.mjs'), 'export default {};');
+    fs.writeFileSync(path.join(tempDir, 'ws-stub.mjs'), 'export default {};');
+
+    const targetFile = path.join(tempDir, 'target.js');
+    fs.writeFileSync(targetFile, 'export const x = 1;');
+
+    let reExtractCalls = 0;
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: sourceBin,
+      childProcessGuardPath: guardPath,
+      vmGuardPath: path.join(tempDir, 'vm-guard.mjs'),
+      wsStubPath: path.join(tempDir, 'ws-stub.mjs'),
+      reExtract: (sb, od) => {
+        reExtractCalls++;
+        fs.writeFileSync(targetFile, 'export const x = 1;');
+      },
+    });
+
+    // Delete file
+    fs.unlinkSync(targetFile);
+
+    // resolve() should trigger recovery
+    const result = loader.resolve('/$bunfs/root/target.js', {}, () => ({}));
+    assert.ok(result.url);
+    assert.equal(reExtractCalls, 1);
+    assert.ok(fs.existsSync(targetFile));
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+// T2: load() が readFileSync ENOENT を回復する
+test('T2: load() recovers readFileSync ENOENT by calling reExtract', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-recovery-t2-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+
+  try {
+    const sourceBin = path.join(tempDir, 'bin');
+    fs.writeFileSync(sourceBin, 'binary content');
+    fs.writeFileSync(path.join(tempDir, 'guard.mjs'), 'export default {};');
+    fs.writeFileSync(path.join(tempDir, 'vm-guard.mjs'), 'export default {};');
+    fs.writeFileSync(path.join(tempDir, 'ws-stub.mjs'), 'export default {};');
+
+    const targetFile = path.join(tempDir, 'target.js');
+    const originalSource = 'export const y = 2;';
+    fs.writeFileSync(targetFile, originalSource);
+
+    let reExtractCalls = 0;
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: sourceBin,
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm-guard.mjs'),
+      wsStubPath: path.join(tempDir, 'ws-stub.mjs'),
+      reExtract: () => {
+        reExtractCalls++;
+        fs.writeFileSync(targetFile, originalSource);
+      },
+    });
+
+    // Delete file
+    fs.unlinkSync(targetFile);
+
+    // load() should trigger recovery
+    const result = await loader.load(pathToFileURL(targetFile).href, {}, async () => ({}));
+    assert.ok(result.source);
+    assert.equal(reExtractCalls, 1);
+    assert.ok(result.source.includes('y = 2'));
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+// T3: tryHoistCycleBreakingImports の hoist 対象欠落を回復する
+test('T3: tryHoistCycleBreakingImports recovers missing hoist target', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-recovery-t3-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+
+  try {
+    const sourceBin = path.join(tempDir, 'bin');
+    fs.writeFileSync(sourceBin, 'binary content');
+    fs.writeFileSync(path.join(tempDir, 'guard.mjs'), 'export default {};');
+    fs.writeFileSync(path.join(tempDir, 'vm-guard.mjs'), 'export default {};');
+    fs.writeFileSync(path.join(tempDir, 'ws-stub.mjs'), 'export default {};');
+
+    const srcFile = path.join(tempDir, 'src.js');
+    fs.writeFileSync(srcFile, 'import.meta.require("/$bunfs/root/tgt.js");\n');
+
+    const tgtFile = path.join(tempDir, 'tgt.js');
+    fs.writeFileSync(tgtFile, 'export const target = 1;');
+
+    let reExtractCalls = 0;
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: sourceBin,
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm-guard.mjs'),
+      wsStubPath: path.join(tempDir, 'ws-stub.mjs'),
+      cycleHoists: [{ file: 'src.js', targetModule: 'tgt.js', expectedOccurrences: 1, assertProperties: [] }],
+      reExtract: () => {
+        reExtractCalls++;
+        fs.writeFileSync(tgtFile, 'export const target = 1;');
+      },
+    });
+
+    // Delete target
+    fs.unlinkSync(tgtFile);
+
+    // load() should trigger hoisting and recovery
+    const result = await loader.load(pathToFileURL(srcFile).href, {}, async () => ({}));
+    assert.ok(result.source);
+    assert.equal(reExtractCalls, 1);
+    assert.ok(result.source.includes('__bunfsHoisted_'));
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+// T4: recoverMissing 直接 — 失敗上限 MAX_CONSEC_FAILURES=3
+test('T4: recoverMissing respects MAX_CONSEC_FAILURES limit of 3', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-recovery-t4-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+
+  try {
+    const sourceBin = path.join(tempDir, 'bin');
+    fs.writeFileSync(sourceBin, 'binary content');
+    fs.writeFileSync(path.join(tempDir, 'guard.mjs'), 'export default {};');
+    fs.writeFileSync(path.join(tempDir, 'vm-guard.mjs'), 'export default {};');
+    fs.writeFileSync(path.join(tempDir, 'ws-stub.mjs'), 'export default {};');
+
+    const missingPath = path.join(tempDir, 'missing.js');
+
+    let reExtractCalls = 0;
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: sourceBin,
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm-guard.mjs'),
+      wsStubPath: path.join(tempDir, 'ws-stub.mjs'),
+      reExtract: () => {
+        reExtractCalls++;
+        // Do not recreate file - simulate failure
+      },
+    });
+
+    // Call recoverMissing 4 times with advancing time
+    const result1 = loader.recoverMissing(missingPath, 0);
+    const result2 = loader.recoverMissing(missingPath, 10000);
+    const result3 = loader.recoverMissing(missingPath, 20000);
+    const result4 = loader.recoverMissing(missingPath, 30000);
+
+    assert.equal(result1, false);
+    assert.equal(result2, false);
+    assert.equal(result3, false);
+    assert.equal(result4, false);
+    assert.equal(reExtractCalls, 3, 'reExtract should be called exactly 3 times (MAX_CONSEC_FAILURES)');
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+// T5: recoverMissing 直接 — 連続失敗カウンタは成功でリセット
+test('T5: recoverMissing resets consecutive failures counter on success', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-recovery-t5-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+
+  try {
+    const sourceBin = path.join(tempDir, 'bin');
+    fs.writeFileSync(sourceBin, 'binary content');
+    fs.writeFileSync(path.join(tempDir, 'guard.mjs'), 'export default {};');
+    fs.writeFileSync(path.join(tempDir, 'vm-guard.mjs'), 'export default {};');
+    fs.writeFileSync(path.join(tempDir, 'ws-stub.mjs'), 'export default {};');
+
+    const testPath = path.join(tempDir, 'test.js');
+
+    let shouldRestore = false;
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: sourceBin,
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm-guard.mjs'),
+      wsStubPath: path.join(tempDir, 'ws-stub.mjs'),
+      reExtract: () => {
+        if (shouldRestore) {
+          fs.writeFileSync(testPath, 'export const z = 3;');
+        }
+      },
+    });
+
+    // Attempt 1: recovery fails (no file created)
+    shouldRestore = false;
+    const r1 = loader.recoverMissing(testPath, 0);
+    assert.equal(r1, false);
+
+    // Attempt 2: recovery succeeds (file created)
+    shouldRestore = true;
+    const r2 = loader.recoverMissing(testPath, 5000);
+    assert.equal(r2, true);
+
+    // Delete the file again
+    fs.unlinkSync(testPath);
+
+    // Attempt 3: failure again, but counter was reset
+    shouldRestore = false;
+    const r3 = loader.recoverMissing(testPath, 10000);
+    assert.equal(r3, false);
+
+    // Attempt 4: success again (not yet hit limit)
+    shouldRestore = true;
+    const r4 = loader.recoverMissing(testPath, 15000);
+    assert.equal(r4, true);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+// T6: recoverMissing 直接 — 3s スロットル
+test('T6: recoverMissing throttles re-extraction for 3 seconds', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-recovery-t6-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+
+  try {
+    const sourceBin = path.join(tempDir, 'bin');
+    fs.writeFileSync(sourceBin, 'binary content');
+    fs.writeFileSync(path.join(tempDir, 'guard.mjs'), 'export default {};');
+    fs.writeFileSync(path.join(tempDir, 'vm-guard.mjs'), 'export default {};');
+    fs.writeFileSync(path.join(tempDir, 'ws-stub.mjs'), 'export default {};');
+
+    const missingPath = path.join(tempDir, 'missing.js');
+
+    let reExtractCalls = 0;
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: sourceBin,
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm-guard.mjs'),
+      wsStubPath: path.join(tempDir, 'ws-stub.mjs'),
+      reExtract: () => {
+        reExtractCalls++;
+      },
+    });
+
+    // Call at time 10000 (base time)
+    loader.recoverMissing(missingPath, 10000);
+    assert.equal(reExtractCalls, 1);
+
+    // Call at time 11000 (only 1s later, < 3s throttle)
+    loader.recoverMissing(missingPath, 11000);
+    assert.equal(reExtractCalls, 1, 'throttled - should not call reExtract');
+
+    // Call at time 14000 (4s later, > 3s throttle)
+    loader.recoverMissing(missingPath, 14000);
+    assert.equal(reExtractCalls, 2);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+// T7: TOCTOU — 2回連続で回復できることを確認
+test('T7: recoverMissing handles repeated deletion and recovery', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-recovery-t7-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+
+  try {
+    const sourceBin = path.join(tempDir, 'bin');
+    fs.writeFileSync(sourceBin, 'binary content');
+    fs.writeFileSync(path.join(tempDir, 'guard.mjs'), 'export default {};');
+    fs.writeFileSync(path.join(tempDir, 'vm-guard.mjs'), 'export default {};');
+    fs.writeFileSync(path.join(tempDir, 'ws-stub.mjs'), 'export default {};');
+
+    const targetFile = path.join(tempDir, 'target.js');
+    fs.writeFileSync(targetFile, 'export const x = 1;');
+
+    let reExtractCalls = 0;
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: sourceBin,
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm-guard.mjs'),
+      wsStubPath: path.join(tempDir, 'ws-stub.mjs'),
+      reExtract: (sb, od) => {
+        reExtractCalls++;
+        fs.writeFileSync(targetFile, 'export const x = 1;');
+      },
+    });
+
+    // First recovery at time 10000
+    fs.unlinkSync(targetFile);
+    // Use recoverMissing with explicit time to bypass throttle
+    loader.recoverMissing(targetFile, 10000);
+    assert.ok(fs.existsSync(targetFile));
+    assert.equal(reExtractCalls, 1);
+
+    // Second recovery at time 14000 (past throttle window)
+    fs.unlinkSync(targetFile);
+    loader.recoverMissing(targetFile, 14000);
+    assert.ok(fs.existsSync(targetFile));
+    assert.equal(reExtractCalls, 2);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+// T8 (最重要): real が存在するのに require 失敗 → 再展開しない
+test('T8: recoverMissing does not re-extract when real file exists', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-recovery-t8-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+
+  try {
+    const sourceBin = path.join(tempDir, 'bin');
+    fs.writeFileSync(sourceBin, 'binary content');
+    fs.writeFileSync(path.join(tempDir, 'guard.mjs'), 'export default {};');
+    fs.writeFileSync(path.join(tempDir, 'vm-guard.mjs'), 'export default {};');
+    fs.writeFileSync(path.join(tempDir, 'ws-stub.mjs'), 'export default {};');
+
+    const realExistsFile = path.join(tempDir, 'real-exists.js');
+    // Create a file that exists but would throw MODULE_NOT_FOUND on require
+    fs.writeFileSync(realExistsFile, 'throw new Error("internal dependency error");');
+
+    let reExtractCalls = 0;
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: sourceBin,
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm-guard.mjs'),
+      wsStubPath: path.join(tempDir, 'ws-stub.mjs'),
+      reExtract: () => {
+        reExtractCalls++;
+      },
+    });
+
+    // Call recoverMissing with existing file
+    const result = loader.recoverMissing(realExistsFile, Date.now());
+    assert.equal(result, true, 'should return true for existing file');
+    assert.equal(reExtractCalls, 0, 'reExtract should not be called for existing file');
+
+    // Verify the prelude guards against error-code-based recovery for real files
+    const srcFile = path.join(tempDir, 'src.js');
+    fs.writeFileSync(srcFile, 'import.meta.require("/$bunfs/root/real-exists.js");');
+    const result2 = await loader.load(pathToFileURL(srcFile).href, {}, async () => ({}));
+    assert.ok(result2.source);
+    // The source should have __bunfsMetaRequireExistsSync guard (not error-code-based)
+    assert.ok(result2.source.includes('__bunfsMetaRequireExistsSync'));
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
