@@ -124,13 +124,21 @@ or:
 ENABLE_TOOL_SEARCH=auto claude
 ```
 
-**Note on `settings.json`:** If you want to configure this in `settings.json`, the value must be
-`force`, not `true`. The environment variable default (`false`) takes precedence over `true`, so
-use `"enableToolSearch": "force"` to actually enable it.
+**Note on `settings.json`:** If you want to configure this in `settings.json`, place `ENABLE_TOOL_SEARCH` in
+the `env` block with the value `force`. The environment variable default (`false`) takes precedence over `true`,
+so use the `env` block to force-enable it:
 
-**`settings.json` を使う場合の注意:** `settings.json` で設定する場合、値は `true` ではなく `force`
-にしてください。環境変数の既定値(`false`)が `true` より優先されるため、実際に有効化するには
-`"enableToolSearch": "force"` を使う必要があります。
+```json
+{ "env": { "ENABLE_TOOL_SEARCH": "force" } }
+```
+
+**`settings.json` を使う場合の注意:** `settings.json` で設定する場合、`env` ブロック内に `ENABLE_TOOL_SEARCH`
+を置いて、値を `force` にしてください。環境変数の既定値(`false`)が `true` より優先されるため、
+force-enable するには `env` ブロックを使う必要があります：
+
+```json
+{ "env": { "ENABLE_TOOL_SEARCH": "force" } }
+```
 
 ## Policy / 方針
 
