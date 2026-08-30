@@ -129,13 +129,20 @@ function analyzeCycleHoists(ownedDirForAnalysis, options = {}) {
   const asts = new Map();
   let parseFailureCount = 0;
   const parseFailureFiles = [];
+  const skippedAssets = [];
 
   for (const f of files) {
-    const src = fs.readFileSync(path.join(ownedDirForAnalysis, f), 'utf8');
+    const buf = fs.readFileSync(path.join(ownedDirForAnalysis, f));
+    const src = buf.toString('utf8');
     let ast;
     try {
       ast = acorn.parse(src, { ecmaVersion: 'latest', sourceType: 'module', allowImportExportEverywhere: true });
     } catch (e) {
+      const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
+      if (!f.startsWith('chunk-') && buf.length >= 4 && buf.subarray(0, 4).equals(ZSTD_MAGIC)) {
+        skippedAssets.push(f);
+        continue;
+      }
       parseFailureCount += 1;
       parseFailureFiles.push(f);
       continue;
@@ -280,7 +287,7 @@ function analyzeCycleHoists(ownedDirForAnalysis, options = {}) {
     }
   }
 
-  return cycleHoists;
+  return { cycleHoists, skippedAssets: skippedAssets.sort() };
 }
 
 function discoverCycleHoists(binary, ownedDirForAnalysis) {
@@ -310,12 +317,13 @@ function discoverEsmChunkedOffsets(binary, packDir) {
       throw new Error('entry module is legacy-cjs wrapped, not esm-chunked');
     }
     const cycleAnalysisDir = path.join(packDir, 'cycle-analysis');
-    const cycleHoists = discoverCycleHoists(binary, cycleAnalysisDir);
+    const { cycleHoists, skippedAssets } = discoverCycleHoists(binary, cycleAnalysisDir);
     return {
       entry_format: 'esm-chunked',
       num_modules: graph.numModules,
       byte_count: graph.byteCount,
       cycle_hoists: cycleHoists,
+      cycle_hoists_skipped_assets: skippedAssets,
     };
   } finally {
     fs.closeSync(graph.fd);

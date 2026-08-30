@@ -63,6 +63,9 @@ function main() {
       throw new Error('add-candidate-metadata: esm-chunked candidate is missing cycle_hoists field (audit incomplete)');
     }
     versionEntry.cycle_hoists = offsets.cycle_hoists;
+    if (Object.prototype.hasOwnProperty.call(offsets, 'cycle_hoists_skipped_assets')) {
+      versionEntry.cycle_hoists_skipped_assets = offsets.cycle_hoists_skipped_assets;
+    }
   } else {
     if (!(offsets.entry_js_offset > 0) || !(offsets.entry_end_offset > offsets.entry_js_offset)) {
       throw new Error('legacy-cjs offsets missing entry_js_offset/entry_end_offset');

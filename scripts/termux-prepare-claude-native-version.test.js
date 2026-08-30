@@ -29,14 +29,15 @@ test('analyzeCycleHoists: structural cycle + eager call', () => {
       'var x = import.meta.require("/$bunfs/root/A.js").someExport;\nexport const y = "B";\n'
     );
 
-    const result = analyzeCycleHoists(tempDir);
-    assert.equal(result.length, 1);
-    assert.deepEqual(result[0], {
+    const { cycleHoists, skippedAssets } = analyzeCycleHoists(tempDir);
+    assert.equal(cycleHoists.length, 1);
+    assert.deepEqual(cycleHoists[0], {
       file: 'B.js',
       targetModule: 'A.js',
       expectedOccurrences: 1,
       assertProperties: ['someExport'],
     });
+    assert.deepEqual(skippedAssets, []);
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
@@ -57,8 +58,9 @@ test('analyzeCycleHoists: structural cycle + all-delayed calls', () => {
       'function f() { var x = import.meta.require("/$bunfs/root/A.js").someExport; }\nexport const y = "B";\n'
     );
 
-    const result = analyzeCycleHoists(tempDir);
-    assert.equal(result.length, 0);
+    const { cycleHoists, skippedAssets } = analyzeCycleHoists(tempDir);
+    assert.equal(cycleHoists.length, 0);
+    assert.deepEqual(skippedAssets, []);
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
@@ -79,8 +81,9 @@ test('analyzeCycleHoists: no cycle', () => {
       'export const z = "B";\n'
     );
 
-    const result = analyzeCycleHoists(tempDir);
-    assert.equal(result.length, 0);
+    const { cycleHoists, skippedAssets } = analyzeCycleHoists(tempDir);
+    assert.equal(cycleHoists.length, 0);
+    assert.deepEqual(skippedAssets, []);
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
