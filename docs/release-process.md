@@ -116,6 +116,7 @@ npm install -g @bash0816/claude-code@candidate
 node scripts/promote-verified-version.js X.Y.Z-N
 node scripts/update-release-manifest.js
 node scripts/update-readme-version-guidance.js
+node scripts/update-readme-from-doctor.js
 ```
 
 これで:
@@ -124,6 +125,7 @@ node scripts/update-readme-version-guidance.js
 - `latest_candidate_version` も `X.Y.Z-N`（同一）
 - `previous_stable_version` が前の stable に更新される
 - README の Supported Versions テーブル・バージョン参照が更新される
+- README の UPSTREAM_VERSION ブロック（upstream latest/stable・この repo の公開 latest audited）が更新される
 
 ### 3-2. コミット・push（自動化トリガー）
 
