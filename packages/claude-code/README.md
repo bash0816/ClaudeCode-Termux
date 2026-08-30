@@ -95,6 +95,43 @@ like `disable` or `Y` will silently turn protection off. Use exactly `0` to be s
 `1`/`true`/`yes`/`on`(大文字小文字を区別しません)以外の値は全て機能を再有効化してしまうため、
 `disable` や `Y` のような typo でも保護が黙って外れます。安全のため厳密に `0` を指定してください。
 
+### Tool Search Disabled by Default / Tool Search は既定で無効化
+
+This Termux wrapper disables the upstream's automatic tool discovery feature (`ENABLE_TOOL_SEARCH=false`
+by default) to prevent unnecessary dynamic tool loading in normal conversations. Without this setting,
+the model may spontaneously activate `ToolSearch` and trigger `WebSearch`/`WebFetch` calls, consuming
+your conversation turn limit (`--max-turns`).
+
+この Termux wrapper は、upstream の自動 tool discovery 機能を既定で無効化しています
+(`ENABLE_TOOL_SEARCH=false`)。この設定がないと、モデルが通常の会話で自発的に `ToolSearch` を活動化させ、
+`WebSearch`/`WebFetch` を呼び出し、会話の turn 上限(`--max-turns`)を消費するおそれがあります。
+
+If you want to re-enable tool search (for example, if you explicitly use `--tools` and want the model
+to load additional tools dynamically), set the variable before launching:
+
+tool search を再有効化したい場合（例えば `--tools` を明示的に指定して、モデルが追加の tool を
+動的にロードしてほしい場合）、起動前に環境変数を設定してください：
+
+```sh
+ENABLE_TOOL_SEARCH=true claude
+```
+
+or:
+
+または：
+
+```sh
+ENABLE_TOOL_SEARCH=auto claude
+```
+
+**Note on `settings.json`:** If you want to configure this in `settings.json`, the value must be
+`force`, not `true`. The environment variable default (`false`) takes precedence over `true`, so
+use `"enableToolSearch": "force"` to actually enable it.
+
+**`settings.json` を使う場合の注意:** `settings.json` で設定する場合、値は `true` ではなく `force`
+にしてください。環境変数の既定値(`false`)が `true` より優先されるため、実際に有効化するには
+`"enableToolSearch": "force"` を使う必要があります。
+
 ## Policy / 方針
 
 - Only audited versions in `config/claude-native-audited-versions.json` can run.

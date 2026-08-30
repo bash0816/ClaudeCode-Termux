@@ -128,6 +128,10 @@ packages/claude-code/config/claude-termux-release-manifest.json
 
 **日本語:** このTermuxラッパーでは Remote Control（claude.ai/code や Claude モバイルアプリからのセッション操作）は動作しません。ラッパーが `ws`（WebSocket）モジュールを何もしない no-op スタブに置き換えているため、Remote Control が必要とする接続が確立されません。TUI 起動時に `Remote Control disconnected` と表示されることがありますが、これは想定内の挙動であり、通常の対話操作・`-p`（print mode）・その他の CLI コマンドには影響しません。
 
+**English:** Automatic tool discovery (Tool Search) is disabled by default in this wrapper to prevent unnecessary `ToolSearch` and `WebSearch`/`WebFetch` activation during normal conversations. If you need to enable it, use `ENABLE_TOOL_SEARCH=true claude` or set `"enableToolSearch": "force"` in `settings.json`.
+
+**日本語:** このラッパーでは、通常の会話で不要な `ToolSearch` や `WebSearch`/`WebFetch` 活動化を防ぐため、automatic tool discovery（Tool Search）が既定で無効化されています。有効化が必要な場合は `ENABLE_TOOL_SEARCH=true claude` を使うか、`settings.json` で `"enableToolSearch": "force"` を設定してください。
+
 ## Verify / 確認
 
 ```sh
