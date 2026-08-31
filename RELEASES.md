@@ -1,3 +1,25 @@
+## 2.1.252 — 2026-09-01 ✅ Current audited / 現在の監査済み版
+
+upstream claude-code 2.1.252 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
+
+**Upstream highlights / 主な変更（upstream）**
+
+## What's changed
+
+- Fixed Bash commands failing with "task output swap refused (tasks dir moved or linked)" on some Macs
+- Fixed "always allow" not saving in a project that has no .claude/settings.local.json yet
+- Fixed Remote Control sessions hosted by Claude Desktop or VS Code stalling for minutes after a tool finished when the connection to claude.ai was degraded
+- Fixed background task notifications with very large failure output (for example git errors on a full disk) making the conversation exceed the API request size limit
+
+```sh
+npm install -g @bash0816/claude-code@latest
+```
+
+```sh
+npm install -g @bash0816/claude-code@2.1.251
+```
+
+---
 ## 2.1.251 — 2026-08-31 ✅ Current audited / 現在の監査済み版
 
 upstream claude-code 2.1.251 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
