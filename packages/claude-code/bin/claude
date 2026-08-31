@@ -19,10 +19,10 @@ fi
 
 if ! "$NODE" -e '
 const [major, minor] = process.versions.node.split(".").map(Number);
-const ok = major > 23 || (major === 23 && minor >= 5) || (major === 22 && minor >= 15);
+const ok = major > 23 || (major === 23 && minor >= 8) || (major === 22 && minor >= 15);
 process.exit(ok ? 0 : 1);
 '; then
-  echo "Error: claude-code requires Node.js >=22.15.0 <23.0.0 or >=23.5.0 (module.registerHooks() API). Detected: $("$NODE" --version)" >&2
+  echo "Error: claude-code requires Node.js >=22.15.0 <23.0.0 or >=23.8.0 (module.registerHooks() API + zlib zstd support). Detected: $("$NODE" --version)" >&2
   exit 1
 fi
 

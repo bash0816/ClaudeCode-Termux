@@ -686,6 +686,9 @@ async function esmChunkedMain() {
     },
     gc: () => {},
     YAML: globalThis.__claudeYaml,
+    zstdDecompressSync: (buf) => require('node:zlib').zstdDecompressSync(buf),
+    zstdDecompress: (buf) => new Promise((res, rej) =>
+      require('node:zlib').zstdDecompress(buf, (e, r) => (e ? rej(e) : res(r)))),
   };
   Object.defineProperty(process.versions, 'bun', { value: '1.1.8', configurable: true });
   globalThis.__claudeBunShim = globalThis.Bun;
@@ -712,6 +715,7 @@ async function esmChunkedMain() {
     cycleHoists,
     reExtract: (sb, od) => extractToProcessOwnedDir(sb, od),
   });
+  loaderMod.installFsBunfsInterception();
   registerHooks({ resolve: loaderMod.resolve, load: loaderMod.load });
 
   const entryUrl = pathToFileURL(path.join(ownedDir, entryRelPath)).href;
@@ -1712,6 +1716,9 @@ async function esmChunkedMain() {
     },
     gc: () => {},
     YAML: globalThis.__claudeYaml,
+    zstdDecompressSync: (buf) => require('node:zlib').zstdDecompressSync(buf),
+    zstdDecompress: (buf) => new Promise((res, rej) =>
+      require('node:zlib').zstdDecompress(buf, (e, r) => (e ? rej(e) : res(r)))),
   };
   Object.defineProperty(process.versions, 'bun', { value: '1.1.8', configurable: true });
   globalThis.__claudeBunShim = globalThis.Bun;
@@ -1738,6 +1745,7 @@ async function esmChunkedMain() {
     cycleHoists,
     reExtract: (sb, od) => extractToProcessOwnedDir(sb, od),
   });
+  loaderMod.installFsBunfsInterception();
   registerHooks({ resolve: loaderMod.resolve, load: loaderMod.load });
 
   const entryUrl = pathToFileURL(path.join(ownedDir, entryRelPath)).href;
