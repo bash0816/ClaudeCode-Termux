@@ -971,40 +971,72 @@ test('resolveBunfsPath: resolves valid /$bunfs/root/ paths correctly', async () 
 });
 
 test('syncBuiltinESMExports: fs interception requires it for ESM sync', async () => {
+  // installFsBunfsInterception() 自体を、G1/G4 で terra が実機確認した正しい順序
+  // (ESM fixture を先に import してバインディング確定 → fs 差替え(sync前)は旧関数 →
+  // sync 後は新関数) で検証する。ハンドロールした模擬ではなく実装本体を子プロセスで実行する。
   const { spawnSync } = require('node:child_process');
   const tempDir = path.join(os.tmpdir(), `bunfs-sync-test-${process.pid}-${Date.now()}`);
   fs.mkdirSync(tempDir, { recursive: true });
+  const loaderPath = path.join(__dirname, 'bunfs-esm-loader.mjs');
 
   try {
+    const targetFile = path.join(tempDir, 'target.js');
+    fs.writeFileSync(targetFile, 'export const marker = "REAL_CONTENT";');
+    fs.writeFileSync(path.join(tempDir, 'guard.mjs'), 'export default {};');
+    fs.writeFileSync(path.join(tempDir, 'vm-guard.mjs'), 'export default {};');
+    fs.writeFileSync(path.join(tempDir, 'ws-stub.mjs'), 'export default {};');
+    const sourceBin = path.join(tempDir, 'bin');
+    fs.writeFileSync(sourceBin, 'binary content');
+
+    // fixture.mjs: ESM named import を先に確立する側 (installFsBunfsInterception より前に
+    // dynamic import することで、バインディングが patch 前の状態で確定する)
+    const fixturePath = path.join(tempDir, 'fixture.mjs');
+    fs.writeFileSync(fixturePath, `
+import { readFileSync } from 'node:fs';
+export function readIt(p) { return readFileSync(p, 'utf8'); }
+`);
+
     const testScript = path.join(tempDir, 'test-sync.mjs');
     fs.writeFileSync(testScript, `
-import fs from 'node:fs';
-const origRead = fs.readFileSync;
+const tempDir = ${JSON.stringify(tempDir)};
+const targetFile = ${JSON.stringify(targetFile)};
 
-// ESM fixture - import it first
-import { readFileSync as esm_read } from 'node:fs';
-console.log('ESM import done');
+// 1. ESM fixture を先に import (バインディングを patch 前の状態で確定させる)
+const { readIt } = await import(${JSON.stringify(pathToFileURL(fixturePath).href)});
 
-// Replace fs.readFileSync without syncBuiltinESMExports
-fs.readFileSync = () => 'replaced';
+// 2. installFsBunfsInterception() 未適用の状態での素の読み込み確認 (対照)
+const before = readIt(targetFile);
+if (before !== 'export const marker = "REAL_CONTENT";') {
+  console.error('SETUP_FAILED: fixture cannot read target file before patch');
+  process.exit(1);
+}
 
-// Try to call from ESM - should use old version
-const result1 = esm_read;
-console.log('Before sync: ' + (result1 === origRead ? 'original' : 'unknown'));
+// 3. fs を差し替える (installFsBunfsInterception 経由、syncBuiltinESMExports 込み)
+const loader = await import(${JSON.stringify(pathToFileURL(loaderPath).href)});
+loader.initialize({
+  processOwnedDir: tempDir,
+  sourceBin: ${JSON.stringify(sourceBin)},
+  childProcessGuardPath: ${JSON.stringify(path.join(tempDir, 'guard.mjs'))},
+  vmGuardPath: ${JSON.stringify(path.join(tempDir, 'vm-guard.mjs'))},
+  wsStubPath: ${JSON.stringify(path.join(tempDir, 'ws-stub.mjs'))},
+});
+loader.installFsBunfsInterception();
 
-// Now simulate syncBuiltinESMExports effect
-const { syncBuiltinESMExports } = await import('node:module');
-syncBuiltinESMExports();
-
-// Try to call again - should use new version
-const { readFileSync: esm_read2 } = await import('node:fs');
-console.log('After sync: ' + (esm_read2 === fs.readFileSync ? 'replaced' : 'original'));
+// 4. 先に確立した ESM バインディング経由で /$bunfs/root/ パスを読む
+//    → syncBuiltinESMExports() が正しく効いていれば、fixture の readFileSync も
+//    パッチ後の関数を参照し、bunfs パス解決が機能するはず
+const afterViaBinding = readIt('/$bunfs/root/target.js');
+if (afterViaBinding !== 'export const marker = "REAL_CONTENT";') {
+  console.error('SYNC_FAILED: pre-bound ESM readFileSync did not pick up the fs interception patch');
+  process.exit(1);
+}
+console.log('SYNC_OK');
+process.exit(0);
 `);
 
     const result = spawnSync('node', [testScript], { encoding: 'utf8' });
-    assert.equal(result.status, 0, `Script failed: ${result.stderr}`);
-    assert.ok(result.stdout.includes('ESM import done'));
-    // The actual behavior depends on Node version, but the test structure proves the concept
+    assert.equal(result.status, 0, `Script failed (status=${result.status}): stdout=${result.stdout} stderr=${result.stderr}`);
+    assert.ok(result.stdout.includes('SYNC_OK'), `expected SYNC_OK marker, got: ${result.stdout}`);
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
@@ -1185,51 +1217,108 @@ test('installFsBunfsInterception: idempotent (multiple calls are safe)', async (
   }
 });
 
-test('fs interception: FS_PATCHED flag prevents double-patching', async () => {
+test('fs interception: rollback on partial failure leaves FS_PATCHED false (retry succeeds)', async () => {
+  // G1で確定した設計: syncBuiltinESMExports() が失敗した場合、3関数を元に戻し
+  // FS_PATCHED は立てない。次回呼出しで再試行できることを外部挙動で証明する
+  // (private 変数を直接読まず、「1回目は throw して起こす失敗後、2回目の呼出しが
+  // 実際にパッチを完了する」ことで FS_PATCHED===false だったことを証明する)。
   const { spawnSync } = require('node:child_process');
-  const tempDir = path.join(os.tmpdir(), `bunfs-no-double-patch-${process.pid}-${Date.now()}`);
+  const tempDir = path.join(os.tmpdir(), `bunfs-rollback-${process.pid}-${Date.now()}`);
   fs.mkdirSync(tempDir, { recursive: true });
+  const loaderPath = path.join(__dirname, 'bunfs-esm-loader.mjs');
 
   try {
-    const testScript = path.join(tempDir, 'test-idempotent.mjs');
+    const targetFile = path.join(tempDir, 'target.js');
+    fs.writeFileSync(targetFile, 'export const marker = "REAL_CONTENT";');
+    fs.writeFileSync(path.join(tempDir, 'guard.mjs'), 'export default {};');
+    fs.writeFileSync(path.join(tempDir, 'vm-guard.mjs'), 'export default {};');
+    fs.writeFileSync(path.join(tempDir, 'ws-stub.mjs'), 'export default {};');
+    const sourceBin = path.join(tempDir, 'bin');
+    fs.writeFileSync(sourceBin, 'binary content');
+    const normalFile = path.join(tempDir, 'normal.txt');
+    fs.writeFileSync(normalFile, 'NORMAL_CONTENT');
+
+    const testScript = path.join(tempDir, 'test-rollback.mjs');
     fs.writeFileSync(testScript, `
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 
-const loader = await import('./bunfs-esm-loader.mjs');
-const tempDir = process.argv[1];
-const testFile = require('node:path').join(tempDir, 'test.txt');
-require('node:fs').writeFileSync(testFile, 'test content');
+const tempDir = ${JSON.stringify(tempDir)};
+const normalFile = ${JSON.stringify(normalFile)};
+// ESM namespace ('node:module' の import 経由の名前空間) は読み取り専用のため、
+// installFsBunfsInterception 自体と同じく CJS 側 (require) を可変対象として差し替える。
+const nodeModuleCjs = require('node:module');
+const origFsMod = require('node:fs');
+const origReadFileSync = origFsMod.readFileSync;
+const origReadFile = origFsMod.readFile;
+const origPromisesReadFile = origFsMod.promises.readFile;
+const realSync = nodeModuleCjs.syncBuiltinESMExports;
 
+// 1回目のみ throw するモックへ差し替え。差し替え自体を ESM 側にも伝播させるため
+// 一度だけ本物の syncBuiltinESMExports を呼んでおく (この呼出し自体は失敗しない)。
+let syncCallCount = 0;
+nodeModuleCjs.syncBuiltinESMExports = () => {
+  syncCallCount++;
+  if (syncCallCount === 1) {
+    throw new Error('forced syncBuiltinESMExports failure (test)');
+  }
+  return realSync();
+};
+realSync();
+
+const loader = await import(${JSON.stringify(pathToFileURL(loaderPath).href)});
 loader.initialize({
   processOwnedDir: tempDir,
-  sourceBin: '/dummy/bin',
-  childProcessGuardPath: require('node:path').join(tempDir, 'guard.mjs'),
-  vmGuardPath: require('node:path').join(tempDir, 'vm-guard.mjs'),
-  wsStubPath: require('node:path').join(tempDir, 'ws-stub.mjs'),
+  sourceBin: ${JSON.stringify(sourceBin)},
+  childProcessGuardPath: ${JSON.stringify(path.join(tempDir, 'guard.mjs'))},
+  vmGuardPath: ${JSON.stringify(path.join(tempDir, 'vm-guard.mjs'))},
+  wsStubPath: ${JSON.stringify(path.join(tempDir, 'ws-stub.mjs'))},
 });
 
-// Create dummy guard files
-require('node:fs').writeFileSync(require('node:path').join(tempDir, 'guard.mjs'), 'export default {}');
-require('node:fs').writeFileSync(require('node:path').join(tempDir, 'vm-guard.mjs'), 'export default {}');
-require('node:fs').writeFileSync(require('node:path').join(tempDir, 'ws-stub.mjs'), 'export default {}');
+// 1回目: syncBuiltinESMExports が throw するため installFsBunfsInterception も throw するはず
+let firstThrew = false;
+try {
+  loader.installFsBunfsInterception();
+} catch (e) {
+  firstThrew = true;
+}
+if (!firstThrew) {
+  console.error('EXPECTED_THROW_MISSING: first installFsBunfsInterception() call did not throw');
+  process.exit(1);
+}
 
-// Apply interception twice
-loader.installFsBunfsInterception();
-loader.installFsBunfsInterception();
+// ロールバック確認: 3関数が元の参照に戻っているか (通常ファイル読み込みが正常動作することで確認)
+const fsMod = require('node:fs');
+if (fsMod.readFileSync !== origReadFileSync || fsMod.readFile !== origReadFile || fsMod.promises.readFile !== origPromisesReadFile) {
+  console.error('ROLLBACK_FAILED: fs functions were not restored to originals after failure');
+  process.exit(1);
+}
+const normalContent = fsMod.readFileSync(normalFile, 'utf8');
+if (normalContent !== 'NORMAL_CONTENT') {
+  console.error('ROLLBACK_BROKEN_READ: normal file read broken after rollback');
+  process.exit(1);
+}
 
-// Read normal file twice - should work both times
-const fs = require('node:fs');
-const content1 = fs.readFileSync(testFile, 'utf8');
-const content2 = fs.readFileSync(testFile, 'utf8');
+// 2回目: モックは以後成功するため、FS_PATCHED が false のままなら今度は成功するはず
+let secondThrew = false;
+try {
+  loader.installFsBunfsInterception();
+} catch (e) {
+  secondThrew = true;
+  console.error('SECOND_CALL_THREW: ' + e.message);
+}
+if (secondThrew) {
+  console.error('FS_PATCHED_STUCK_TRUE_OR_RETRY_BLOCKED: second call should have succeeded');
+  process.exit(1);
+}
 
-console.log('Content1:', content1);
-console.log('Content2:', content2);
-console.log('Match:', content1 === content2);
+console.log('ROLLBACK_AND_RETRY_OK');
+process.exit(0);
 `);
 
-    // This test would require resolving import paths in the subprocess
-    // For now, we verify the idempotency through the sync test above
+    const result = spawnSync('node', [testScript], { encoding: 'utf8' });
+    assert.equal(result.status, 0, `Script failed (status=${result.status}): stdout=${result.stdout} stderr=${result.stderr}`);
+    assert.ok(result.stdout.includes('ROLLBACK_AND_RETRY_OK'), `expected ROLLBACK_AND_RETRY_OK marker, got: stdout=${result.stdout} stderr=${result.stderr}`);
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
