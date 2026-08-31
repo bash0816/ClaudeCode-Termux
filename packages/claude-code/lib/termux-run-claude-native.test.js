@@ -1692,3 +1692,126 @@ test('Bun.spawn forwards top-level stdin in the first stdio position', () => {
     }
   }
 });
+
+// New tests for fs interception and zstd support
+
+// esmChunkedMain() (esm-chunked 形式、今回の fs-intercept 修正の対象) の関数本体だけを抽出する。
+// legacyCjsMain() の Bun shim (zstd 非対応でよい、意図的に無変更) を誤って対象に含めないため、
+// 「both esmChunkedMain blocks have correct hook registration order」テストと同じ境界抽出方式を使う。
+function extractEsmChunkedMainBlocks() {
+  const marker = 'async function esmChunkedMain()';
+  const blocks = [];
+  let offset = 0;
+  while ((offset = script.indexOf(marker, offset)) !== -1) {
+    const blockStart = offset;
+    const blockEnd = script.indexOf('\nasync function', offset + 1);
+    const actualBlockEnd = blockEnd !== -1 ? blockEnd : script.length;
+    blocks.push(script.slice(blockStart, actualBlockEnd));
+    offset = actualBlockEnd;
+  }
+  return blocks;
+}
+
+test('both esmChunkedMain Bun shim blocks contain zstdDecompressSync and zstdDecompress fields', () => {
+  const blocks = extractEsmChunkedMainBlocks();
+  assert.ok(blocks.length >= 2, 'should have at least 2 esmChunkedMain blocks (helper and bootstrap)');
+
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i];
+    assert.ok(
+      block.includes('zstdDecompressSync:'),
+      `Block ${i}: missing zstdDecompressSync field`,
+    );
+    assert.ok(
+      block.includes('zstdDecompress:'),
+      `Block ${i}: missing zstdDecompress field`,
+    );
+  }
+});
+
+test('zstd functions are properly defined for sync decompression', () => {
+  const blocks = extractEsmChunkedMainBlocks();
+  assert.ok(blocks.length >= 1, 'should have at least 1 esmChunkedMain block');
+
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i];
+    const syncMatch = block.match(/zstdDecompressSync:\s*\([^)]*\)\s*=>\s*require\('node:zlib'\)\.zstdDecompressSync\([^)]*\)/);
+    assert.ok(syncMatch, `Block ${i}: zstdDecompressSync should call require("node:zlib").zstdDecompressSync`);
+
+    const asyncMatch = block.match(/zstdDecompress:\s*\([^)]*\)\s*=>\s*new Promise/);
+    assert.ok(asyncMatch, `Block ${i}: zstdDecompress should return a Promise`);
+  }
+});
+
+test('zstd decompression works with real zlib.zstd APIs', async () => {
+  const zlib = require('node:zlib');
+
+  // Skip if zstd not available
+  if (typeof zlib.zstdCompressSync !== 'function') {
+    return;
+  }
+
+  const testData = Buffer.from('Hello, compression world!');
+  const compressed = zlib.zstdCompressSync(testData);
+
+  // Test sync decompression
+  const decompressedSync = zlib.zstdDecompressSync(compressed);
+  assert.deepEqual(decompressedSync, testData);
+
+  // Test async decompression
+  const decompressedAsync = await new Promise((resolve, reject) => {
+    zlib.zstdDecompress(compressed, (err, result) => {
+      if (err) reject(err);
+      else resolve(result);
+    });
+  });
+  assert.deepEqual(decompressedAsync, testData);
+});
+
+test('both esmChunkedMain blocks have correct hook registration order', () => {
+  const esmChunkedMarker = 'async function esmChunkedMain()';
+  let blockCount = 0;
+  let offset = 0;
+
+  while ((offset = script.indexOf(esmChunkedMarker, offset)) !== -1) {
+    blockCount++;
+    const blockStart = offset;
+    const blockEnd = script.indexOf('\nasync function', offset + 1);
+    const actualBlockEnd = blockEnd !== -1 ? blockEnd : script.length;
+    const block = script.slice(blockStart, actualBlockEnd);
+
+    // Find the three key operations
+    const initIdx = block.indexOf('loaderMod.initialize({');
+    const interceptIdx = block.indexOf('loaderMod.installFsBunfsInterception()');
+    const registerIdx = block.indexOf('registerHooks({');
+
+    assert.ok(initIdx !== -1, `Block ${blockCount}: missing initialize call`);
+    assert.ok(interceptIdx !== -1, `Block ${blockCount}: missing installFsBunfsInterception call`);
+    assert.ok(registerIdx !== -1, `Block ${blockCount}: missing registerHooks call`);
+
+    // Verify order: initialize < installFsBunfsInterception < registerHooks
+    assert.ok(
+      initIdx < interceptIdx && interceptIdx < registerIdx,
+      `Block ${blockCount}: initialization order incorrect (initialize=${initIdx}, intercept=${interceptIdx}, register=${registerIdx})`,
+    );
+
+    offset = actualBlockEnd;
+  }
+
+  assert.ok(blockCount >= 2, 'should have at least 2 esmChunkedMain blocks');
+});
+
+test('termux-run-claude-native.sh maintains compatibility with new zstd fields', () => {
+  // Verify that the script structure is preserved
+  const hasSourceBin = script.includes('SOURCE_BIN=');
+  const hasWorkdir = script.includes('WORKDIR=');
+  const hasGlobalThis = script.includes('globalThis');
+
+  assert.ok(hasSourceBin, 'script should set SOURCE_BIN');
+  assert.ok(hasWorkdir, 'script should set WORKDIR');
+  assert.ok(hasGlobalThis, 'script should manipulate globalThis');
+
+  // Verify both blocks exist and are distinct
+  const blocks = (script.match(/globalThis\.Bun\s*=\s*{/g) || []);
+  assert.ok(blocks.length >= 2, 'should have at least 2 Bun initializations for helper and bootstrap');
+});

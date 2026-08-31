@@ -1,7 +1,9 @@
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { existsSync, readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
+import { createRequire, syncBuiltinESMExports } from 'node:module';
 import path from 'node:path';
+
+const require = createRequire(import.meta.url);
 
 let PROCESS_OWNED_DIR = null;
 let SOURCE_BIN = null;
@@ -37,6 +39,19 @@ function recoverMissing(realPath, now = Date.now()) {
   return ok;
 }
 
+function resolveBunfsPath(id) {
+  if (typeof id !== 'string' || !id.startsWith('/$bunfs/root/')) return null;
+  const rel = id.slice('/$bunfs/root/'.length);
+  if (rel.includes('..') || path.isAbsolute(rel)) {
+    throw new Error(`bunfs: rejected specifier ${id}`);
+  }
+  const real = path.resolve(PROCESS_OWNED_DIR, rel);
+  if (path.relative(PROCESS_OWNED_DIR, real).startsWith('..')) {
+    throw new Error(`bunfs: path escapes process-owned dir: ${id}`);
+  }
+  return real;
+}
+
 export function initialize(data) {
   PROCESS_OWNED_DIR = data.processOwnedDir;
   SOURCE_BIN = data.sourceBin;
@@ -46,6 +61,7 @@ export function initialize(data) {
   CYCLE_HOISTS = Array.isArray(data.cycleHoists) ? data.cycleHoists : [];
   REEXTRACT = typeof data.reExtract === 'function' ? data.reExtract : null;
   globalThis.__bunfsRecoverMissing = recoverMissing;
+  globalThis.__bunfsResolvePath = resolveBunfsPath;
   // 回復状態のリセット (テスト隔離・再 initialize 対応)
   reExtractConsecFailures = 0;
   lastReExtractMs = 0;
@@ -116,13 +132,11 @@ function buildImportMetaRequirePolyfillPrelude(anchorUrl) {
     `  if (id === "child_process" || id === "node:child_process") return __bunfsGuardedChildProcess;\n` +
     `  if (id === "vm" || id === "node:vm") return __bunfsGuardedVm;\n` +
     `  if (typeof id === "string" && id.startsWith("/$bunfs/root/")) {\n` +
-    `    const rel = id.slice("/$bunfs/root/".length);\n` +
-    `    if (rel.includes("..") || __bunfsMetaRequirePath.isAbsolute(rel)) {\n` +
-    `      throw new Error("bunfs meta-require: rejected specifier " + id);\n` +
-    `    }\n` +
-    `    const real = __bunfsMetaRequirePath.resolve(__bunfsOwnedDir, rel);\n` +
-    `    if (__bunfsMetaRequirePath.relative(__bunfsOwnedDir, real).startsWith("..")) {\n` +
-    `      throw new Error("bunfs meta-require: path escapes process-owned dir: " + id);\n` +
+    `    let real;\n` +
+    `    try {\n` +
+    `      real = globalThis.__bunfsResolvePath(id);\n` +
+    `    } catch (_eResolve) {\n` +
+    `      throw new Error("bunfs meta-require: " + _eResolve.message);\n` +
     `    }\n` +
     `    if (!__bunfsMetaRequireExistsSync(real)) {\n` +
     `      const _rec = (typeof globalThis.__bunfsRecoverMissing === "function") && globalThis.__bunfsRecoverMissing(real);\n` +
@@ -169,13 +183,11 @@ export function resolve(specifier, context, nextResolve) {
     }
   }
   if (specifier.startsWith('/$bunfs/root/')) {
-    const rel = specifier.slice('/$bunfs/root/'.length);
-    if (rel.includes('..') || path.isAbsolute(rel)) {
-      throw new Error(`bunfs resolve: rejected specifier ${specifier}`);
-    }
-    const real = path.resolve(PROCESS_OWNED_DIR, rel);
-    if (path.relative(PROCESS_OWNED_DIR, real).startsWith('..')) {
-      throw new Error(`bunfs resolve: path escapes process-owned dir: ${specifier}`);
+    let real;
+    try {
+      real = resolveBunfsPath(specifier);
+    } catch (e) {
+      throw new Error(`bunfs resolve: ${e.message}`);
     }
     if (!existsSync(real) && !recoverMissing(real)) {
       throw new Error(`bunfs resolve: missing extracted module ${specifier} -> ${real}`);
@@ -221,4 +233,55 @@ export function load(url, context, nextLoad) {
   return { format: 'module', source, shortCircuit: true };
 }
 
-export { recoverMissing };
+let FS_PATCHED = false;
+function installFsBunfsInterception() {
+  if (FS_PATCHED) return;
+  const fsMod = require('node:fs');
+  const zlib = require('node:zlib');
+  if (typeof zlib.zstdDecompressSync !== 'function' || typeof zlib.zstdDecompress !== 'function') {
+    throw new Error('bunfs: Node.js zlib zstd support not found. Please upgrade to Node.js >=23.8.0 or >=22.15.0 (LTS).');
+  }
+  const origReadFileSync = fsMod.readFileSync;
+  const origReadFile = fsMod.readFile;
+  const origPromisesReadFile = fsMod.promises.readFile;
+
+  function resolveOrRecover(p) {
+    const real = resolveBunfsPath(p);
+    if (real === null) return null;
+    if (!existsSync(real)) {
+      const recovered = (typeof globalThis.__bunfsRecoverMissing === 'function') && globalThis.__bunfsRecoverMissing(real);
+      if (!recovered) throw new Error(`bunfs fs-intercept: missing extracted asset ${p} -> ${real}`);
+    }
+    const realOwned = fsMod.realpathSync(PROCESS_OWNED_DIR);
+    const realTarget = fsMod.realpathSync(real);
+    if (path.relative(realOwned, realTarget).startsWith('..')) {
+      throw new Error(`bunfs fs-intercept: resolved path escapes owned dir via symlink: ${p}`);
+    }
+    return real;
+  }
+
+  try {
+    fsMod.readFileSync = function (p, ...rest) {
+      const real = typeof p === 'string' ? resolveOrRecover(p) : null;
+      return Reflect.apply(origReadFileSync, this, [real !== null ? real : p, ...rest]);
+    };
+    fsMod.readFile = function (p, ...rest) {
+      const real = typeof p === 'string' ? resolveOrRecover(p) : null;
+      return Reflect.apply(origReadFile, this, [real !== null ? real : p, ...rest]);
+    };
+    fsMod.promises.readFile = function (p, ...rest) {
+      const real = typeof p === 'string' ? resolveOrRecover(p) : null;
+      return Reflect.apply(origPromisesReadFile, this, [real !== null ? real : p, ...rest]);
+    };
+    syncBuiltinESMExports();
+  } catch (e) {
+    fsMod.readFileSync = origReadFileSync;
+    fsMod.readFile = origReadFile;
+    fsMod.promises.readFile = origPromisesReadFile;
+    try { syncBuiltinESMExports(); } catch { /* 復元目的、失敗しても re-throw を優先 */ }
+    throw e;
+  }
+  FS_PATCHED = true;
+}
+
+export { recoverMissing, resolveBunfsPath, installFsBunfsInterception };
