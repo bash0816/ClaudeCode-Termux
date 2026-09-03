@@ -1129,7 +1129,7 @@
       "entry_format": "esm-chunked",
       "tarball_integrity": "sha512-cbzsJZ4gMDp30eOlhA6qM+s0plv0TTKLhWX/y4CwNRspSQI8wPO5T1UafhimU4fTeznpPxH38m3k3vYkA9ypHw==",
       "tarball_sha256": "2f0ad50cd3efd5707323f48b43af22c5cbc045e74cdfc16d25c5a73581f3b196",
-      "status": "offset_discovered",
+      "status": "termux_verified",
       "num_modules": 1802,
       "byte_count": 127808908,
       "cycle_hoists": [
