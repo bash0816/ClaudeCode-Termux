@@ -1,3 +1,23 @@
+## 2.1.258 — 2026-09-03 ✅ Current audited / 現在の監査済み版
+
+upstream claude-code 2.1.258 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
+
+**Upstream highlights / 主な変更（upstream）**
+
+## What's changed
+
+- Fixed Claude Code failing to launch on macOS 12 (Monterey), a regression introduced in 2.1.255
+- Fixed remote and scheduled sessions failing with "user messages must have non-empty content" after a re-sent permission approval could not be applied
+
+```sh
+npm install -g @bash0816/claude-code@latest
+```
+
+```sh
+npm install -g @bash0816/claude-code@2.1.257
+```
+
+---
 ## 2.1.257 — 2026-09-02 ✅ Current audited / 現在の監査済み版
 
 upstream claude-code 2.1.257 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
