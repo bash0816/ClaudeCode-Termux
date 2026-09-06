@@ -1494,6 +1494,99 @@
         "hljsBundle.generated.min.js",
         "mermaid.min.js"
       ]
+    },
+    "2.1.263": {
+      "wrapper_spec": "@anthropic-ai/claude-code@2.1.263",
+      "native_spec": "@anthropic-ai/claude-code-linux-arm64@2.1.263",
+      "entry_format": "esm-chunked",
+      "tarball_integrity": "sha512-RlJtLbl8xqFMf2zUdOKD4o5FkNhcgGjlS3Un8PNfSbv1fLQg3SqBQgEJhNEtSeKlEsOs26RnCG/jVk4yah8Udw==",
+      "tarball_sha256": "64238be6b64968b17ce006fe15fb6e3a96b89ceeaa231fee4610cb34a521c44c",
+      "status": "offset_discovered",
+      "num_modules": 1818,
+      "byte_count": 127813378,
+      "cycle_hoists": [
+        {
+          "file": "chunk-53vwhr9c.js",
+          "targetModule": "chunk-aqmc7c2t.js",
+          "expectedOccurrences": 1,
+          "assertProperties": [
+            "MonitorTool"
+          ]
+        },
+        {
+          "file": "chunk-53vwhr9c.js",
+          "targetModule": "chunk-ct10rsjr.js",
+          "expectedOccurrences": 1,
+          "assertProperties": [
+            "ProposeSkillsTool"
+          ]
+        },
+        {
+          "file": "chunk-53vwhr9c.js",
+          "targetModule": "chunk-h3jn3mbc.js",
+          "expectedOccurrences": 1,
+          "assertProperties": [
+            "EndConversationTool"
+          ]
+        },
+        {
+          "file": "chunk-53vwhr9c.js",
+          "targetModule": "chunk-78v093xq.js",
+          "expectedOccurrences": 1,
+          "assertProperties": [
+            "ArtifactTool"
+          ]
+        },
+        {
+          "file": "chunk-53vwhr9c.js",
+          "targetModule": "chunk-mwcnzrqt.js",
+          "expectedOccurrences": 1,
+          "assertProperties": [
+            "WorkflowTool"
+          ]
+        },
+        {
+          "file": "chunk-53vwhr9c.js",
+          "targetModule": "chunk-pk19m18y.js",
+          "expectedOccurrences": 1,
+          "assertProperties": []
+        },
+        {
+          "file": "chunk-53vwhr9c.js",
+          "targetModule": "chunk-rtwzttjf.js",
+          "expectedOccurrences": 2,
+          "assertProperties": []
+        },
+        {
+          "file": "chunk-53vwhr9c.js",
+          "targetModule": "chunk-aq98y22e.js",
+          "expectedOccurrences": 1,
+          "assertProperties": [
+            "default"
+          ]
+        },
+        {
+          "file": "chunk-53vwhr9c.js",
+          "targetModule": "chunk-b6zc3kxz.js",
+          "expectedOccurrences": 3,
+          "assertProperties": [
+            "getWorkflowCommands",
+            "invalidateWorkflowCache",
+            "warmWorkflows"
+          ]
+        },
+        {
+          "file": "chunk-s9e9jmy9.js",
+          "targetModule": "chunk-acjcvfes.js",
+          "expectedOccurrences": 1,
+          "assertProperties": []
+        }
+      ],
+      "cycle_hoists_skipped_assets": [
+        "chart.umd.min.js",
+        "hljsBundle.generated.min.js",
+        "mermaid.min.js"
+      ]
     }
   }
 }
