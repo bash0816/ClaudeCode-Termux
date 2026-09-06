@@ -1,3 +1,22 @@
+## 2.1.263 — 2026-09-06 ✅ Current audited / 現在の監査済み版
+
+upstream claude-code 2.1.263 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
+
+**Upstream highlights / 主な変更（upstream）**
+
+## What's changed
+
+- Bug fixes and reliability improvements
+
+```sh
+npm install -g @bash0816/claude-code@latest
+```
+
+```sh
+npm install -g @bash0816/claude-code@2.1.261
+```
+
+---
 ## 2.1.261 — 2026-09-05 ✅ Current audited / 現在の監査済み版
 
 upstream claude-code 2.1.261 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
