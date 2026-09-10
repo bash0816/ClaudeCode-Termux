@@ -83,7 +83,7 @@ function updateSupportedVersionsTable(content, latestAudited, previousStable, st
 
   const rows = [
     `| \`${latestAudited}\` | ✅ **Recommended / 推奨** — latest |`,
-    `| \`${previousStable}\` | ✅ rollback candidate — \`@candidate\` dist-tag |`,
+    `| \`${previousStable}\` | ✅ rollback version |`,
   ];
   if (stablePinned && stablePinned !== previousStable && stablePinned !== latestAudited) {
     rows.push(`| \`${stablePinned}\` | ✅ stable — \`@stable\` dist-tag |`);
