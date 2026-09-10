@@ -37,10 +37,10 @@ function buildSection(upstream, ourVersion) {
   const upstreamStable = upstream.stableVersion || '(unknown)';
   return `
 Official upstream (\`@anthropic-ai/claude-code\`): latest \`${upstreamLatest}\` / stable \`${upstreamStable}\`
-This repo's published latest audited release: \`${ourVersion}\`
+This repo's latest audited release (release manifest): \`${ourVersion}\`
 
 公式 upstream (\`@anthropic-ai/claude-code\`): latest \`${upstreamLatest}\` / stable \`${upstreamStable}\`
-この repo の公開 latest audited release: \`${ourVersion}\`
+この repo の latest audited release (release manifest 基準): \`${ourVersion}\`
 `;
 }
 
