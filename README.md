@@ -85,7 +85,7 @@ Only versions registered in the audited metadata can run.
 | Version | Status |
 |---------|--------|
 | `2.1.265` | ✅ **Recommended / 推奨** — latest |
-| `2.1.263` | ✅ rollback candidate — `@candidate` dist-tag |
+| `2.1.263` | ✅ rollback version |
 | `2.1.220-2` | ✅ stable — `@stable` dist-tag |
 <!-- SUPPORTED_VERSIONS_TABLE_END -->
 
