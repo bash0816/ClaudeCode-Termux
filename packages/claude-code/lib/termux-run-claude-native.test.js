@@ -1579,6 +1579,31 @@ function loadBunShim(source) {
   return context.module.exports;
 }
 
+function extractEsmShimSource(block) {
+  const startMarker = '\n  globalThis.Bun = {';
+  const endMarker = '\n  globalThis.__claudeBun = globalThis.Bun;';
+  const start = block.indexOf(startMarker);
+  assert.notEqual(start, -1, 'missing ESM Bun shim start');
+  const end = block.indexOf(endMarker, start);
+  assert.notEqual(end, -1, 'missing ESM Bun shim end');
+  return block.slice(start + 1, end + endMarker.length);
+}
+
+function loadEsmBunShim(source) {
+  const context = vm.createContext({
+    stringWidth: () => 0,
+    wrapAnsi: value => value,
+    stripANSI: value => value,
+    stableHash: () => 0,
+    process: { versions: {} },
+    Buffer,
+    require,
+  });
+  context.module = { exports: {} };
+  vm.runInContext(`${source}\nmodule.exports = globalThis.Bun;`, context);
+  return context.module.exports;
+}
+
 test('helper and bootstrap Bun shim source is identical', () => {
   const helperBlock = extractBlock('cat <<\'NODE\' > "$_helper"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
   const bootstrapBlock = extractBlock('cat <<\'NODE\' > "$_bootstrap"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
@@ -1799,6 +1824,22 @@ test('both esmChunkedMain blocks have correct hook registration order', () => {
   }
 
   assert.ok(blockCount >= 2, 'should have at least 2 esmChunkedMain blocks');
+});
+
+test('ESM Bun shim exposes unsafe.setJITPolicy as a safe no-op (helper/bootstrap)', () => {
+  for (const blockMarker of ['cat <<\'NODE\' > "$_helper"', 'cat <<\'NODE\' > "$_bootstrap"']) {
+    const block = extractBlock(blockMarker, '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+    const Bun = loadEsmBunShim(extractEsmShimSource(block));
+    assert.equal(Bun.unsafe.setJITPolicy(1), undefined);
+  }
+});
+
+test('legacy Bun shim exposes unsafe.setJITPolicy as a safe no-op (helper/bootstrap)', () => {
+  for (const blockMarker of ['cat <<\'NODE\' > "$_helper"', 'cat <<\'NODE\' > "$_bootstrap"']) {
+    const block = extractBlock(blockMarker, '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+    const Bun = loadBunShim(extractShimSource(block));
+    assert.equal(Bun.unsafe.setJITPolicy(1), undefined);
+  }
 });
 
 test('termux-run-claude-native.sh maintains compatibility with new zstd fields', () => {

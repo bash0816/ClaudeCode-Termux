@@ -689,6 +689,9 @@ async function esmChunkedMain() {
     zstdDecompressSync: (buf) => require('node:zlib').zstdDecompressSync(buf),
     zstdDecompress: (buf) => new Promise((res, rej) =>
       require('node:zlib').zstdDecompress(buf, (e, r) => (e ? rej(e) : res(r)))),
+    unsafe: {
+      setJITPolicy: () => undefined,
+    },
   };
   Object.defineProperty(process.versions, 'bun', { value: '1.1.8', configurable: true });
   globalThis.__claudeBunShim = globalThis.Bun;
@@ -1009,6 +1012,9 @@ async function legacyCjsMain() {
           err.code = 'ENOENT';
           err.errno = -2;
           throw err;
+        },
+        unsafe: {
+          setJITPolicy: () => undefined,
         },
     };
     Object.assign(globalThis.__claudeBunShim, globalThis.Bun);
@@ -1719,6 +1725,9 @@ async function esmChunkedMain() {
     zstdDecompressSync: (buf) => require('node:zlib').zstdDecompressSync(buf),
     zstdDecompress: (buf) => new Promise((res, rej) =>
       require('node:zlib').zstdDecompress(buf, (e, r) => (e ? rej(e) : res(r)))),
+    unsafe: {
+      setJITPolicy: () => undefined,
+    },
   };
   Object.defineProperty(process.versions, 'bun', { value: '1.1.8', configurable: true });
   globalThis.__claudeBunShim = globalThis.Bun;
@@ -2041,6 +2050,9 @@ async function legacyCjsMain() {
           err.code = 'ENOENT';
           err.errno = -2;
           throw err;
+        },
+        unsafe: {
+          setJITPolicy: () => undefined,
         },
     };
     Object.assign(globalThis.__claudeBunShim, globalThis.Bun);
