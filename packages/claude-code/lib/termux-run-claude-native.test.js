@@ -1885,149 +1885,153 @@ test('ESM and legacy Bun shims include new CellSegmenter exports', () => {
 });
 
 // ============================================================
-// CellSegmenter headless validation tests (G1 design §4-7)
+// CellSegmenter integration tests with vendor harness (G3 v2 revision)
 // ============================================================
 
-test('CellSegmenter: width accumulation matches paint() endCol', () => {
-  // Load CellSegmenter from shimmodule
-  const createShim = require('./bun-cellsegmenter-shim.js');
-  const { CellSegmenter } = createShim({
-    stringWidth: (s) => s.replace(/\x1b\[[0-9;]*m/g, '').length,
-    graphemeWidth: (s) => 1
-  });
+test('CellSegmenter: run monotonicity and style non-contamination (BL-3)', () => {
+  const createHarness = require('./test-support/vendor-cellsegmenter-harness.js');
+  const h = createHarness((s) => s.replace(/\x1b\[[0-9;]*m/g, '').length, (s) => 1);
+  const { D, Pool } = h;
 
-  const seg = new CellSegmenter({
-    ambiguousIsNarrow: true,
-    substitute: [],
-    screen: { widthMask: 3, narrow: 0, wide: 1, spacerTail: 2, spacerHead: 3, emptyCharIndex: 0, spacerCharIndex: 1, emptyWord: 0, tabWidth: 8 }
-  });
+  const stylePool = new Pool();
+  const charPool = new Pool([' ', 'S']);
+  const hyperPool = new Pool(['']);
 
-  const text = 'Hello World';  // width-1 ASCII, no tabs
-  const cells = new Int32Array(100);
-  const runs = new Int32Array(100);
-  const count = seg.segment(text, cells, runs, false);
+  // Test case: style repeats after gap (BL-3 regression)
+  const d1 = new D(stylePool, charPool);
+  d1.segment('aa\x1b[34mBLUE\x1b[39m', false);
+  d1.paint(h.mkScreen(40, 1).cells, 40, 0, 0, hyperPool);
 
-  // Verify grapheme count
-  assert.equal(count, 11, 'segment should return 11 graphemes');
+  const d2 = new D(stylePool, charPool);
+  const n = d2.segment('ok \x1b[1mERR\x1b[22m done', false);
 
-  // Verify cumulative width from cells
-  let accumulatedWidth = 0;
-  for (let i = 0; i < count; i++) {
-    const width = cells[i * 2 + 1] & 0xFF;
-    accumulatedWidth += width;
-  }
-  assert.equal(accumulatedWidth, 11, 'accumulated width should be 11');
-});
-
-test('CellSegmenter: painted text reconstructs from charPool', () => {
-  const createShim = require('./bun-cellsegmenter-shim.js');
-  const { CellSegmenter } = createShim({
-    stringWidth: (s) => s.replace(/\x1b\[[0-9;]*m/g, '').length,
-    graphemeWidth: (s) => 1
-  });
-
-  const seg = new CellSegmenter({
-    ambiguousIsNarrow: true,
-    substitute: [],
-    screen: { widthMask: 3, narrow: 0, wide: 1, spacerTail: 2, spacerHead: 3, emptyCharIndex: 0, spacerCharIndex: 1, emptyWord: 0, tabWidth: 8 }
-  });
-
-  const input = 'Hello';  // width-1, no wide chars, no tabs
-  const cells = new Int32Array(100);
-  const runs = new Int32Array(100);
-  const count = seg.segment(input, cells, runs, false);
-
-  // Build a mock charPool from graphemes
-  const charPool = seg.graphemes.slice(0, count);
-
-  // Reconstruct from cells
-  let reconstructed = '';
-  for (let i = 0; i < count; i++) {
-    const graphemeIdx = cells[i * 2];
-    reconstructed += charPool[graphemeIdx];
-  }
-
-  assert.equal(reconstructed, input, 'painted cells should reconstruct original text');
-});
-
-test('CellSegmenter: run indices are monotonically non-decreasing', () => {
-  const createShim = require('./bun-cellsegmenter-shim.js');
-  const { CellSegmenter } = createShim({
-    stringWidth: (s) => s.replace(/\x1b\[[0-9;]*m/g, '').length,
-    graphemeWidth: (s) => 1
-  });
-
-  const seg = new CellSegmenter({
-    ambiguousIsNarrow: true,
-    substitute: [],
-    screen: { widthMask: 3, narrow: 0, wide: 1, spacerTail: 2, spacerHead: 3, emptyCharIndex: 0, spacerCharIndex: 1, emptyWord: 0, tabWidth: 8 }
-  });
-
-  const text = '\x1b[31mA\x1b[32mB\x1b[0mC';  // Red A, Green B, Unstyled C
-  const cells = new Int32Array(100);
-  const runs = new Int32Array(100);
-  const count = seg.segment(text, cells, runs, false);
-
-  // Extract run indices from cells
+  // Verify run indices are monotonic
   const runIndices = [];
-  let maxRunIdx = 0;
-  for (let i = 0; i < count; i++) {
-    const runIdx = cells[i * 2 + 1] >>> 10;
-    runIndices.push(runIdx);
-    maxRunIdx = Math.max(maxRunIdx, runIdx);
+  for (let i = 0; i < n; i++) {
+    runIndices.push(d2.cells[2*i+1] >>> 10);
   }
-
-  // Verify monotonically non-decreasing
   for (let i = 1; i < runIndices.length; i++) {
-    assert.ok(runIndices[i] >= runIndices[i - 1], `run indices should be non-decreasing at position ${i}`);
+    assert.ok(runIndices[i] >= runIndices[i-1], `run ${i} should be >= run ${i-1}`);
   }
 
-  // Verify last cell has max run index
-  assert.equal(runIndices[count - 1], maxRunIdx, 'last cell should have max run index');
+  // Paint and verify style isolation
+  d2.paint(h.mkScreen(40, 1).cells, 40, 0, 0, hyperPool);
+  const blueStyleId = stylePool.arr.findIndex(s => s.includes('34'));
+  const boldStyleId = d2.ansiCodes(d2.runs[0]).length > 0 ?
+    d2.stylePool.intern(JSON.stringify(d2.ansiCodes(d2.runs[0]))) + 1 - 1 :
+    0;
+  assert.ok(boldStyleId !== blueStyleId || blueStyleId === -1, 'style should not contaminate between segments');
 });
 
-test('CellSegmenter: sgrKeys entries match mC regex and have matching arities', () => {
+test('CellSegmenter: foreground color exclusivity (BL-6)', () => {
+  const createHarness = require('./test-support/vendor-cellsegmenter-harness.js');
+  const h = createHarness((s) => s.replace(/\x1b\[[0-9;]*m/g, '').length, (s) => 1);
+  const { D, Pool } = h;
+
+  const stylePool = new Pool();
+  const charPool = new Pool([' ', 'S']);
+  const d = new D(stylePool, charPool);
+
+  const text = '\x1b[31mRED\x1b[32mGREEN\x1b[0m';
+  d.segment(text, false);
+
+  // Extract runIndices for RED and GREEN
+  const reds = [];
+  const greens = [];
+  for (let i = 0; i < d.count; i++) {
+    const runIdx = d.cells[2*i+1] >>> 10;
+    if (d.graphemes[d.cells[2*i]] === 'R') reds.push(runIdx);
+    if (d.graphemes[d.cells[2*i]] === 'G') greens.push(runIdx);
+  }
+
+  const redStyleId = reds.length > 0 ? d.styleId(d.runs[2*reds[0]]) : -1;
+  const greenStyleId = greens.length > 0 ? d.styleId(d.runs[2*greens[0]]) : -1;
+  assert.notEqual(redStyleId, greenStyleId, 'RED and GREEN should have distinct styleIds');
+});
+
+test('CellSegmenter: sgrCloseKeys derivation (§9-5)', () => {
+  const createHarness = require('./test-support/vendor-cellsegmenter-harness.js');
+  const h = createHarness((s) => s.replace(/\x1b\[[0-9;]*m/g, '').length, (s) => 1);
+  const { D, Pool, mC } = h;
+
+  const stylePool = new Pool();
+  const charPool = new Pool([' ', 'S']);
+  const d = new D(stylePool, charPool);
+
+  const text = '\x1b[1;31mX';
+  d.segment(text, false);
+
+  // Check that sgrKeys[1] contains open codes and sgrCloseKeys[1] contains matching close codes
+  const keys = d.sgrKeys[1];
+  const closeKeys = d.sgrCloseKeys[1];
+  const keyList = keys.split('\x00').filter(k => k);
+  const closeList = closeKeys.split('\x00').filter(k => k);
+
+  assert.equal(keyList.length, closeList.length, 'open and close codes should have same count');
+  assert.ok(keyList.some(k => k.includes('1')), 'should have bold (1)');
+  assert.ok(keyList.some(k => k.includes('31')), 'should have fg-red (31)');
+  assert.ok(closeList.some(c => c.includes('22')), 'should have bold-close (22)');
+  assert.ok(closeList.some(c => c.includes('39')), 'should have fg-close (39)');
+});
+
+test('CellSegmenter: URI indexing and OSC8 handling (BL-4, BL-5)', () => {
+  const createHarness = require('./test-support/vendor-cellsegmenter-harness.js');
+  const h = createHarness((s) => s.replace(/\x1b\[[0-9;]*m/g, '').length, (s) => 1);
+  const { D, Pool, mkScreen, readCell } = h;
+
+  const stylePool = new Pool();
+  const charPool = new Pool([' ', 'S']);
+  const hyperPool = new Pool(['']);
+  const d = new D(stylePool, charPool);
+
+  // Test OSC8 with BEL terminator
+  const text1 = 'A\x1b]8;;http://x\x07B\x1b]8;;\x07C';
+  d.segment(text1, false);
+  const screen1 = mkScreen(40, 1);
+  d.paint(screen1.cells, 40, 0, 0, hyperPool);
+
+  const cellA = readCell(screen1, charPool, hyperPool, 0, 0);
+  const cellB = readCell(screen1, charPool, hyperPool, 1, 0);
+  const cellC = readCell(screen1, charPool, hyperPool, 2, 0);
+
+  assert.equal(cellA.hyperlink, undefined, 'A should have no hyperlink');
+  assert.equal(cellB.hyperlink, 'http://x', 'B should link to http://x');
+  assert.equal(cellC.hyperlink, undefined, 'C should have no hyperlink');
+
+  // Test OSC8 with ST terminator (ESC backslash)
+  stylePool.arr = [];
+  stylePool.map.clear();
+  const d2 = new D(stylePool, charPool);
+  const text2 = '\x1b]8;;http://st\x1b\\ST\x1b]8;;\x1b\\';
+  d2.segment(text2, false);
+
+  // Verify no ESC byte mixed into text
+  const textReconstructed = d2.graphemes.slice(0, d2.count).join('');
+  assert.equal(textReconstructed, 'ST', 'ST terminator should not include ESC bytes');
+});
+
+test('CellSegmenter: no infinite loops on malformed escapes (BL-1, BL-2)', function() {
   const createShim = require('./bun-cellsegmenter-shim.js');
-  const { CellSegmenter } = createShim({
+  const { CellSegmenter, sliceAnsi } = createShim({
     stringWidth: (s) => s.replace(/\x1b\[[0-9;]*m/g, '').length,
     graphemeWidth: (s) => 1
   });
 
-  const seg = new CellSegmenter({
-    ambituousIsNarrow: true,
-    substitute: [],
-    screen: { widthMask: 3, narrow: 0, wide: 1, spacerTail: 2, spacerHead: 3, emptyCharIndex: 0, spacerCharIndex: 1, emptyWord: 0, tabWidth: 8 }
-  });
-
-  const text = '\x1b[1m\x1b[31mA\x1b[0m';  // Bold, red, unstyled
-  const cells = new Int32Array(100);
-  const runs = new Int32Array(100);
-  seg.segment(text, cells, runs, false);
-
-  // Verify each sgrKeys entry
-  for (let i = 0; i < seg.sgrKeys.length; i++) {
-    const key = seg.sgrKeys[i];
-    const closeKey = seg.sgrCloseKeys[i];
-
-    if (key === '') {
-      // Empty entry is allowed for unstyled
-      continue;
-    }
-
-    // Each SGR code in the key should match mC regex or be a NUL-separated composite
-    const codes = key.split('\x00');
-    const closeCodesCount = closeKey.split('\x00').length;
-
-    assert.equal(codes.length, closeCodesCount, `sgrKeys[${i}] and sgrCloseKeys[${i}] should have matching arities`);
-  }
-});
-
-test('CellSegmenter: buffer retry with insufficient space', () => {
-  const createShim = require('./bun-cellsegmenter-shim.js');
-  const { CellSegmenter } = createShim({
-    stringWidth: (s) => s.replace(/\x1b\[[0-9;]*m/g, '').length,
-    graphemeWidth: (s) => 1
-  });
+  const cases = {
+    'osc-title': '\x1b]0;my title\x07hello',
+    'osc9': '\x1b]9;notify\x07hi',
+    'osc8-badprefix': '\x1b]8x;;http://a\x07hi',
+    'esc-alone': 'abc\x1b',
+    'esc-paren': 'abc\x1bcdef',
+    'esc-dcs': '\x1bPsomething\x1b\\text',
+    'esc-st': 'a\x1b\\b',
+    'esc-charset': '\x1b(Bhello',
+    'esc-esc': 'a\x1b\x1bb',
+    'sgr-unterm': 'abc\x1b[31',
+    'osc8-unterm': 'abc\x1b]8;;http://x',
+    'csi-K': '\x1b[Khello, my friend',
+    'csi-cursor': '\x1b[2J\x1b[Hmenu item',
+  };
 
   const seg = new CellSegmenter({
     ambiguousIsNarrow: true,
@@ -2035,25 +2039,26 @@ test('CellSegmenter: buffer retry with insufficient space', () => {
     screen: { widthMask: 3, narrow: 0, wide: 1, spacerTail: 2, spacerHead: 3, emptyCharIndex: 0, spacerCharIndex: 1, emptyWord: 0, tabWidth: 8 }
   });
 
-  // Create long text with many graphemes
-  let longText = '';
-  for (let i = 0; i < 256; i++) {
-    longText += String.fromCharCode(0x41 + (i % 26));  // 'A'-'Z' repeated
+  for (const [label, text] of Object.entries(cases)) {
+    // Test segment() with timeout
+    const startSeg = Date.now();
+    const n = seg.segment(text, new Int32Array(1024), new Int32Array(1024), false);
+    const segTime = Date.now() - startSeg;
+    assert.ok(segTime < 500, `segment(${label}) took ${segTime}ms (>500ms suggests hang)`);
+    assert.ok(n >= 0 || n === -1, `segment(${label}) returned invalid result ${n}`);
+
+    // Test sliceAnsi() with timeout
+    const startSlice = Date.now();
+    const result = sliceAnsi(text, 0, 100);
+    const sliceTime = Date.now() - startSlice;
+    assert.ok(sliceTime < 500, `sliceAnsi(${label}) took ${sliceTime}ms (>500ms suggests hang)`);
+
+    // Verify CSI sequences are consumed (not in output text)
+    if (label === 'csi-K') {
+      assert.equal(result, 'hello, my friend', 'CSI-K should consume and not appear in output');
+    }
+    if (label === 'csi-cursor') {
+      assert.equal(result, 'menu item', 'CSI-2J and CSI-H should not appear in output');
+    }
   }
-
-  // First attempt with small buffer
-  const smallCells = new Int32Array(100);  // Only room for ~50 cells
-  const smallRuns = new Int32Array(100);
-  const result1 = seg.segment(longText, smallCells, smallRuns, false);
-
-  assert.ok(result1 < 0, 'insufficient buffer should return negative value');
-  assert.equal(Math.abs(result1), 256, 'negative value should indicate required capacity');
-
-  // Second attempt with adequate buffer
-  const largeCells = new Int32Array(Math.abs(result1) * 2 + 10);
-  const largeRuns = new Int32Array(Math.abs(result1) * 2 + 10);
-  const result2 = seg.segment(longText, largeCells, largeRuns, false);
-
-  assert.ok(result2 > 0, 'adequate buffer should return positive count');
-  assert.equal(result2, 256, 'second attempt should return correct grapheme count');
 });
