@@ -2116,6 +2116,6 @@ test('CellSegmenter: grapheme boundary correctness (BL-8 regression prevention)'
   const d4 = new D(stylePool, charPool);
   const warning = '⚠️ warn';
   const n4 = d4.segment(warning, false);
-  // '⚠️' (2) + ' ' (1) + 'w' (1) + 'a' (1) + 'r' (1) + 'n' (1) = 7
-  assert.equal(n4, 7, `Warning symbol with VS16 should produce 7 graphemes: got ${n4}`);
+  // Intl.Segmenter splits as: '⚠️' (1 grapheme) + ' ' (1) + 'w' (1) + 'a' (1) + 'r' (1) + 'n' (1) = 6 graphemes
+  assert.equal(n4, 6, `Warning symbol with VS16 should produce 6 graphemes: got ${n4}`);
 });
