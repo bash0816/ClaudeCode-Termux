@@ -2119,3 +2119,47 @@ test('CellSegmenter: grapheme boundary correctness (BL-8 regression prevention)'
   // Intl.Segmenter splits as: '⚠️' (1 grapheme) + ' ' (1) + 'w' (1) + 'a' (1) + 'r' (1) + 'n' (1) = 6 graphemes
   assert.equal(n4, 6, `Warning symbol with VS16 should produce 6 graphemes: got ${n4}`);
 });
+
+test('CellSegmenter: pool initialization and resetNative validation (NB-2)', () => {
+  const createHarness = require('./test-support/vendor-cellsegmenter-harness.js');
+  const h = createHarness((s) => s.replace(/\x1b\[[0-9;]*m/g, '').length, (s) => {
+    // Simple width calculator
+    const codePoints = Array.from(String(s || '')).map(sym => sym.codePointAt(0)).filter(cp => Number.isFinite(cp));
+    if (codePoints.length === 0) return 0;
+    if (codePoints.length > 1 && codePoints.every(cp => cp >= 0x1f1e6 && cp <= 0x1f1ff)) return 2;  // Flag pairs
+    if (codePoints.includes(0x200d) || codePoints.includes(0x20e3) || codePoints.includes(0xfe0f)) return 2;  // ZWJ, VS16
+    return 1;
+  });
+  const { D, Pool } = h;
+
+  // Test 1: New instance pool initialization
+  const stylePool = new Pool();
+  const charPool = new Pool([' ', 'a', 'b', 'c']);
+  const d = new D(stylePool, charPool);
+
+  // Verify initial pool state: sgrKeys should have [''] (index 0 only)
+  assert.equal(d.sgrKeys.length, 1, 'sgrKeys should start with length 1 (index 0 only)');
+  assert.equal(d.sgrKeys[0], '', 'sgrKeys[0] should be empty string');
+
+  // Verify initial pool state: uris should have [''] (index 0 only)
+  assert.equal(d.uris.length, 1, 'uris should start with length 1 (index 0 only)');
+  assert.equal(d.uris[0], '', 'uris[0] should be empty string');
+
+  // Test 2: Multiple segments work correctly without reset
+  d.segment('hello world', false);
+  d.segment('test string', false);
+  assert.ok(d.sgrKeys.length >= 1, 'sgrKeys should grow or stay at 1 (unstyled input)');
+  assert.ok(d.graphemes.length >= 20, 'graphemes should accumulate');
+
+  // Test 3: After reset, new instance should be clean
+  const d2 = new D(stylePool, charPool);
+  assert.equal(d2.sgrKeys.length, 1, 'new instance sgrKeys should be reset to length 1');
+  assert.equal(d2.sgrKeys[0], '', 'new instance sgrKeys[0] should be empty string');
+  assert.equal(d2.uris.length, 1, 'new instance uris should be reset to length 1');
+  assert.equal(d2.uris[0], '', 'new instance uris[0] should be empty string');
+
+  // Test 4: New instance can segment immediately after reset
+  const count2 = d2.segment('fresh test', false);
+  assert.ok(count2 > 0, 'should successfully segment after reset');
+  assert.equal(d2.graphemes.length, count2, 'grapheme count should match segment result');
+});

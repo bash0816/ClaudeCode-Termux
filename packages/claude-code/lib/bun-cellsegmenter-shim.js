@@ -35,7 +35,7 @@ module.exports = function createBunCellSegmenterShim({ stringWidth, graphemeWidt
     let i = 0;
 
     // Regex for non-SGR CSI sequences: ESC [ ... (@ to ~, excluding m)
-    const csiNonSgrRegex = /\x1b\[[0-?]*[ -/]*[@-~]/;
+    const csiNonSgrRegex = /^\x1b\[[0-?]*[ -/]*[@-~]/;
 
     while (i < str.length) {
       // Invariant: must advance i by at least 1 per iteration
@@ -337,8 +337,8 @@ module.exports = function createBunCellSegmenterShim({ stringWidth, graphemeWidt
         }
       };
 
-      // Regex for non-SGR CSI sequences
-      const csiNonSgrRegex = /\x1b\[[0-?]*[ -/]*[@-~]/;
+      // Regex for non-SGR CSI sequences (with ^ anchor to match at current position)
+      const csiNonSgrRegex = /^\x1b\[[0-?]*[ -/]*[@-~]/;
 
       let i = 0;
       let prevState = null;  // Previous SGR+URI state for BL-3 (monotonic run allocation)
