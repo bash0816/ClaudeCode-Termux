@@ -82,12 +82,12 @@ module.exports = function createBunCellSegmenterShim({ stringWidth, graphemeWidt
         // Otherwise fall through to catch-all (incomplete OSC8)
       }
 
-      // 3. Non-SGR CSI sequence: match and skip (consume but don't output to count)
+      // 3. Non-SGR CSI sequence: match and skip (skip without adding to result)
       if (str[i] === '\x1b' && str[i + 1] === '[') {
         const remaining = str.slice(i);
         const csiMatch = remaining.match(csiNonSgrRegex);
         if (csiMatch) {
-          result += csiMatch[0];
+          // Skip CSI sequence without adding to result (consumed but not output)
           i += csiMatch[0].length;
           continue;
         }
