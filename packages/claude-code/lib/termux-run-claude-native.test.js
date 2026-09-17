@@ -1567,6 +1567,9 @@ function loadBunShim(source) {
     wrapAnsi: value => value,
     stripANSI: value => value,
     stableHash: () => 0,
+    sliceAnsi: (s) => s,
+    sleepSync: () => {},
+    CellSegmenter: class {},
     __claudeYaml: {},
     Buffer,
     require,
@@ -1595,6 +1598,9 @@ function loadEsmBunShim(source) {
     wrapAnsi: value => value,
     stripANSI: value => value,
     stableHash: () => 0,
+    sliceAnsi: (s) => s,
+    sleepSync: () => {},
+    CellSegmenter: class {},
     process: { versions: {} },
     Buffer,
     require,
@@ -1855,4 +1861,25 @@ test('termux-run-claude-native.sh maintains compatibility with new zstd fields',
   // Verify both blocks exist and are distinct
   const blocks = (script.match(/globalThis\.Bun\s*=\s*{/g) || []);
   assert.ok(blocks.length >= 2, 'should have at least 2 Bun initializations for helper and bootstrap');
+});
+
+test('ESM and legacy Bun shims include new CellSegmenter exports', () => {
+  for (const blockMarker of ['cat <<\'NODE\' > "$_helper"', 'cat <<\'NODE\' > "$_bootstrap"']) {
+    const block = extractBlock(blockMarker, '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+    const BunEsm = loadEsmBunShim(extractEsmShimSource(block));
+    const BunLegacy = loadBunShim(extractShimSource(block));
+
+    // Verify sliceAnsi is present
+    assert.equal(typeof BunEsm.sliceAnsi, 'function', `${blockMarker}: ESM sliceAnsi should be a function`);
+    assert.equal(typeof BunLegacy.sliceAnsi, 'function', `${blockMarker}: legacy sliceAnsi should be a function`);
+
+    // Verify sleepSync is present
+    assert.equal(typeof BunEsm.sleepSync, 'function', `${blockMarker}: ESM sleepSync should be a function`);
+    assert.equal(typeof BunLegacy.sleepSync, 'function', `${blockMarker}: legacy sleepSync should be a function`);
+
+
+    // Verify CellSegmenter is present
+    assert.equal(typeof BunEsm.ant.CellSegmenter, 'function', `${blockMarker}: ESM ant.CellSegmenter should be a function`);
+    assert.equal(typeof BunLegacy.ant.CellSegmenter, 'function', `${blockMarker}: legacy ant.CellSegmenter should be a function`);
+  }
 });

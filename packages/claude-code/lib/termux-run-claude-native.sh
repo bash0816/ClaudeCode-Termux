@@ -673,6 +673,7 @@ async function esmChunkedMain() {
   const libDir = path.join(process.env.CLAUDE_TERMUX_PACKAGE_DIR, 'lib');
 
   globalThis.__claudeYaml = createYamlShim();
+  const { sliceAnsi, sleepSync, CellSegmenter } = require(path.join(process.env.CLAUDE_TERMUX_PACKAGE_DIR, 'lib', 'bun-cellsegmenter-shim.js'))({ stringWidth, graphemeWidth });
   globalThis.Bun = {
     version: '1.1.8',
     stringWidth,
@@ -692,6 +693,9 @@ async function esmChunkedMain() {
     unsafe: {
       setJITPolicy: () => undefined,
     },
+    sliceAnsi,
+    sleepSync,
+    ant: { CellSegmenter },
   };
   Object.defineProperty(process.versions, 'bun', { value: '1.1.8', configurable: true });
   globalThis.__claudeBunShim = globalThis.Bun;
@@ -930,6 +934,7 @@ async function legacyCjsMain() {
     process.once('uncaughtException', onAsyncError);
     process.once('unhandledRejection', onAsyncError);
     Object.defineProperty(process.versions, 'bun', { value: '1.1.8', configurable: true });
+    const { sliceAnsi, sleepSync, CellSegmenter } = require(path.join(process.env.CLAUDE_TERMUX_PACKAGE_DIR, 'lib', 'bun-cellsegmenter-shim.js'))({ stringWidth, graphemeWidth });
     const _realChild = require('child_process');
     globalThis.Bun = {
       version: '1.1.8',
@@ -1016,6 +1021,9 @@ async function legacyCjsMain() {
         unsafe: {
           setJITPolicy: () => undefined,
         },
+        sliceAnsi,
+        sleepSync,
+        ant: { CellSegmenter },
     };
     Object.assign(globalThis.__claudeBunShim, globalThis.Bun);
     if (typeof globalThis.__claudeBunShim.gc !== 'function') {
@@ -1709,6 +1717,7 @@ async function esmChunkedMain() {
   const libDir = path.join(process.env.CLAUDE_TERMUX_PACKAGE_DIR, 'lib');
 
   globalThis.__claudeYaml = createYamlShim();
+  const { sliceAnsi, sleepSync, CellSegmenter } = require(path.join(process.env.CLAUDE_TERMUX_PACKAGE_DIR, 'lib', 'bun-cellsegmenter-shim.js'))({ stringWidth, graphemeWidth });
   globalThis.Bun = {
     version: '1.1.8',
     stringWidth,
@@ -1728,6 +1737,9 @@ async function esmChunkedMain() {
     unsafe: {
       setJITPolicy: () => undefined,
     },
+    sliceAnsi,
+    sleepSync,
+    ant: { CellSegmenter },
   };
   Object.defineProperty(process.versions, 'bun', { value: '1.1.8', configurable: true });
   globalThis.__claudeBunShim = globalThis.Bun;
@@ -1968,6 +1980,7 @@ async function legacyCjsMain() {
     process.once('uncaughtException', onAsyncError);
     process.once('unhandledRejection', onAsyncError);
     Object.defineProperty(process.versions, 'bun', { value: '1.1.8', configurable: true });
+    const { sliceAnsi, sleepSync, CellSegmenter } = require(path.join(process.env.CLAUDE_TERMUX_PACKAGE_DIR, 'lib', 'bun-cellsegmenter-shim.js'))({ stringWidth, graphemeWidth });
     const _realChild = require('child_process');
     globalThis.Bun = {
       version: '1.1.8',
@@ -2054,6 +2067,9 @@ async function legacyCjsMain() {
         unsafe: {
           setJITPolicy: () => undefined,
         },
+        sliceAnsi,
+        sleepSync,
+        ant: { CellSegmenter },
     };
     Object.assign(globalThis.__claudeBunShim, globalThis.Bun);
     if (typeof globalThis.__claudeBunShim.gc !== 'function') {
