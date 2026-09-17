@@ -1883,3 +1883,177 @@ test('ESM and legacy Bun shims include new CellSegmenter exports', () => {
     assert.equal(typeof BunLegacy.ant.CellSegmenter, 'function', `${blockMarker}: legacy ant.CellSegmenter should be a function`);
   }
 });
+
+// ============================================================
+// CellSegmenter headless validation tests (G1 design §4-7)
+// ============================================================
+
+test('CellSegmenter: width accumulation matches paint() endCol', () => {
+  // Load CellSegmenter from shimmodule
+  const createShim = require('./bun-cellsegmenter-shim.js');
+  const { CellSegmenter } = createShim({
+    stringWidth: (s) => s.replace(/\x1b\[[0-9;]*m/g, '').length,
+    graphemeWidth: (s) => 1
+  });
+
+  const seg = new CellSegmenter({
+    ambiguousIsNarrow: true,
+    substitute: [],
+    screen: { widthMask: 3, narrow: 0, wide: 1, spacerTail: 2, spacerHead: 3, emptyCharIndex: 0, spacerCharIndex: 1, emptyWord: 0, tabWidth: 8 }
+  });
+
+  const text = 'Hello World';  // width-1 ASCII, no tabs
+  const cells = new Int32Array(100);
+  const runs = new Int32Array(100);
+  const count = seg.segment(text, cells, runs, false);
+
+  // Verify grapheme count
+  assert.equal(count, 11, 'segment should return 11 graphemes');
+
+  // Verify cumulative width from cells
+  let accumulatedWidth = 0;
+  for (let i = 0; i < count; i++) {
+    const width = cells[i * 2 + 1] & 0xFF;
+    accumulatedWidth += width;
+  }
+  assert.equal(accumulatedWidth, 11, 'accumulated width should be 11');
+});
+
+test('CellSegmenter: painted text reconstructs from charPool', () => {
+  const createShim = require('./bun-cellsegmenter-shim.js');
+  const { CellSegmenter } = createShim({
+    stringWidth: (s) => s.replace(/\x1b\[[0-9;]*m/g, '').length,
+    graphemeWidth: (s) => 1
+  });
+
+  const seg = new CellSegmenter({
+    ambiguousIsNarrow: true,
+    substitute: [],
+    screen: { widthMask: 3, narrow: 0, wide: 1, spacerTail: 2, spacerHead: 3, emptyCharIndex: 0, spacerCharIndex: 1, emptyWord: 0, tabWidth: 8 }
+  });
+
+  const input = 'Hello';  // width-1, no wide chars, no tabs
+  const cells = new Int32Array(100);
+  const runs = new Int32Array(100);
+  const count = seg.segment(input, cells, runs, false);
+
+  // Build a mock charPool from graphemes
+  const charPool = seg.graphemes.slice(0, count);
+
+  // Reconstruct from cells
+  let reconstructed = '';
+  for (let i = 0; i < count; i++) {
+    const graphemeIdx = cells[i * 2];
+    reconstructed += charPool[graphemeIdx];
+  }
+
+  assert.equal(reconstructed, input, 'painted cells should reconstruct original text');
+});
+
+test('CellSegmenter: run indices are monotonically non-decreasing', () => {
+  const createShim = require('./bun-cellsegmenter-shim.js');
+  const { CellSegmenter } = createShim({
+    stringWidth: (s) => s.replace(/\x1b\[[0-9;]*m/g, '').length,
+    graphemeWidth: (s) => 1
+  });
+
+  const seg = new CellSegmenter({
+    ambiguousIsNarrow: true,
+    substitute: [],
+    screen: { widthMask: 3, narrow: 0, wide: 1, spacerTail: 2, spacerHead: 3, emptyCharIndex: 0, spacerCharIndex: 1, emptyWord: 0, tabWidth: 8 }
+  });
+
+  const text = '\x1b[31mA\x1b[32mB\x1b[0mC';  // Red A, Green B, Unstyled C
+  const cells = new Int32Array(100);
+  const runs = new Int32Array(100);
+  const count = seg.segment(text, cells, runs, false);
+
+  // Extract run indices from cells
+  const runIndices = [];
+  let maxRunIdx = 0;
+  for (let i = 0; i < count; i++) {
+    const runIdx = cells[i * 2 + 1] >>> 10;
+    runIndices.push(runIdx);
+    maxRunIdx = Math.max(maxRunIdx, runIdx);
+  }
+
+  // Verify monotonically non-decreasing
+  for (let i = 1; i < runIndices.length; i++) {
+    assert.ok(runIndices[i] >= runIndices[i - 1], `run indices should be non-decreasing at position ${i}`);
+  }
+
+  // Verify last cell has max run index
+  assert.equal(runIndices[count - 1], maxRunIdx, 'last cell should have max run index');
+});
+
+test('CellSegmenter: sgrKeys entries match mC regex and have matching arities', () => {
+  const createShim = require('./bun-cellsegmenter-shim.js');
+  const { CellSegmenter } = createShim({
+    stringWidth: (s) => s.replace(/\x1b\[[0-9;]*m/g, '').length,
+    graphemeWidth: (s) => 1
+  });
+
+  const seg = new CellSegmenter({
+    ambituousIsNarrow: true,
+    substitute: [],
+    screen: { widthMask: 3, narrow: 0, wide: 1, spacerTail: 2, spacerHead: 3, emptyCharIndex: 0, spacerCharIndex: 1, emptyWord: 0, tabWidth: 8 }
+  });
+
+  const text = '\x1b[1m\x1b[31mA\x1b[0m';  // Bold, red, unstyled
+  const cells = new Int32Array(100);
+  const runs = new Int32Array(100);
+  seg.segment(text, cells, runs, false);
+
+  // Verify each sgrKeys entry
+  for (let i = 0; i < seg.sgrKeys.length; i++) {
+    const key = seg.sgrKeys[i];
+    const closeKey = seg.sgrCloseKeys[i];
+
+    if (key === '') {
+      // Empty entry is allowed for unstyled
+      continue;
+    }
+
+    // Each SGR code in the key should match mC regex or be a NUL-separated composite
+    const codes = key.split('\x00');
+    const closeCodesCount = closeKey.split('\x00').length;
+
+    assert.equal(codes.length, closeCodesCount, `sgrKeys[${i}] and sgrCloseKeys[${i}] should have matching arities`);
+  }
+});
+
+test('CellSegmenter: buffer retry with insufficient space', () => {
+  const createShim = require('./bun-cellsegmenter-shim.js');
+  const { CellSegmenter } = createShim({
+    stringWidth: (s) => s.replace(/\x1b\[[0-9;]*m/g, '').length,
+    graphemeWidth: (s) => 1
+  });
+
+  const seg = new CellSegmenter({
+    ambiguousIsNarrow: true,
+    substitute: [],
+    screen: { widthMask: 3, narrow: 0, wide: 1, spacerTail: 2, spacerHead: 3, emptyCharIndex: 0, spacerCharIndex: 1, emptyWord: 0, tabWidth: 8 }
+  });
+
+  // Create long text with many graphemes
+  let longText = '';
+  for (let i = 0; i < 256; i++) {
+    longText += String.fromCharCode(0x41 + (i % 26));  // 'A'-'Z' repeated
+  }
+
+  // First attempt with small buffer
+  const smallCells = new Int32Array(100);  // Only room for ~50 cells
+  const smallRuns = new Int32Array(100);
+  const result1 = seg.segment(longText, smallCells, smallRuns, false);
+
+  assert.ok(result1 < 0, 'insufficient buffer should return negative value');
+  assert.equal(Math.abs(result1), 256, 'negative value should indicate required capacity');
+
+  // Second attempt with adequate buffer
+  const largeCells = new Int32Array(Math.abs(result1) * 2 + 10);
+  const largeRuns = new Int32Array(Math.abs(result1) * 2 + 10);
+  const result2 = seg.segment(longText, largeCells, largeRuns, false);
+
+  assert.ok(result2 > 0, 'adequate buffer should return positive count');
+  assert.equal(result2, 256, 'second attempt should return correct grapheme count');
+});

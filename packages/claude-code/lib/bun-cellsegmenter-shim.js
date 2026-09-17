@@ -23,16 +23,16 @@ module.exports = function createBunCellSegmenterShim({ stringWidth, graphemeWidt
   // ANSI SGR pattern for parsing
   const sgrPattern = /\x1b\[([0-9;]*?)m/g;
 
+  // Intl.Segmenter instance for grapheme segmentation (reuse across calls)
+  const globalSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+
   // ============================================================
-  // sliceAnsi: Split string by display columns using grapheme units (Bug 3 fix)
+  // sliceAnsi: Split string by display columns using grapheme units
   // ============================================================
   function sliceAnsi(str, start, end) {
     let visibleCol = 0;
     let result = '';
     let i = 0;
-
-    // Use Intl.Segmenter for proper grapheme unit handling
-    const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 
     while (i < str.length) {
       // Check for ESC sequence (SGR code: \x1b[...m)
@@ -48,33 +48,76 @@ module.exports = function createBunCellSegmenterShim({ stringWidth, graphemeWidt
           result += escSeq;
           i = j + 1;
           continue;
+        } else {
+          // Incomplete SGR: treat \x1b as regular character (Bug 7 fix)
+          i += 1;
+          continue;
         }
       }
 
-      // Regular character: extract as grapheme using Intl.Segmenter
-      const graphemeIter = segmenter.segment(str.slice(i));
-      const firstGrapheme = Array.from(graphemeIter)[0];
-      if (!firstGrapheme) {
-        break;
-      }
-
-      const grapheme = firstGrapheme.segment;
-      const charWidth = graphemeWidth(grapheme);
-      const nextCol = visibleCol + charWidth;
-
-      // Include if entirely within [start, end)
-      if (nextCol <= end && visibleCol < end) {
-        if (visibleCol >= start) {
-          result += grapheme;
+      // Check for OSC8 hyperlink: \x1b]8;;...
+      if (str[i] === '\x1b' && str[i + 1] === ']' && str[i + 2] === '8' && str[i + 3] === ';') {
+        // Find the end (BEL \x07 or ST \x1b\\)
+        let j = i + 4;
+        let endPos = -1;
+        while (j < str.length) {
+          if (str[j] === '\x07') {
+            endPos = j;
+            break;
+          }
+          if (str[j] === '\x1b' && str[j + 1] === '\\') {
+            endPos = j + 1;
+            break;
+          }
+          j++;
         }
-        visibleCol = nextCol;
-      } else if (visibleCol >= end) {
-        break;
-      } else {
-        visibleCol = nextCol;
+        if (endPos >= 0) {
+          const oscSeq = str.slice(i, endPos + 1);
+          result += oscSeq;
+          i = endPos + 1;
+          continue;
+        } else {
+          // Incomplete OSC8: treat \x1b as regular character (Bug 7 fix)
+          i += 1;
+          continue;
+        }
       }
 
-      i += grapheme.length;
+      // Regular character: segment this chunk until next escape
+      let chunkEnd = str.length;
+      for (let j = i; j < str.length; j++) {
+        if (str[j] === '\x1b') {
+          chunkEnd = j;
+          break;
+        }
+      }
+
+      // Segment the chunk
+      const chunk = str.slice(i, chunkEnd);
+      const graphemes = Array.from(globalSegmenter.segment(chunk)).map(seg => seg.segment);
+
+      for (const grapheme of graphemes) {
+        const charWidth = graphemeWidth(grapheme);
+        const nextCol = visibleCol + charWidth;
+
+        // Include if entirely within [start, end)
+        if (nextCol <= end && visibleCol < end) {
+          if (visibleCol >= start) {
+            result += grapheme;
+          }
+          visibleCol = nextCol;
+        } else if (visibleCol >= end) {
+          break;
+        } else {
+          visibleCol = nextCol;
+        }
+      }
+
+      if (visibleCol >= end) {
+        break;
+      }
+
+      i = chunkEnd;
     }
 
     return result;
@@ -142,112 +185,247 @@ module.exports = function createBunCellSegmenterShim({ stringWidth, graphemeWidt
     // segment: Parse text into grapheme cells, SGR styles, and URIs (Bug 1, 2 fixes)
     // ============================================================
     segment(text, cells, runs, reordered) {
-      if (this.graphemes.length > 4 * Dd || this.sgrKeys.length > Dd || this.uris.length > Dd) {
-        // Reset and start fresh
-        this.graphemes = [];
-        this.sgrKeys = [];
-        this.sgrCloseKeys = [];
-        this.uris = [];
-      }
-
       // Apply BiDi character substitution
       const processedText = text.replace(mSn, '�');
 
-      // Extract SGR codes and their positions first
-      const sgrMatches = [];
-      let m;
-      sgrPattern.lastIndex = 0;
-      while ((m = sgrPattern.exec(processedText)) !== null) {
-        sgrMatches.push({ code: m[1], index: m.index, length: m[0].length });
+      // Pre-allocate capacity check
+      const estimatedGraphemes = processedText.length;
+      if (cells.length < estimatedGraphemes * 2) {
+        return -(estimatedGraphemes);
+      }
+      if (runs.length < estimatedGraphemes * 2) {
+        return -(estimatedGraphemes);
       }
 
-      // Remove SGR codes to get clean text for grapheme segmentation
-      let cleanText = processedText;
-      for (let i = sgrMatches.length - 1; i >= 0; i--) {
-        const match = sgrMatches[i];
-        cleanText = cleanText.slice(0, match.index) + cleanText.slice(match.index + match.length);
-      }
-
-      // Split clean text into grapheme units
-      const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
-      const graphemeSegments = Array.from(segmenter.segment(cleanText)).map(seg => seg.segment);
-
-      // Pre-calculate total grapheme count (Bug 2 fix: pre-check before loop)
-      const totalGraphemes = graphemeSegments.length;
-      if (cells.length < totalGraphemes * 2) {
-        return -(totalGraphemes);  // Must have enough space for all graphemes
-      }
-      if (runs.length < totalGraphemes * 2) {
-        return -(totalGraphemes);
-      }
-
-      // Map clean text position to original text position (accounting for SGR codes)
-      const cleanPosToOriginalPos = new Array(cleanText.length + 1).fill(0);
-      let cleanPos = 0;
-      let sgrIdx = 0;
-
-      for (let i = 0; i < processedText.length; i++) {
-        if (sgrIdx < sgrMatches.length && i === sgrMatches[sgrIdx].index) {
-          // Skip SGR code
-          i += sgrMatches[sgrIdx].length - 1;
-          sgrIdx++;
-        } else {
-          // Character at position i in processedText maps to cleanPos in cleanText
-          cleanPosToOriginalPos[cleanPos] = i;
-          cleanPos++;
-        }
-      }
-      cleanPosToOriginalPos[cleanPos] = processedText.length;
-
-
-      // Process each grapheme and assign it to the correct SGR run (Bug 1 fix)
       let graphemeIndex = this.graphemes.length;
       let cellCount = 0;
+      let localRunIndex = 0;
+      let currentUri = 0;
 
-      for (let i = 0; i < graphemeSegments.length; i++) {
-        const grapheme = graphemeSegments[i];
-        // Find which SGR run this grapheme belongs to
-        const origPos = cleanPosToOriginalPos[i];
-        let runIndexForGrapheme = 0;
+      // Map: active style state + URI → local run index and URI
+      const stateToLocalRun = new Map();
+      const localRunToUri = new Map();  // Track URI for each local run
 
-        // Find the last SGR code that appears before or at this position
-        for (const match of sgrMatches) {
-          if (match.index <= origPos) {
-            const code = `\x1b[${match.code}m`;
-            let runIdx = this.sgrKeys.indexOf(code);
-            if (runIdx === -1) {
-              runIdx = this.sgrKeys.length;
-              this.sgrKeys.push(code);
-              this.sgrCloseKeys.push('');
+      // Track current active style attributes (e.g., "1", "31", "38;5;196")
+      const activeAttributes = new Set();
+
+      let i = 0;
+      while (i < processedText.length) {
+        // Check for SGR code: \x1b[...m
+        if (processedText[i] === '\x1b' && processedText[i + 1] === '[') {
+          let j = i + 2;
+          while (j < processedText.length && processedText[j] !== 'm') {
+            j++;
+          }
+          if (j < processedText.length && processedText[j] === 'm') {
+            // Found complete SGR code
+            const params = processedText.slice(i + 2, j);
+            if (!params) {
+              // Empty: \x1b[m means \x1b[0m (reset)
+              activeAttributes.clear();
+            } else {
+              // Parse parameters, handling composites (38;5;n and 38;2;r;g;b)
+              const parts = params.split(';');
+              let k = 0;
+              while (k < parts.length) {
+                const p = parts[k];
+                if (p === '0') {
+                  activeAttributes.clear();
+                } else if (p === '22') {
+                  activeAttributes.delete('1');
+                  activeAttributes.delete('2');
+                } else if (p === '23') {
+                  activeAttributes.delete('3');
+                } else if (p === '24') {
+                  activeAttributes.delete('4');
+                } else if (p === '27') {
+                  activeAttributes.delete('7');
+                } else if (p === '28') {
+                  activeAttributes.delete('8');
+                } else if (p === '29') {
+                  activeAttributes.delete('9');
+                } else if (p === '39') {
+                  // Foreground color reset
+                  const keysToRemove = [];
+                  for (const attr of activeAttributes) {
+                    if (/^(30|31|32|33|34|35|36|37|90|91|92|93|94|95|96|97|38)/.test(attr)) {
+                      keysToRemove.push(attr);
+                    }
+                  }
+                  keysToRemove.forEach(k => activeAttributes.delete(k));
+                } else if (p === '49') {
+                  // Background color reset
+                  const keysToRemove = [];
+                  for (const attr of activeAttributes) {
+                    if (/^(40|41|42|43|44|45|46|47|100|101|102|103|104|105|106|107|48)/.test(attr)) {
+                      keysToRemove.push(attr);
+                    }
+                  }
+                  keysToRemove.forEach(k => activeAttributes.delete(k));
+                } else if (p === '38' || p === '48') {
+                  // Composite: 38;5;n or 38;2;r;g;b (or 48 for background)
+                  const colorType = parts[k + 1];
+                  if (colorType === '5' && k + 2 < parts.length) {
+                    const composite = `${p};5;${parts[k + 2]}`;
+                    activeAttributes.add(composite);
+                    k += 2;
+                  } else if (colorType === '2' && k + 4 < parts.length) {
+                    const composite = `${p};2;${parts[k + 2]};${parts[k + 3]};${parts[k + 4]}`;
+                    activeAttributes.add(composite);
+                    k += 4;
+                  }
+                } else if (p) {
+                  // Single attribute
+                  activeAttributes.add(p);
+                }
+                k++;
+              }
             }
-            runIndexForGrapheme = runIdx;
+            i = j + 1;
+            continue;
           } else {
+            // Incomplete SGR: treat \x1b as regular character (Bug 7 fix)
+            const chunkEnd = processedText.length;
+            let foundEsc = false;
+            for (let j = i + 1; j < processedText.length; j++) {
+              if (processedText[j] === '\x1b') {
+                foundEsc = true;
+                i += 1;  // advance by 1 to process \x1b as-is
+                break;
+              }
+            }
+            if (!foundEsc) {
+              // No more escapes, process as normal text
+              i += 1;
+            }
+            continue;
+          }
+        }
+
+        // Check for OSC8 hyperlink: \x1b]8;;...
+        if (processedText[i] === '\x1b' && processedText[i + 1] === ']' && processedText[i + 2] === '8' && processedText[i + 3] === ';') {
+          let j = i + 4;
+          let endPos = -1;
+          while (j < processedText.length) {
+            if (processedText[j] === '\x07') {
+              endPos = j;
+              break;
+            }
+            if (processedText[j] === '\x1b' && processedText[j + 1] === '\\') {
+              endPos = j + 1;
+              break;
+            }
+            j++;
+          }
+          if (endPos >= 0) {
+            // Parse OSC8 sequence
+            const oscSeq = processedText.slice(i + 4, endPos);
+            const semicolonPos = oscSeq.indexOf(';');
+            if (semicolonPos >= 0) {
+              const url = oscSeq.slice(semicolonPos + 1);
+              if (url) {
+                // URL present: open link
+                let uriIdx = this.uris.indexOf(url);
+                if (uriIdx === -1) {
+                  uriIdx = this.uris.length;
+                  this.uris.push(url);
+                }
+                currentUri = uriIdx + 1;  // +1 because 0 means no link
+              } else {
+                // Close sequence
+                currentUri = 0;
+              }
+            }
+            i = endPos + 1;
+            continue;
+          } else {
+            // Incomplete OSC8: treat \x1b as regular character (Bug 7 fix)
+            i += 1;
+            continue;
+          }
+        }
+
+        // Regular character: extract next grapheme chunk
+        let chunkEnd = processedText.length;
+        for (let j = i; j < processedText.length; j++) {
+          if (processedText[j] === '\x1b') {
+            chunkEnd = j;
             break;
           }
         }
 
-        // Add grapheme to pool
-        this.graphemes.push(grapheme);
-        const width = stringWidth(grapheme, { ambiguousIsNarrow: this.ambiguousIsNarrow });
+        // Segment chunk into graphemes
+        const chunk = processedText.slice(i, chunkEnd);
+        const graphemeArray = Array.from(globalSegmenter.segment(chunk)).map(seg => seg.segment);
 
-        // Build cell entry: graphemeIndex | runIndex<<10 | tabFlag<<8 | width
-        cells[cellCount * 2] = graphemeIndex;
-        cells[cellCount * 2 + 1] = (runIndexForGrapheme << Ub) | (width & fC);
+        for (const grapheme of graphemeArray) {
+          // Determine run index for this grapheme
+          // Include both SGR state and URI state in the key (Bug 8 fix)
+          const sgrStateKey = Array.from(activeAttributes).sort().join('\x00');
+          const stateKey = sgrStateKey + '|uri:' + currentUri;
+          let runIdx = stateToLocalRun.get(stateKey);
 
-        // Add tab marker if grapheme is a tab character
-        if (grapheme === '\t') {
-          cells[cellCount * 2 + 1] |= dC;  // Set bit 8
+          if (runIdx === undefined) {
+            // First time seeing this state: allocate new local run
+            runIdx = localRunIndex++;
+            stateToLocalRun.set(stateKey, runIdx);
+            localRunToUri.set(runIdx, currentUri);  // Track URI for this run
+
+            // Register in pool if not already present (only for SGR part)
+            if (sgrStateKey !== '') {
+              const sgrCodeList = sgrStateKey.split('\x00').filter(s => s);
+              const poolEntry = sgrCodeList.map(code => `\x1b[${code}m`).join('\x00');
+              if (!this.sgrKeys.includes(poolEntry)) {
+                this.sgrKeys.push(poolEntry);
+                const closeCodes = sgrCodeList.map(() => '').join('\x00');
+                this.sgrCloseKeys.push(closeCodes);
+              }
+            }
+          }
+
+          // Add grapheme to pool
+          this.graphemes.push(grapheme);
+          const width = stringWidth(grapheme, { ambiguousIsNarrow: this.ambiguousIsNarrow });
+
+          // Build cell entry: graphemeIndex | runIndex<<10 | tabFlag | width
+          cells[cellCount * 2] = graphemeIndex;
+          cells[cellCount * 2 + 1] = (runIdx << Ub) | (width & fC);
+
+          // Add tab marker if grapheme is a tab
+          if (grapheme === '\t') {
+            cells[cellCount * 2 + 1] |= dC;
+          }
+
+          graphemeIndex++;
+          cellCount++;
         }
 
-        graphemeIndex++;
-        cellCount++;
+        i = chunkEnd;
       }
 
-      // Build runs array (SGR indices)
-      const maxRunIdx = Math.max(0, this.sgrKeys.length - 1);
-      for (let i = 0; i <= maxRunIdx; i++) {
-        runs[i * 2] = i;      // styleId index
-        runs[i * 2 + 1] = 0;  // uri index (0 = no link)
+      // Build runs array: map local run indices to pool indices
+      const maxLocalRunIdx = localRunIndex - 1;
+      for (let localRun = 0; localRun <= maxLocalRunIdx; localRun++) {
+        let poolIdx = 0;  // default
+
+        // Find the state for this local run
+        for (const [stateKey, localRunNum] of stateToLocalRun) {
+          if (localRunNum === localRun) {
+            if (stateKey !== '') {
+              // Extract SGR part (before '|uri:')
+              const pipePos = stateKey.indexOf('|uri:');
+              const sgrPart = pipePos >= 0 ? stateKey.slice(0, pipePos) : stateKey;
+              const sgrCodeList = sgrPart.split('\x00').filter(s => s);
+              const poolEntry = sgrCodeList.map(code => `\x1b[${code}m`).join('\x00');
+              poolIdx = this.sgrKeys.indexOf(poolEntry);
+              if (poolIdx === -1) poolIdx = 0;
+            }
+            break;
+          }
+        }
+        runs[localRun * 2] = poolIdx;
+        // Get the URI value that was recorded for this run (Bug 8 fix)
+        runs[localRun * 2 + 1] = localRunToUri.get(localRun) || 0;
       }
 
       return cellCount;
@@ -286,12 +464,12 @@ module.exports = function createBunCellSegmenterShim({ stringWidth, graphemeWidt
         const idx = (y * destWidth + col) << 1;
 
         if (tab) {
-          // Fill tab stops with spaces (use this.screen.tabWidth, not hardcoded Eut) - Bug 3 fix
+          // Fill tab stops with spaces (use this.screen.emptyCharIndex for space)
           const tabWidth = this.screen.tabWidth || 8;
           const nextTabStop = Math.min(((Math.floor(col / tabWidth) + 1) * tabWidth), destWidth);
           while (col < nextTabStop && col < destWidth) {
             const cellIdx = (y * destWidth + col) << 1;
-            destCells[cellIdx] = charIndices[graphemeIndex] || 0;
+            destCells[cellIdx] = this.screen.emptyCharIndex;
             destCells[cellIdx + 1] = word | 0;  // width code 0 for space
             col++;
           }
