@@ -94,21 +94,22 @@ module.exports = function createBunCellSegmenterShim({ stringWidth, graphemeWidt
         // Otherwise fall through to catch-all (malformed CSI)
       }
 
-      // 4. Catch-all: any other character (ESC alone, normal char, etc.)
-      // Segment the current character/chunk until next ESC
-      let chunkEnd = i + 1;
+      // 4. Catch-all: any other character (ESC alone or normal char)
+      // Distinguish between lone ESC and normal text
+      if (str[i] === '\x1b') {
+        // Single ESC character (incomplete sequence) - consume it as-is
+        result += str[i];
+        i += 1;
+        continue;
+      }
+
+      // Normal character: find the next ESC and segment everything up to it
+      let chunkEnd = str.length;  // Default: rest of string (no more ESCs)
       for (let j = i + 1; j < str.length; j++) {
         if (str[j] === '\x1b') {
           chunkEnd = j;
           break;
         }
-      }
-      if (chunkEnd === i + 1 && i < str.length && str[i] === '\x1b') {
-        // Single ESC character (could be start of incomplete sequence)
-        // Process it as-is (will be handled as non-visible escape)
-        result += str[i];
-        i += 1;
-        continue;
       }
 
       const chunk = str.slice(i, chunkEnd);
@@ -420,8 +421,16 @@ module.exports = function createBunCellSegmenterShim({ stringWidth, graphemeWidt
           }
         }
 
-        // 4. Catch-all: regular character or lone ESC
-        let chunkEnd = i + 1;
+        // 4. Catch-all: lone ESC or normal character
+        // Distinguish between lone ESC and normal text
+        if (processedText[i] === '\x1b') {
+          // Single ESC character (incomplete sequence) - consume it as-is, don't segment
+          i += 1;
+          continue;
+        }
+
+        // Normal character: find the next ESC and segment everything up to it
+        let chunkEnd = processedText.length;  // Default: rest of string (no more ESCs)
         for (let j = i + 1; j < processedText.length; j++) {
           if (processedText[j] === '\x1b') {
             chunkEnd = j;

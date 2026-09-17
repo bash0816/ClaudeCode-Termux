@@ -1914,12 +1914,11 @@ test('CellSegmenter: run monotonicity and style non-contamination (BL-3)', () =>
     assert.ok(runIndices[i] >= runIndices[i-1], `run ${i} should be >= run ${i-1}`);
   }
 
-  // Paint and verify style isolation
+  // Paint and verify style isolation (find the bold run, not run 0)
   d2.paint(h.mkScreen(40, 1).cells, 40, 0, 0, hyperPool);
+  const boldRunIdx = runIndices.find(r => r > 0) || 0;  // Skip run 0 (unstyled)
+  const boldStyleId = d2.styleId(d2.runs[2*boldRunIdx]);
   const blueStyleId = stylePool.arr.findIndex(s => s.includes('34'));
-  const boldStyleId = d2.ansiCodes(d2.runs[0]).length > 0 ?
-    d2.stylePool.intern(JSON.stringify(d2.ansiCodes(d2.runs[0]))) + 1 - 1 :
-    0;
   assert.ok(boldStyleId !== blueStyleId || blueStyleId === -1, 'style should not contaminate between segments');
 });
 
@@ -1947,6 +1946,15 @@ test('CellSegmenter: foreground color exclusivity (BL-6)', () => {
   const redStyleId = reds.length > 0 ? d.styleId(d.runs[2*reds[0]]) : -1;
   const greenStyleId = greens.length > 0 ? d.styleId(d.runs[2*greens[0]]) : -1;
   assert.notEqual(redStyleId, greenStyleId, 'RED and GREEN should have distinct styleIds');
+
+  // Direct validation: GREEN run should NOT contain red (31) code - verifying exclusivity
+  if (greens.length > 0) {
+    const greenRunIdx = greens[0];
+    const greenSgrIdx = d.runs[2*greenRunIdx];
+    const greenCodes = d.ansiCodes(greenSgrIdx);
+    const hasBothColors = greenCodes.some(c => c.code.includes('31')) && greenCodes.some(c => c.code.includes('32'));
+    assert.ok(!hasBothColors, 'GREEN run should not contain red (31) code - colors must be exclusive');
+  }
 });
 
 test('CellSegmenter: sgrCloseKeys derivation (§9-5)', () => {
@@ -2008,6 +2016,11 @@ test('CellSegmenter: URI indexing and OSC8 handling (BL-4, BL-5)', () => {
   // Verify no ESC byte mixed into text
   const textReconstructed = d2.graphemes.slice(0, d2.count).join('');
   assert.equal(textReconstructed, 'ST', 'ST terminator should not include ESC bytes');
+
+  // BL-5: Verify uris array has clean URLs without ESC bytes
+  const uriWithoutEsc = d2.uris[1];  // Index 1 because 0 is reserved
+  assert.ok(uriWithoutEsc, 'should have URI at index 1');
+  assert.equal(uriWithoutEsc, 'http://st', 'URI should be clean without ESC bytes');
 });
 
 test('CellSegmenter: no infinite loops on malformed escapes (BL-1, BL-2)', function() {
@@ -2061,4 +2074,48 @@ test('CellSegmenter: no infinite loops on malformed escapes (BL-1, BL-2)', funct
       assert.equal(result, 'menu item', 'CSI-2J and CSI-H should not appear in output');
     }
   }
+});
+
+test('CellSegmenter: grapheme boundary correctness (BL-8 regression prevention)', () => {
+  const createHarness = require('./test-support/vendor-cellsegmenter-harness.js');
+  const h = createHarness((s) => s.replace(/\x1b\[[0-9;]*m/g, '').length, (s) => {
+    // Proper grapheme width calculation
+    const symbols = Array.from(String(s || ''));
+    const codePoints = symbols.map(sym => sym.codePointAt(0)).filter(cp => Number.isFinite(cp));
+    if (codePoints.length === 0) return 0;
+    if (codePoints.length > 1 && codePoints.every(cp => cp >= 0x1f1e6 && cp <= 0x1f1ff)) return 2;  // Flag pairs
+    if (codePoints.includes(0x200d) || codePoints.includes(0x20e3) || codePoints.includes(0xfe0f)) return 2;  // ZWJ, VS16
+    if (codePoints.some(cp => (cp >= 0x1f300 && cp <= 0x1f6ff) || (cp >= 0x1f900 && cp <= 0x1f9ff))) return 2;  // Emoji
+    return 1;
+  });
+  const { D, Pool } = h;
+
+  const stylePool = new Pool();
+  const charPool = new Pool([' ', 'S']);
+
+  // Test 1: ZWJ family emoji (👨‍👩‍👧) should be 1 grapheme, not split
+  const d1 = new D(stylePool, charPool);
+  const family = '👨‍👩‍👧';
+  const n1 = d1.segment(family, false);
+  assert.equal(n1, 1, `Family emoji ${JSON.stringify(family)} should be 1 grapheme cluster`);
+
+  // Test 2: Flag emoji (🇯🇵) should be 1 grapheme (surrogate pair combined)
+  const d2 = new D(stylePool, charPool);
+  const jpFlag = '🇯🇵';
+  const n2 = d2.segment(jpFlag, false);
+  assert.equal(n2, 1, `Flag emoji ${JSON.stringify(jpFlag)} should be 1 grapheme cluster`);
+
+  // Test 3: sliceAnsi() should not produce isolated surrogates
+  const { sliceAnsi } = h;
+  const sliceResult = sliceAnsi('a👍b', 0, 2);
+  // Check for isolated surrogates (UTF-16 range 0xD800-0xDFFF)
+  const isSurrogatePair = /[\ud800-\udfff]/.test(sliceResult);
+  assert.ok(!isSurrogatePair, `sliceAnsi('a👍b', 0, 2) should not have orphaned surrogates: ${JSON.stringify(sliceResult)}`);
+
+  // Test 4: Warning symbol with VS16 (⚠️) should have correct width
+  const d4 = new D(stylePool, charPool);
+  const warning = '⚠️ warn';
+  const n4 = d4.segment(warning, false);
+  // '⚠️' (2) + ' ' (1) + 'w' (1) + 'a' (1) + 'r' (1) + 'n' (1) = 7
+  assert.equal(n4, 7, `Warning symbol with VS16 should produce 7 graphemes: got ${n4}`);
 });
