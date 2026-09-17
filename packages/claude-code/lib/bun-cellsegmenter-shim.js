@@ -34,65 +34,83 @@ module.exports = function createBunCellSegmenterShim({ stringWidth, graphemeWidt
     let result = '';
     let i = 0;
 
+    // Regex for non-SGR CSI sequences: ESC [ ... (@ to ~, excluding m)
+    const csiNonSgrRegex = /\x1b\[[0-?]*[ -/]*[@-~]/;
+
     while (i < str.length) {
-      // Check for ESC sequence (SGR code: \x1b[...m)
+      // Invariant: must advance i by at least 1 per iteration
+      // Four-way dispatch with catch-all fallback (§9-6)
+
+      // 1. Complete SGR code: \x1b[...m with params (\d, ;, :)
       if (str[i] === '\x1b' && str[i + 1] === '[') {
-        // Find the end of the escape sequence (ends with 'm')
         let j = i + 2;
-        while (j < str.length && str[j] !== 'm') {
+        // Find 'm' terminator, accepting digits, ;, and : (colon for kitty underline)
+        while (j < str.length && /[\d;:]/.test(str[j])) {
           j++;
         }
         if (j < str.length && str[j] === 'm') {
-          // Found complete SGR code
-          const escSeq = str.slice(i, j + 1);
-          result += escSeq;
+          // Match complete SGR
+          result += str.slice(i, j + 1);
           i = j + 1;
           continue;
-        } else {
-          // Incomplete SGR: treat \x1b as regular character (Bug 7 fix)
-          i += 1;
-          continue;
         }
+        // Otherwise fall through to catch-all
       }
 
-      // Check for OSC8 hyperlink: \x1b]8;;...
+      // 2. Complete OSC8 sequence: \x1b]8;;...BEL or \x1b]8...ST
       if (str[i] === '\x1b' && str[i + 1] === ']' && str[i + 2] === '8' && str[i + 3] === ';') {
-        // Find the end (BEL \x07 or ST \x1b\\)
         let j = i + 4;
-        let endPos = -1;
+        let foundEnd = false;
         while (j < str.length) {
           if (str[j] === '\x07') {
-            endPos = j;
+            // BEL terminator
+            result += str.slice(i, j + 1);
+            i = j + 1;
+            foundEnd = true;
             break;
           }
-          if (str[j] === '\x1b' && str[j + 1] === '\\') {
-            endPos = j + 1;
+          if (str[j] === '\x1b' && j + 1 < str.length && str[j + 1] === '\\') {
+            // ST terminator
+            result += str.slice(i, j + 2);
+            i = j + 2;
+            foundEnd = true;
             break;
           }
           j++;
         }
-        if (endPos >= 0) {
-          const oscSeq = str.slice(i, endPos + 1);
-          result += oscSeq;
-          i = endPos + 1;
-          continue;
-        } else {
-          // Incomplete OSC8: treat \x1b as regular character (Bug 7 fix)
-          i += 1;
-          continue;
-        }
+        if (foundEnd) continue;
+        // Otherwise fall through to catch-all (incomplete OSC8)
       }
 
-      // Regular character: segment this chunk until next escape
-      let chunkEnd = str.length;
-      for (let j = i; j < str.length; j++) {
+      // 3. Non-SGR CSI sequence: match and skip (consume but don't output to count)
+      if (str[i] === '\x1b' && str[i + 1] === '[') {
+        const remaining = str.slice(i);
+        const csiMatch = remaining.match(csiNonSgrRegex);
+        if (csiMatch) {
+          result += csiMatch[0];
+          i += csiMatch[0].length;
+          continue;
+        }
+        // Otherwise fall through to catch-all (malformed CSI)
+      }
+
+      // 4. Catch-all: any other character (ESC alone, normal char, etc.)
+      // Segment the current character/chunk until next ESC
+      let chunkEnd = i + 1;
+      for (let j = i + 1; j < str.length; j++) {
         if (str[j] === '\x1b') {
           chunkEnd = j;
           break;
         }
       }
+      if (chunkEnd === i + 1 && i < str.length && str[i] === '\x1b') {
+        // Single ESC character (could be start of incomplete sequence)
+        // Process it as-is (will be handled as non-visible escape)
+        result += str[i];
+        i += 1;
+        continue;
+      }
 
-      // Segment the chunk
       const chunk = str.slice(i, chunkEnd);
       const graphemes = Array.from(globalSegmenter.segment(chunk)).map(seg => seg.segment);
 
@@ -154,7 +172,7 @@ module.exports = function createBunCellSegmenterShim({ stringWidth, graphemeWidt
       this.graphemes = [];
       this.sgrKeys = [''];  // Index 0 = default (no style applied)
       this.sgrCloseKeys = [''];
-      this.uris = [];
+      this.uris = [''];  // Index 0 = no link (reserved dummy), per §9-2
     }
 
     // ============================================================
@@ -182,7 +200,7 @@ module.exports = function createBunCellSegmenterShim({ stringWidth, graphemeWidt
     }
 
     // ============================================================
-    // segment: Parse text into grapheme cells, SGR styles, and URIs (Bug 1, 2 fixes)
+    // segment: Parse text into grapheme cells, SGR styles, and URIs (BL-1,2,3,4,5,6,7 fixes)
     // ============================================================
     segment(text, cells, runs, reordered) {
       // Apply BiDi character substitution
@@ -202,196 +220,254 @@ module.exports = function createBunCellSegmenterShim({ stringWidth, graphemeWidt
       let localRunIndex = 0;
       let currentUri = 0;
 
-      // Map: active style state + URI → local run index and URI
-      const stateToLocalRun = new Map();
-      const localRunToUri = new Map();  // Track URI for each local run
+      // Track current active style attributes by category (§9-4, BL-6)
+      let fgColor = null;     // Current foreground color code (null = none)
+      let bgColor = null;     // Current background color code (null = none)
+      const booleanAttrs = new Set();  // bold, dim, italic, underline, blink, reverse, hidden, strikethrough
 
-      // Track current active style attributes (e.g., "1", "31", "38;5;196")
-      const activeAttributes = new Set();
+      // Track run states to fill runs array later
+      const runToState = new Map();  // Map of runIdx -> {sgrCodes, uriIdx}
+
+      // Helper: build SGR code array from current state
+      const buildSgrCodes = () => {
+        const codes = [];
+        if (fgColor !== null) codes.push(fgColor);
+        if (bgColor !== null) codes.push(bgColor);
+        for (const attr of booleanAttrs) codes.push(attr);
+        return codes.sort();
+      };
+
+      // Helper: get close codes corresponding to open codes (§9-5)
+      // Returns codes in escape sequence format: \x1b[...m (not raw codes)
+      const getCloseCodes = (openCodes) => {
+        const closeMap = {
+          '1': '22', '2': '22',
+          '3': '23', '4': '24', '5': '25', '6': '25',
+          '7': '27', '8': '28', '9': '29'
+        };
+        return openCodes.map(code => {
+          let closeCode = '';
+          // Check for composite color codes first
+          if (/^38/.test(code)) closeCode = '39';  // Foreground color (38;5;n or 38;2;r;g;b)
+          else if (/^48/.test(code)) closeCode = '49';  // Background color (48;5;n or 48;2;r;g;b)
+          // Check for basic foreground colors (30-37, 90-97)
+          else if (/^(30|31|32|33|34|35|36|37|90|91|92|93|94|95|96|97)$/.test(code)) closeCode = '39';
+          // Check for basic background colors (40-47, 100-107)
+          else if (/^(40|41|42|43|44|45|46|47|100|101|102|103|104|105|106|107)$/.test(code)) closeCode = '49';
+          // Check for other attributes
+          else if (/^\d+$/.test(code)) closeCode = closeMap[code] || '';
+          // Return as escape sequence: \x1b[...m, or empty if no mapping
+          return closeCode ? `\x1b[${closeCode}m` : '';
+        });
+      };
+
+      // Helper: parse SGR parameter and update state (BL-6)
+      const applySgrParam = (param) => {
+        if (param === '0' || param === '') {
+          fgColor = null;
+          bgColor = null;
+          booleanAttrs.clear();
+        } else if (param === '1' || param === '2') {
+          booleanAttrs.add(param);
+        } else if (param === '3') {
+          booleanAttrs.add(param);
+        } else if (param === '4') {
+          booleanAttrs.add(param);
+        } else if (param === '5' || param === '6') {
+          booleanAttrs.add(param);
+        } else if (param === '7') {
+          booleanAttrs.add(param);
+        } else if (param === '8') {
+          booleanAttrs.add(param);
+        } else if (param === '9') {
+          booleanAttrs.add(param);
+        } else if (param === '22') {
+          booleanAttrs.delete('1');
+          booleanAttrs.delete('2');
+        } else if (param === '23') {
+          booleanAttrs.delete('3');
+        } else if (param === '24') {
+          booleanAttrs.delete('4');
+        } else if (param === '25') {
+          booleanAttrs.delete('5');
+          booleanAttrs.delete('6');
+        } else if (param === '27') {
+          booleanAttrs.delete('7');
+        } else if (param === '28') {
+          booleanAttrs.delete('8');
+        } else if (param === '29') {
+          booleanAttrs.delete('9');
+        } else if (param === '39') {
+          fgColor = null;
+        } else if (param === '49') {
+          bgColor = null;
+        } else if (/^(30|31|32|33|34|35|36|37|90|91|92|93|94|95|96|97)$/.test(param)) {
+          fgColor = param;
+        } else if (/^(40|41|42|43|44|45|46|47|100|101|102|103|104|105|106|107)$/.test(param)) {
+          bgColor = param;
+        }
+      };
+
+      // Helper: parse full SGR sequence
+      const parseSgrSequence = (paramStr) => {
+        if (!paramStr) {
+          applySgrParam('0');
+          return;
+        }
+        const parts = paramStr.split(';');
+        let k = 0;
+        while (k < parts.length) {
+          const p = parts[k];
+          if ((p === '38' || p === '48') && parts[k + 1] === '5' && k + 2 < parts.length) {
+            const composite = `${p};5;${parts[k + 2]}`;
+            if (p === '38') fgColor = composite;
+            else bgColor = composite;
+            k += 3;
+            continue;
+          } else if ((p === '38' || p === '48') && parts[k + 1] === '2' && k + 4 < parts.length) {
+            const composite = `${p};2;${parts[k + 2]};${parts[k + 3]};${parts[k + 4]}`;
+            if (p === '38') fgColor = composite;
+            else bgColor = composite;
+            k += 5;
+            continue;
+          }
+          applySgrParam(p);
+          k++;
+        }
+      };
+
+      // Regex for non-SGR CSI sequences
+      const csiNonSgrRegex = /\x1b\[[0-?]*[ -/]*[@-~]/;
 
       let i = 0;
+      let prevState = null;  // Previous SGR+URI state for BL-3 (monotonic run allocation)
+
       while (i < processedText.length) {
-        // Check for SGR code: \x1b[...m
+        // Invariant: must advance i by at least 1 per iteration (§9-6)
+        // Four-way dispatch with catch-all fallback
+
+        // 1. Complete SGR code: \x1b[...m
         if (processedText[i] === '\x1b' && processedText[i + 1] === '[') {
           let j = i + 2;
-          while (j < processedText.length && processedText[j] !== 'm') {
+          while (j < processedText.length && /[\d;:]/.test(processedText[j])) {
             j++;
           }
           if (j < processedText.length && processedText[j] === 'm') {
-            // Found complete SGR code
             const params = processedText.slice(i + 2, j);
-            if (!params) {
-              // Empty: \x1b[m means \x1b[0m (reset)
-              activeAttributes.clear();
-            } else {
-              // Parse parameters, handling composites (38;5;n and 38;2;r;g;b)
-              const parts = params.split(';');
-              let k = 0;
-              while (k < parts.length) {
-                const p = parts[k];
-                if (p === '0') {
-                  activeAttributes.clear();
-                } else if (p === '22') {
-                  activeAttributes.delete('1');
-                  activeAttributes.delete('2');
-                } else if (p === '23') {
-                  activeAttributes.delete('3');
-                } else if (p === '24') {
-                  activeAttributes.delete('4');
-                } else if (p === '27') {
-                  activeAttributes.delete('7');
-                } else if (p === '28') {
-                  activeAttributes.delete('8');
-                } else if (p === '29') {
-                  activeAttributes.delete('9');
-                } else if (p === '39') {
-                  // Foreground color reset
-                  const keysToRemove = [];
-                  for (const attr of activeAttributes) {
-                    if (/^(30|31|32|33|34|35|36|37|90|91|92|93|94|95|96|97|38)/.test(attr)) {
-                      keysToRemove.push(attr);
-                    }
-                  }
-                  keysToRemove.forEach(k => activeAttributes.delete(k));
-                } else if (p === '49') {
-                  // Background color reset
-                  const keysToRemove = [];
-                  for (const attr of activeAttributes) {
-                    if (/^(40|41|42|43|44|45|46|47|100|101|102|103|104|105|106|107|48)/.test(attr)) {
-                      keysToRemove.push(attr);
-                    }
-                  }
-                  keysToRemove.forEach(k => activeAttributes.delete(k));
-                } else if (p === '38' || p === '48') {
-                  // Composite: 38;5;n or 38;2;r;g;b (or 48 for background)
-                  const colorType = parts[k + 1];
-                  if (colorType === '5' && k + 2 < parts.length) {
-                    const composite = `${p};5;${parts[k + 2]}`;
-                    activeAttributes.add(composite);
-                    k += 2;
-                  } else if (colorType === '2' && k + 4 < parts.length) {
-                    const composite = `${p};2;${parts[k + 2]};${parts[k + 3]};${parts[k + 4]}`;
-                    activeAttributes.add(composite);
-                    k += 4;
-                  }
-                } else if (p) {
-                  // Single attribute
-                  activeAttributes.add(p);
-                }
-                k++;
-              }
-            }
+            parseSgrSequence(params);
             i = j + 1;
-            continue;
-          } else {
-            // Incomplete SGR: treat \x1b as regular character (Bug 7 fix)
-            const chunkEnd = processedText.length;
-            let foundEsc = false;
-            for (let j = i + 1; j < processedText.length; j++) {
-              if (processedText[j] === '\x1b') {
-                foundEsc = true;
-                i += 1;  // advance by 1 to process \x1b as-is
-                break;
-              }
-            }
-            if (!foundEsc) {
-              // No more escapes, process as normal text
-              i += 1;
-            }
             continue;
           }
         }
 
-        // Check for OSC8 hyperlink: \x1b]8;;...
+        // 2. Complete OSC8 sequence: \x1b]8;;...
         if (processedText[i] === '\x1b' && processedText[i + 1] === ']' && processedText[i + 2] === '8' && processedText[i + 3] === ';') {
           let j = i + 4;
-          let endPos = -1;
+          let foundEnd = false;
           while (j < processedText.length) {
             if (processedText[j] === '\x07') {
-              endPos = j;
+              const oscSeq = processedText.slice(i + 4, j);
+              const semicolonPos = oscSeq.indexOf(';');
+              if (semicolonPos >= 0) {
+                const url = oscSeq.slice(semicolonPos + 1);
+                if (url) {
+                  let uriIdx = this.uris.indexOf(url);
+                  if (uriIdx === -1) {
+                    uriIdx = this.uris.length;
+                    this.uris.push(url);
+                  }
+                  currentUri = uriIdx;
+                } else {
+                  currentUri = 0;
+                }
+              }
+              i = j + 1;
+              foundEnd = true;
               break;
             }
-            if (processedText[j] === '\x1b' && processedText[j + 1] === '\\') {
-              endPos = j + 1;
+            if (processedText[j] === '\x1b' && j + 1 < processedText.length && processedText[j + 1] === '\\') {
+              const oscSeq = processedText.slice(i + 4, j);
+              const semicolonPos = oscSeq.indexOf(';');
+              if (semicolonPos >= 0) {
+                const url = oscSeq.slice(semicolonPos + 1);
+                if (url) {
+                  let uriIdx = this.uris.indexOf(url);
+                  if (uriIdx === -1) {
+                    uriIdx = this.uris.length;
+                    this.uris.push(url);
+                  }
+                  currentUri = uriIdx;
+                } else {
+                  currentUri = 0;
+                }
+              }
+              i = j + 2;
+              foundEnd = true;
               break;
             }
             j++;
           }
-          if (endPos >= 0) {
-            // Parse OSC8 sequence
-            const oscSeq = processedText.slice(i + 4, endPos);
-            const semicolonPos = oscSeq.indexOf(';');
-            if (semicolonPos >= 0) {
-              const url = oscSeq.slice(semicolonPos + 1);
-              if (url) {
-                // URL present: open link
-                let uriIdx = this.uris.indexOf(url);
-                if (uriIdx === -1) {
-                  uriIdx = this.uris.length;
-                  this.uris.push(url);
-                }
-                currentUri = uriIdx + 1;  // +1 because 0 means no link
-              } else {
-                // Close sequence
-                currentUri = 0;
-              }
-            }
-            i = endPos + 1;
-            continue;
-          } else {
-            // Incomplete OSC8: treat \x1b as regular character (Bug 7 fix)
-            i += 1;
+          if (foundEnd) continue;
+        }
+
+        // 3. Non-SGR CSI sequence: match and skip
+        if (processedText[i] === '\x1b' && processedText[i + 1] === '[') {
+          const remaining = processedText.slice(i);
+          const csiMatch = remaining.match(csiNonSgrRegex);
+          if (csiMatch) {
+            i += csiMatch[0].length;
             continue;
           }
         }
 
-        // Regular character: extract next grapheme chunk
-        let chunkEnd = processedText.length;
-        for (let j = i; j < processedText.length; j++) {
+        // 4. Catch-all: regular character or lone ESC
+        let chunkEnd = i + 1;
+        for (let j = i + 1; j < processedText.length; j++) {
           if (processedText[j] === '\x1b') {
             chunkEnd = j;
             break;
           }
         }
 
-        // Segment chunk into graphemes
         const chunk = processedText.slice(i, chunkEnd);
         const graphemeArray = Array.from(globalSegmenter.segment(chunk)).map(seg => seg.segment);
 
         for (const grapheme of graphemeArray) {
-          // Determine run index for this grapheme
-          // Include both SGR state and URI state in the key (Bug 8 fix)
-          const sgrStateKey = Array.from(activeAttributes).sort().join('\x00');
-          const stateKey = sgrStateKey + '|uri:' + currentUri;
-          let runIdx = stateToLocalRun.get(stateKey);
+          // Determine run index: compare current state with previous (BL-3)
+          const currentSgrCodes = buildSgrCodes();
+          const currentState = JSON.stringify({ sgr: currentSgrCodes, uri: currentUri });
 
-          if (runIdx === undefined) {
-            // First time seeing this state: allocate new local run
+          let runIdx;
+          if (prevState !== currentState) {
             runIdx = localRunIndex++;
-            stateToLocalRun.set(stateKey, runIdx);
-            localRunToUri.set(runIdx, currentUri);  // Track URI for this run
+            prevState = currentState;
 
-            // Register in pool if not already present (only for SGR part)
-            if (sgrStateKey !== '') {
-              const sgrCodeList = sgrStateKey.split('\x00').filter(s => s);
-              const poolEntry = sgrCodeList.map(code => `\x1b[${code}m`).join('\x00');
-              if (!this.sgrKeys.includes(poolEntry)) {
+            // Register in sgrKeys/sgrCloseKeys pool if needed
+            if (currentSgrCodes.length > 0) {
+              const poolEntry = currentSgrCodes.map(code => `\x1b[${code}m`).join('\x00');
+              let poolIdx = this.sgrKeys.indexOf(poolEntry);
+              if (poolIdx === -1) {
+                poolIdx = this.sgrKeys.length;
                 this.sgrKeys.push(poolEntry);
-                const closeCodes = sgrCodeList.map(() => '').join('\x00');
-                this.sgrCloseKeys.push(closeCodes);
+                const closeCodes = getCloseCodes(currentSgrCodes);
+                this.sgrCloseKeys.push(closeCodes.join('\x00'));
               }
             }
+
+            // Store state for this run
+            runToState.set(runIdx, { sgrCodes: currentSgrCodes, uriIdx: currentUri });
+          } else {
+            // Reuse previous run
+            runIdx = localRunIndex - 1;
           }
 
           // Add grapheme to pool
           this.graphemes.push(grapheme);
-          const width = stringWidth(grapheme, { ambiguousIsNarrow: this.ambiguousIsNarrow });
+          const width = graphemeWidth(grapheme);
 
-          // Build cell entry: graphemeIndex | runIndex<<10 | tabFlag | width
           cells[cellCount * 2] = graphemeIndex;
           cells[cellCount * 2 + 1] = (runIdx << Ub) | (width & fC);
 
-          // Add tab marker if grapheme is a tab
           if (grapheme === '\t') {
             cells[cellCount * 2 + 1] |= dC;
           }
@@ -403,29 +479,17 @@ module.exports = function createBunCellSegmenterShim({ stringWidth, graphemeWidt
         i = chunkEnd;
       }
 
-      // Build runs array: map local run indices to pool indices
-      const maxLocalRunIdx = localRunIndex - 1;
-      for (let localRun = 0; localRun <= maxLocalRunIdx; localRun++) {
-        let poolIdx = 0;  // default
-
-        // Find the state for this local run
-        for (const [stateKey, localRunNum] of stateToLocalRun) {
-          if (localRunNum === localRun) {
-            if (stateKey !== '') {
-              // Extract SGR part (before '|uri:')
-              const pipePos = stateKey.indexOf('|uri:');
-              const sgrPart = pipePos >= 0 ? stateKey.slice(0, pipePos) : stateKey;
-              const sgrCodeList = sgrPart.split('\x00').filter(s => s);
-              const poolEntry = sgrCodeList.map(code => `\x1b[${code}m`).join('\x00');
-              poolIdx = this.sgrKeys.indexOf(poolEntry);
-              if (poolIdx === -1) poolIdx = 0;
-            }
-            break;
-          }
+      // Build runs array from tracked run states
+      for (let runIdx = 0; runIdx < localRunIndex; runIdx++) {
+        const state = runToState.get(runIdx) || { sgrCodes: [], uriIdx: 0 };
+        let poolIdx = 0;
+        if (state.sgrCodes.length > 0) {
+          const poolEntry = state.sgrCodes.map(code => `\x1b[${code}m`).join('\x00');
+          poolIdx = this.sgrKeys.indexOf(poolEntry);
+          if (poolIdx === -1) poolIdx = 0;
         }
-        runs[localRun * 2] = poolIdx;
-        // Get the URI value that was recorded for this run (Bug 8 fix)
-        runs[localRun * 2 + 1] = localRunToUri.get(localRun) || 0;
+        runs[runIdx * 2] = poolIdx;
+        runs[runIdx * 2 + 1] = state.uriIdx;
       }
 
       return cellCount;
