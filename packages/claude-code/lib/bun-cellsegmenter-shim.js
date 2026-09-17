@@ -1,14 +1,9 @@
-module.exports = function createBunCellSegmenterShim({ stringWidth, graphemeWidth }) {
+module.exports = function createBunCellSegmenterShim({ graphemeWidth }) {
   // Constants and bit masks (from vendor bundle analysis)
-  const fl = 17;  // styleId shift
-  const Fo = 2;   // hyperlink shift
-  const kr = 32767;  // hyperlink mask (15 bits)
   const pn = 3;   // width mask (2 bits)
   const Ub = 10;  // runIndex shift
   const fC = 255; // width mask (8 bits)
   const dC = 256; // tab flag bit
-  const hC = 2048;    // sgrKeys.length threshold for resetNative
-  const Dd = 16384;   // uris/graphemes length threshold for resetNative
 
   // BiDi control character codepoint ranges (U+061C, U+202A-U+202E, U+2066-U+2069)
   const aXe = [[1564, 1564], [8234, 8238], [8294, 8297]];
@@ -16,12 +11,6 @@ module.exports = function createBunCellSegmenterShim({ stringWidth, graphemeWidt
   // Build regex for BiDi control character detection
   const Nc = aXe.map(([n, s]) => `\\u{${n.toString(16)}}` + (s > n ? `-\\u{${s.toString(16)}}` : '')).join('');
   const mSn = new RegExp(`[${Nc}]`, 'gu');
-
-  // SGR code regex: ESC[<n>m, ESC[<n>;5;<n>m, or ESC[<n>;2;<r>;<g>;<b>m
-  const mC = /^\x1b\[(?:\d{1,3})(?:;5;\d{1,3}|;2;\d{1,3};\d{1,3};\d{1,3})?m$/;
-
-  // ANSI SGR pattern for parsing
-  const sgrPattern = /\x1b\[([0-9;]*?)m/g;
 
   // Intl.Segmenter instance for grapheme segmentation (reuse across calls)
   const globalSegmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
@@ -509,7 +498,6 @@ module.exports = function createBunCellSegmenterShim({ stringWidth, graphemeWidt
     // ============================================================
     paint(destCells, destWidth, x, y, srcCells, srcCount, unused, charIndices, runWords) {
       let col = x;
-      let minX = x;
       let maxX = x;
 
       for (let i = 0; i < srcCount; i++) {

@@ -2120,7 +2120,7 @@ test('CellSegmenter: grapheme boundary correctness (BL-8 regression prevention)'
   assert.equal(n4, 6, `Warning symbol with VS16 should produce 6 graphemes: got ${n4}`);
 });
 
-test('CellSegmenter: pool initialization and resetNative validation (NB-2)', () => {
+test('CellSegmenter: fresh instance pool initialization (NB-2)', () => {
   const createHarness = require('./test-support/vendor-cellsegmenter-harness.js');
   const h = createHarness((s) => s.replace(/\x1b\[[0-9;]*m/g, '').length, (s) => {
     // Simple width calculator
@@ -2151,14 +2151,14 @@ test('CellSegmenter: pool initialization and resetNative validation (NB-2)', () 
   assert.ok(d.sgrKeys.length >= 1, 'sgrKeys should grow or stay at 1 (unstyled input)');
   assert.ok(d.graphemes.length >= 20, 'graphemes should accumulate');
 
-  // Test 3: After reset, new instance should be clean
+  // Test 3: Fresh instance has clean pools
   const d2 = new D(stylePool, charPool);
-  assert.equal(d2.sgrKeys.length, 1, 'new instance sgrKeys should be reset to length 1');
+  assert.equal(d2.sgrKeys.length, 1, 'new instance sgrKeys should be at length 1');
   assert.equal(d2.sgrKeys[0], '', 'new instance sgrKeys[0] should be empty string');
-  assert.equal(d2.uris.length, 1, 'new instance uris should be reset to length 1');
+  assert.equal(d2.uris.length, 1, 'new instance uris should be at length 1');
   assert.equal(d2.uris[0], '', 'new instance uris[0] should be empty string');
 
-  // Test 4: New instance can segment immediately after reset
+  // Test 4: Fresh instance can segment immediately
   const count2 = d2.segment('fresh test', false);
   assert.ok(count2 > 0, 'should successfully segment after reset');
   assert.equal(d2.graphemes.length, count2, 'grapheme count should match segment result');
