@@ -1,3 +1,22 @@
+## 2.1.276 — 2026-09-18 ✅ Current audited / 現在の監査済み版
+
+upstream claude-code 2.1.276 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
+
+**Upstream highlights / 主な変更（upstream）**
+
+## What's changed
+
+- Fixed every request failing with `400 … Input tag 'advisor_20260301'` when `ANTHROPIC_BASE_URL` points at a proxy or gateway (2.1.275 regression)
+
+```sh
+npm install -g @bash0816/claude-code@latest
+```
+
+```sh
+npm install -g @bash0816/claude-code@2.1.272
+```
+
+---
 ## 2.1.272 — 2026-09-18 ✅ Current audited / 現在の監査済み版
 
 upstream claude-code 2.1.272 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
