@@ -305,6 +305,12 @@ function stableHash(value, seed) {
   return hash >>> 0;
 }
 
+stableHash.xxHash64 = function bunHashXxHash64(value, seed) {
+  const lo = stableHash(value, seed);
+  const hi = stableHash(value, lo ^ 0x85ebca6b);
+  return (BigInt(hi) << 32n) | BigInt(lo);
+};
+
 function replaceRequired(source, pattern, replacement, label, expectedCount) {
   const text = String(source);
   const matches = text.match(pattern);
@@ -1348,6 +1354,12 @@ function stableHash(value, seed) {
   }
   return hash >>> 0;
 }
+
+stableHash.xxHash64 = function bunHashXxHash64(value, seed) {
+  const lo = stableHash(value, seed);
+  const hi = stableHash(value, lo ^ 0x85ebca6b);
+  return (BigInt(hi) << 32n) | BigInt(lo);
+};
 
 function replaceRequired(source, pattern, replacement, label, expectedCount) {
   const text = String(source);

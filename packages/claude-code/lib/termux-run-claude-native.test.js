@@ -2163,3 +2163,81 @@ test('CellSegmenter: fresh instance pool initialization (NB-2)', () => {
   assert.ok(count2 > 0, 'should successfully segment after reset');
   assert.equal(d2.graphemes.length, count2, 'grapheme count should match segment result');
 });
+
+test('stableHash.xxHash64 implementation (G2 v3 implementation)', () => {
+  const api = loadHelperApi();
+  const { stableHash } = api;
+
+  // Test 1: Base64 representation of xxHash64 result is valid (1-13 chars in base36)
+  const result1 = stableHash.xxHash64('x').toString(36);
+  assert.match(result1, /^[0-9a-z]{1,13}$/, `xxHash64('x').toString(36) should match [0-9a-z]{1,13}, got: ${result1}`);
+
+  // Test 2: seedless mode with fixed literal values - hi !== lo
+  const fixedLiterals = ['a', 'hello', 'thinking:1562789', 'thinking:1779192', '', 'x'.repeat(100)];
+  for (const val of fixedLiterals) {
+    const h = stableHash.xxHash64(val);
+    const hi = h >> 32n;
+    const lo = h & 0xffffffffn;
+    assert.ok(hi !== lo, `xxHash64('${val.slice(0, 20)}${val.length > 20 ? '...' : ''}') should have hi !== lo (got hi=${hi}, lo=${lo})`);
+  }
+
+  // Test 3: seed specified mode - hi !== lo
+  const seededPairs = [
+    ['x', 42],
+    ['hello', 1234],
+    ['test', 9999],
+  ];
+  for (const [val, seed] of seededPairs) {
+    const h = stableHash.xxHash64(val, seed);
+    const hi = h >> 32n;
+    const lo = h & 0xffffffffn;
+    assert.ok(hi !== lo, `xxHash64('${val}', ${seed}) should have hi !== lo (got hi=${hi}, lo=${lo})`);
+  }
+
+  // Test 4: Deterministic (repeated calls return same result)
+  const val = 'determinism-test';
+  const r1 = stableHash.xxHash64(val);
+  const r2 = stableHash.xxHash64(val);
+  const r3 = stableHash.xxHash64(val);
+  assert.equal(r1, r2, `xxHash64 should be deterministic (1st vs 2nd call)`);
+  assert.equal(r2, r3, `xxHash64 should be deterministic (2nd vs 3rd call)`);
+
+  // Test 5: Return type is bigint
+  const result5 = stableHash.xxHash64('x');
+  assert.equal(typeof result5, 'bigint', `xxHash64 should return bigint, got: ${typeof result5}`);
+
+  // Test 6: Verify .xxHash64 is accessible in ESM shim context
+  // Use the same logic as the "実行モード網羅" section of the design doc
+  function extractEsmShimSource(block) {
+    const sm = '\n  globalThis.Bun = {';
+    const em = '\n  globalThis.__claudeBun = globalThis.Bun;';
+    const s = block.indexOf(sm);
+    const e = block.indexOf(em, s);
+    return block.slice(s + 1, e + em.length);
+  }
+
+  // Verify for both _helper and _bootstrap heredocs
+  for (const markerKey of ['cat <<\'NODE\' > "$_helper"', 'cat <<\'NODE\' > "$_bootstrap"']) {
+    const helperBlock = extractBlock(markerKey, '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+    const stableHashSource = extractFunction(
+      helperBlock,
+      'function stableHash(value, seed) {',
+      '\n\nfunction replaceRequired(source, pattern, replacement, label, expectedCount) {',
+    );
+    const context = vm.createContext({
+      stringWidth: () => 0, wrapAnsi: v => v, stripANSI: v => v,
+      sliceAnsi: s => s, sleepSync: () => {}, CellSegmenter: class {},
+      process: { versions: {} }, Buffer, require,
+    });
+    context.module = { exports: {} };
+    vm.runInContext(
+      `${stableHashSource}\n${extractEsmShimSource(helperBlock)}\nmodule.exports = { Bun: globalThis.Bun, stableHash };`,
+      context,
+    );
+    const { Bun, stableHash: contextStableHash } = context.module.exports;
+    assert.equal(Bun.hash, contextStableHash, `Bun.hash should be identical to stableHash in ${markerKey}`);
+    assert.equal(typeof Bun.hash.xxHash64, 'function', `Bun.hash.xxHash64 should be a function in ${markerKey}`);
+    const testResult = Bun.hash.xxHash64('x').toString(36);
+    assert.match(testResult, /^[0-9a-z]{1,13}$/, `Bun.hash.xxHash64('x').toString(36) should match pattern in ${markerKey}, got: ${testResult}`);
+  }
+});
