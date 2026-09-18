@@ -1567,6 +1567,9 @@ function loadBunShim(source) {
     wrapAnsi: value => value,
     stripANSI: value => value,
     stableHash: () => 0,
+    sliceAnsi: (s) => s,
+    sleepSync: () => {},
+    CellSegmenter: class {},
     __claudeYaml: {},
     Buffer,
     require,
@@ -1595,6 +1598,9 @@ function loadEsmBunShim(source) {
     wrapAnsi: value => value,
     stripANSI: value => value,
     stableHash: () => 0,
+    sliceAnsi: (s) => s,
+    sleepSync: () => {},
+    CellSegmenter: class {},
     process: { versions: {} },
     Buffer,
     require,
@@ -1855,4 +1861,305 @@ test('termux-run-claude-native.sh maintains compatibility with new zstd fields',
   // Verify both blocks exist and are distinct
   const blocks = (script.match(/globalThis\.Bun\s*=\s*{/g) || []);
   assert.ok(blocks.length >= 2, 'should have at least 2 Bun initializations for helper and bootstrap');
+});
+
+test('ESM and legacy Bun shims include new CellSegmenter exports', () => {
+  for (const blockMarker of ['cat <<\'NODE\' > "$_helper"', 'cat <<\'NODE\' > "$_bootstrap"']) {
+    const block = extractBlock(blockMarker, '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+    const BunEsm = loadEsmBunShim(extractEsmShimSource(block));
+    const BunLegacy = loadBunShim(extractShimSource(block));
+
+    // Verify sliceAnsi is present
+    assert.equal(typeof BunEsm.sliceAnsi, 'function', `${blockMarker}: ESM sliceAnsi should be a function`);
+    assert.equal(typeof BunLegacy.sliceAnsi, 'function', `${blockMarker}: legacy sliceAnsi should be a function`);
+
+    // Verify sleepSync is present
+    assert.equal(typeof BunEsm.sleepSync, 'function', `${blockMarker}: ESM sleepSync should be a function`);
+    assert.equal(typeof BunLegacy.sleepSync, 'function', `${blockMarker}: legacy sleepSync should be a function`);
+
+
+    // Verify CellSegmenter is present
+    assert.equal(typeof BunEsm.ant.CellSegmenter, 'function', `${blockMarker}: ESM ant.CellSegmenter should be a function`);
+    assert.equal(typeof BunLegacy.ant.CellSegmenter, 'function', `${blockMarker}: legacy ant.CellSegmenter should be a function`);
+  }
+});
+
+// ============================================================
+// CellSegmenter integration tests with vendor harness (G3 v2 revision)
+// ============================================================
+
+test('CellSegmenter: run monotonicity and style non-contamination (BL-3)', () => {
+  const createHarness = require('./test-support/vendor-cellsegmenter-harness.js');
+  const h = createHarness((s) => s.replace(/\x1b\[[0-9;]*m/g, '').length, (s) => 1);
+  const { D, Pool } = h;
+
+  const stylePool = new Pool();
+  const charPool = new Pool([' ', 'S']);
+  const hyperPool = new Pool(['']);
+
+  // Test case: style repeats after gap (BL-3 regression)
+  const d1 = new D(stylePool, charPool);
+  d1.segment('aa\x1b[34mBLUE\x1b[39m', false);
+  d1.paint(h.mkScreen(40, 1).cells, 40, 0, 0, hyperPool);
+
+  const d2 = new D(stylePool, charPool);
+  const n = d2.segment('ok \x1b[1mERR\x1b[22m done', false);
+
+  // Verify run indices are monotonic
+  const runIndices = [];
+  for (let i = 0; i < n; i++) {
+    runIndices.push(d2.cells[2*i+1] >>> 10);
+  }
+  for (let i = 1; i < runIndices.length; i++) {
+    assert.ok(runIndices[i] >= runIndices[i-1], `run ${i} should be >= run ${i-1}`);
+  }
+
+  // Paint and verify style isolation (find the bold run, not run 0)
+  d2.paint(h.mkScreen(40, 1).cells, 40, 0, 0, hyperPool);
+  const boldRunIdx = runIndices.find(r => r > 0) || 0;  // Skip run 0 (unstyled)
+  const boldStyleId = d2.styleId(d2.runs[2*boldRunIdx]);
+  const blueStyleId = stylePool.arr.findIndex(s => s.includes('34'));
+  assert.ok(boldStyleId !== blueStyleId || blueStyleId === -1, 'style should not contaminate between segments');
+});
+
+test('CellSegmenter: foreground color exclusivity (BL-6)', () => {
+  const createHarness = require('./test-support/vendor-cellsegmenter-harness.js');
+  const h = createHarness((s) => s.replace(/\x1b\[[0-9;]*m/g, '').length, (s) => 1);
+  const { D, Pool } = h;
+
+  const stylePool = new Pool();
+  const charPool = new Pool([' ', 'S']);
+  const d = new D(stylePool, charPool);
+
+  const text = '\x1b[31mRED\x1b[32mGREEN\x1b[0m';
+  d.segment(text, false);
+
+  // Extract runIndices for RED and GREEN
+  const reds = [];
+  const greens = [];
+  for (let i = 0; i < d.count; i++) {
+    const runIdx = d.cells[2*i+1] >>> 10;
+    if (d.graphemes[d.cells[2*i]] === 'R') reds.push(runIdx);
+    if (d.graphemes[d.cells[2*i]] === 'G') greens.push(runIdx);
+  }
+
+  const redStyleId = reds.length > 0 ? d.styleId(d.runs[2*reds[0]]) : -1;
+  const greenStyleId = greens.length > 0 ? d.styleId(d.runs[2*greens[0]]) : -1;
+  assert.notEqual(redStyleId, greenStyleId, 'RED and GREEN should have distinct styleIds');
+
+  // Direct validation: GREEN run should NOT contain red (31) code - verifying exclusivity
+  if (greens.length > 0) {
+    const greenRunIdx = greens[0];
+    const greenSgrIdx = d.runs[2*greenRunIdx];
+    const greenCodes = d.ansiCodes(greenSgrIdx);
+    const hasBothColors = greenCodes.some(c => c.code.includes('31')) && greenCodes.some(c => c.code.includes('32'));
+    assert.ok(!hasBothColors, 'GREEN run should not contain red (31) code - colors must be exclusive');
+  }
+});
+
+test('CellSegmenter: sgrCloseKeys derivation (§9-5)', () => {
+  const createHarness = require('./test-support/vendor-cellsegmenter-harness.js');
+  const h = createHarness((s) => s.replace(/\x1b\[[0-9;]*m/g, '').length, (s) => 1);
+  const { D, Pool, mC } = h;
+
+  const stylePool = new Pool();
+  const charPool = new Pool([' ', 'S']);
+  const d = new D(stylePool, charPool);
+
+  const text = '\x1b[1;31mX';
+  d.segment(text, false);
+
+  // Check that sgrKeys[1] contains open codes and sgrCloseKeys[1] contains matching close codes
+  const keys = d.sgrKeys[1];
+  const closeKeys = d.sgrCloseKeys[1];
+  const keyList = keys.split('\x00').filter(k => k);
+  const closeList = closeKeys.split('\x00').filter(k => k);
+
+  assert.equal(keyList.length, closeList.length, 'open and close codes should have same count');
+  assert.ok(keyList.some(k => k.includes('1')), 'should have bold (1)');
+  assert.ok(keyList.some(k => k.includes('31')), 'should have fg-red (31)');
+  assert.ok(closeList.some(c => c.includes('22')), 'should have bold-close (22)');
+  assert.ok(closeList.some(c => c.includes('39')), 'should have fg-close (39)');
+});
+
+test('CellSegmenter: URI indexing and OSC8 handling (BL-4, BL-5)', () => {
+  const createHarness = require('./test-support/vendor-cellsegmenter-harness.js');
+  const h = createHarness((s) => s.replace(/\x1b\[[0-9;]*m/g, '').length, (s) => 1);
+  const { D, Pool, mkScreen, readCell } = h;
+
+  const stylePool = new Pool();
+  const charPool = new Pool([' ', 'S']);
+  const hyperPool = new Pool(['']);
+  const d = new D(stylePool, charPool);
+
+  // Test OSC8 with BEL terminator
+  const text1 = 'A\x1b]8;;http://x\x07B\x1b]8;;\x07C';
+  d.segment(text1, false);
+  const screen1 = mkScreen(40, 1);
+  d.paint(screen1.cells, 40, 0, 0, hyperPool);
+
+  const cellA = readCell(screen1, charPool, hyperPool, 0, 0);
+  const cellB = readCell(screen1, charPool, hyperPool, 1, 0);
+  const cellC = readCell(screen1, charPool, hyperPool, 2, 0);
+
+  assert.equal(cellA.hyperlink, undefined, 'A should have no hyperlink');
+  assert.equal(cellB.hyperlink, 'http://x', 'B should link to http://x');
+  assert.equal(cellC.hyperlink, undefined, 'C should have no hyperlink');
+
+  // Test OSC8 with ST terminator (ESC backslash)
+  stylePool.arr = [];
+  stylePool.map.clear();
+  const d2 = new D(stylePool, charPool);
+  const text2 = '\x1b]8;;http://st\x1b\\ST\x1b]8;;\x1b\\';
+  d2.segment(text2, false);
+
+  // Verify no ESC byte mixed into text
+  const textReconstructed = d2.graphemes.slice(0, d2.count).join('');
+  assert.equal(textReconstructed, 'ST', 'ST terminator should not include ESC bytes');
+
+  // BL-5: Verify uris array has clean URLs without ESC bytes
+  const uriWithoutEsc = d2.uris[1];  // Index 1 because 0 is reserved
+  assert.ok(uriWithoutEsc, 'should have URI at index 1');
+  assert.equal(uriWithoutEsc, 'http://st', 'URI should be clean without ESC bytes');
+});
+
+test('CellSegmenter: no infinite loops on malformed escapes (BL-1, BL-2)', function() {
+  const createShim = require('./bun-cellsegmenter-shim.js');
+  const { CellSegmenter, sliceAnsi } = createShim({
+    stringWidth: (s) => s.replace(/\x1b\[[0-9;]*m/g, '').length,
+    graphemeWidth: (s) => 1
+  });
+
+  const cases = {
+    'osc-title': '\x1b]0;my title\x07hello',
+    'osc9': '\x1b]9;notify\x07hi',
+    'osc8-badprefix': '\x1b]8x;;http://a\x07hi',
+    'esc-alone': 'abc\x1b',
+    'esc-paren': 'abc\x1bcdef',
+    'esc-dcs': '\x1bPsomething\x1b\\text',
+    'esc-st': 'a\x1b\\b',
+    'esc-charset': '\x1b(Bhello',
+    'esc-esc': 'a\x1b\x1bb',
+    'sgr-unterm': 'abc\x1b[31',
+    'osc8-unterm': 'abc\x1b]8;;http://x',
+    'csi-K': '\x1b[Khello, my friend',
+    'csi-cursor': '\x1b[2J\x1b[Hmenu item',
+  };
+
+  const seg = new CellSegmenter({
+    ambiguousIsNarrow: true,
+    substitute: [],
+    screen: { widthMask: 3, narrow: 0, wide: 1, spacerTail: 2, spacerHead: 3, emptyCharIndex: 0, spacerCharIndex: 1, emptyWord: 0, tabWidth: 8 }
+  });
+
+  for (const [label, text] of Object.entries(cases)) {
+    // Test segment() with timeout
+    const startSeg = Date.now();
+    const n = seg.segment(text, new Int32Array(1024), new Int32Array(1024), false);
+    const segTime = Date.now() - startSeg;
+    assert.ok(segTime < 500, `segment(${label}) took ${segTime}ms (>500ms suggests hang)`);
+    assert.ok(n >= 0 || n === -1, `segment(${label}) returned invalid result ${n}`);
+
+    // Test sliceAnsi() with timeout
+    const startSlice = Date.now();
+    const result = sliceAnsi(text, 0, 100);
+    const sliceTime = Date.now() - startSlice;
+    assert.ok(sliceTime < 500, `sliceAnsi(${label}) took ${sliceTime}ms (>500ms suggests hang)`);
+
+    // Verify CSI sequences are consumed (not in output text)
+    if (label === 'csi-K') {
+      assert.equal(result, 'hello, my friend', 'CSI-K should consume and not appear in output');
+    }
+    if (label === 'csi-cursor') {
+      assert.equal(result, 'menu item', 'CSI-2J and CSI-H should not appear in output');
+    }
+  }
+});
+
+test('CellSegmenter: grapheme boundary correctness (BL-8 regression prevention)', () => {
+  const createHarness = require('./test-support/vendor-cellsegmenter-harness.js');
+  const h = createHarness((s) => s.replace(/\x1b\[[0-9;]*m/g, '').length, (s) => {
+    // Proper grapheme width calculation
+    const symbols = Array.from(String(s || ''));
+    const codePoints = symbols.map(sym => sym.codePointAt(0)).filter(cp => Number.isFinite(cp));
+    if (codePoints.length === 0) return 0;
+    if (codePoints.length > 1 && codePoints.every(cp => cp >= 0x1f1e6 && cp <= 0x1f1ff)) return 2;  // Flag pairs
+    if (codePoints.includes(0x200d) || codePoints.includes(0x20e3) || codePoints.includes(0xfe0f)) return 2;  // ZWJ, VS16
+    if (codePoints.some(cp => (cp >= 0x1f300 && cp <= 0x1f6ff) || (cp >= 0x1f900 && cp <= 0x1f9ff))) return 2;  // Emoji
+    return 1;
+  });
+  const { D, Pool } = h;
+
+  const stylePool = new Pool();
+  const charPool = new Pool([' ', 'S']);
+
+  // Test 1: ZWJ family emoji (👨‍👩‍👧) should be 1 grapheme, not split
+  const d1 = new D(stylePool, charPool);
+  const family = '👨‍👩‍👧';
+  const n1 = d1.segment(family, false);
+  assert.equal(n1, 1, `Family emoji ${JSON.stringify(family)} should be 1 grapheme cluster`);
+
+  // Test 2: Flag emoji (🇯🇵) should be 1 grapheme (surrogate pair combined)
+  const d2 = new D(stylePool, charPool);
+  const jpFlag = '🇯🇵';
+  const n2 = d2.segment(jpFlag, false);
+  assert.equal(n2, 1, `Flag emoji ${JSON.stringify(jpFlag)} should be 1 grapheme cluster`);
+
+  // Test 3: sliceAnsi() should not produce isolated surrogates
+  const { sliceAnsi } = h;
+  const sliceResult = sliceAnsi('a👍b', 0, 2);
+  // Check for isolated surrogates (UTF-16 range 0xD800-0xDFFF)
+  const isSurrogatePair = /[\ud800-\udfff]/.test(sliceResult);
+  assert.ok(!isSurrogatePair, `sliceAnsi('a👍b', 0, 2) should not have orphaned surrogates: ${JSON.stringify(sliceResult)}`);
+
+  // Test 4: Warning symbol with VS16 (⚠️) should have correct width
+  const d4 = new D(stylePool, charPool);
+  const warning = '⚠️ warn';
+  const n4 = d4.segment(warning, false);
+  // Intl.Segmenter splits as: '⚠️' (1 grapheme) + ' ' (1) + 'w' (1) + 'a' (1) + 'r' (1) + 'n' (1) = 6 graphemes
+  assert.equal(n4, 6, `Warning symbol with VS16 should produce 6 graphemes: got ${n4}`);
+});
+
+test('CellSegmenter: fresh instance pool initialization (NB-2)', () => {
+  const createHarness = require('./test-support/vendor-cellsegmenter-harness.js');
+  const h = createHarness((s) => s.replace(/\x1b\[[0-9;]*m/g, '').length, (s) => {
+    // Simple width calculator
+    const codePoints = Array.from(String(s || '')).map(sym => sym.codePointAt(0)).filter(cp => Number.isFinite(cp));
+    if (codePoints.length === 0) return 0;
+    if (codePoints.length > 1 && codePoints.every(cp => cp >= 0x1f1e6 && cp <= 0x1f1ff)) return 2;  // Flag pairs
+    if (codePoints.includes(0x200d) || codePoints.includes(0x20e3) || codePoints.includes(0xfe0f)) return 2;  // ZWJ, VS16
+    return 1;
+  });
+  const { D, Pool } = h;
+
+  // Test 1: New instance pool initialization
+  const stylePool = new Pool();
+  const charPool = new Pool([' ', 'a', 'b', 'c']);
+  const d = new D(stylePool, charPool);
+
+  // Verify initial pool state: sgrKeys should have [''] (index 0 only)
+  assert.equal(d.sgrKeys.length, 1, 'sgrKeys should start with length 1 (index 0 only)');
+  assert.equal(d.sgrKeys[0], '', 'sgrKeys[0] should be empty string');
+
+  // Verify initial pool state: uris should have [''] (index 0 only)
+  assert.equal(d.uris.length, 1, 'uris should start with length 1 (index 0 only)');
+  assert.equal(d.uris[0], '', 'uris[0] should be empty string');
+
+  // Test 2: Multiple segments work correctly without reset
+  d.segment('hello world', false);
+  d.segment('test string', false);
+  assert.ok(d.sgrKeys.length >= 1, 'sgrKeys should grow or stay at 1 (unstyled input)');
+  assert.ok(d.graphemes.length >= 20, 'graphemes should accumulate');
+
+  // Test 3: Fresh instance has clean pools
+  const d2 = new D(stylePool, charPool);
+  assert.equal(d2.sgrKeys.length, 1, 'new instance sgrKeys should be at length 1');
+  assert.equal(d2.sgrKeys[0], '', 'new instance sgrKeys[0] should be empty string');
+  assert.equal(d2.uris.length, 1, 'new instance uris should be at length 1');
+  assert.equal(d2.uris[0], '', 'new instance uris[0] should be empty string');
+
+  // Test 4: Fresh instance can segment immediately
+  const count2 = d2.segment('fresh test', false);
+  assert.ok(count2 > 0, 'should successfully segment after reset');
+  assert.equal(d2.graphemes.length, count2, 'grapheme count should match segment result');
 });

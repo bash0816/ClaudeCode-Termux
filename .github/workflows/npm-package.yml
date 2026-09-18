@@ -84,6 +84,7 @@ jobs:
           node --check lib/check-updates.js
           node --check lib/postinstall.js
           node --check lib/preinstall.js
+          node --check lib/bun-cellsegmenter-shim.js
           node --check ../../scripts/update-readme-version-guidance.js
           node --check ../../scripts/update-release-manifest.js
           node --check ../../scripts/promote-verified-version.js
