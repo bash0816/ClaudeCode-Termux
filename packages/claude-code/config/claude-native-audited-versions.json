@@ -2124,6 +2124,12 @@
         "chart.umd.min.js",
         "hljsBundle.generated.min.js",
         "mermaid.min.js"
+      ],
+      "hooks_standalone_patches": [
+        {
+          "file": "chunk-0sa9p840.js",
+          "expectedOccurrences": 1
+        }
       ]
     },
     "2.1.278": {
@@ -2165,6 +2171,59 @@
         "chart.umd.min.js",
         "hljsBundle.generated.min.js",
         "mermaid.min.js"
+      ],
+      "hooks_standalone_patches": [
+        {
+          "file": "chunk-7nckpqfv.js",
+          "expectedOccurrences": 1
+        }
+      ]
+    },
+    "2.1.276-1": {
+      "wrapper_spec": "@anthropic-ai/claude-code@2.1.276",
+      "native_spec": "@anthropic-ai/claude-code-linux-arm64@2.1.276",
+      "entry_format": "esm-chunked",
+      "tarball_integrity": "sha512-/wzWD8U5mGmSoeiB99gGfvVuj/7/p7nh/zZACTuuPEwvo/CfMMvW/ZxBB6LG8w0nz6B//UOIx3ryKdGCENAPOA==",
+      "tarball_sha256": "d5e9f98cd9d382c907fa2dfe9420d0a53c8a781372bf7ad16de9933fe0349132",
+      "status": "offset_discovered",
+      "num_modules": 2093,
+      "byte_count": 143688478,
+      "cycle_hoists": [
+        {
+          "file": "chunk-4smm7vse.js",
+          "targetModule": "chunk-x8xhn4zk.js",
+          "expectedOccurrences": 1,
+          "assertProperties": []
+        },
+        {
+          "file": "chunk-xyct5nvs.js",
+          "targetModule": "chunk-77w3wy6j.js",
+          "expectedOccurrences": 1,
+          "assertProperties": [
+            "default"
+          ]
+        },
+        {
+          "file": "chunk-xyct5nvs.js",
+          "targetModule": "chunk-692ppfcw.js",
+          "expectedOccurrences": 3,
+          "assertProperties": [
+            "getWorkflowCommands",
+            "invalidateWorkflowCache",
+            "warmWorkflows"
+          ]
+        }
+      ],
+      "cycle_hoists_skipped_assets": [
+        "chart.umd.min.js",
+        "hljsBundle.generated.min.js",
+        "mermaid.min.js"
+      ],
+      "hooks_standalone_patches": [
+        {
+          "file": "chunk-0sa9p840.js",
+          "expectedOccurrences": 1
+        }
       ]
     }
   }
