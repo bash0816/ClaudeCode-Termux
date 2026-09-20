@@ -116,6 +116,10 @@ function validateHooksStandalonePatches(patches) {
     if (components.includes('..')) {
       throw new Error(`backfill-hooks-standalone-patches: hooks_standalone_patches entry file must not contain '..': ${file}`);
     }
+    // Check for '..' anywhere in the file path (matching loader's includes('..')  check)
+    if (file.includes('..')) {
+      throw new Error(`backfill-hooks-standalone-patches: hooks_standalone_patches entry file contains '..' substring: ${file}`);
+    }
     // Check that resolved path stays within base directory
     const resolved = path.resolve('/x', file);
     const relative = path.relative('/x', resolved);

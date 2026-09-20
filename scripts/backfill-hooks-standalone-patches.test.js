@@ -1888,3 +1888,134 @@ test('backfill-hooks-standalone-patches: 2nd rename failure restores root config
     fs.rmSync(tempRoot, { recursive: true, force: true });
   }
 });
+
+test('backfill-hooks-standalone-patches: rejects .. as substring in filename (chunk..qle.js)', () => {
+  const tempRoot = makeTempDir('backfill-test-');
+  try {
+    // Copy script to temp directory
+    const scriptSourcePath = path.join(__dirname, 'backfill-hooks-standalone-patches.js');
+    const scriptTempDir = path.join(tempRoot, 'scripts');
+    fs.mkdirSync(scriptTempDir, { recursive: true });
+    const scriptDestPath = path.join(scriptTempDir, 'backfill-hooks-standalone-patches.js');
+    fs.copyFileSync(scriptSourcePath, scriptDestPath);
+
+    // Create directory structure
+    const configDir = path.join(tempRoot, 'config');
+    const packageConfigDir = path.join(tempRoot, 'packages', 'claude-code', 'config');
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.mkdirSync(packageConfigDir, { recursive: true });
+
+    // Create initial config files with identical versions
+    const initialConfig = {
+      versions: {
+        '1.0.0': {
+          wrapper_spec: '@anthropic-ai/claude-code@1.0.0',
+          native_spec: '@anthropic-ai/claude-code-linux-arm64@1.0.0',
+          entry_format: 'esm-chunked',
+          tarball_integrity: 'sha512-x',
+          tarball_sha256: 'y',
+          status: 'offset_discovered',
+          num_modules: 100,
+          byte_count: 1000,
+          cycle_hoists: [],
+        },
+      },
+    };
+    fs.writeFileSync(path.join(configDir, 'claude-native-audited-versions.json'), JSON.stringify(initialConfig, null, 2) + '\n');
+    fs.writeFileSync(path.join(packageConfigDir, 'claude-native-audited-versions.json'), JSON.stringify(initialConfig, null, 2) + '\n');
+
+    // Create offset file with .. as substring in filename (not as a path component)
+    const offsetFile = path.join(tempRoot, 'offsets.json');
+    const offsets = {
+      entry_format: 'esm-chunked',
+      tarball_integrity: 'sha512-x',
+      tarball_sha256: 'y',
+      num_modules: 100,
+      byte_count: 1000,
+      cycle_hoists: [],
+      hooks_standalone_patches: [{ file: 'chunk..qle.js', expectedOccurrences: 1 }],
+    };
+    fs.writeFileSync(offsetFile, JSON.stringify(offsets, null, 2) + '\n');
+
+    // Run backfill-hooks-standalone-patches
+    const result = cp.spawnSync('node', [scriptDestPath, '1.0.0', offsetFile, '--root', tempRoot], {
+      cwd: tempRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    assert.equal(result.status, 1, 'Script should fail when file contains .. substring');
+    assert.ok(result.stderr.includes("contains '..'"), 'Error should mention .. substring');
+
+    // Verify both config files were NOT modified
+    const configRoot = JSON.parse(fs.readFileSync(path.join(configDir, 'claude-native-audited-versions.json'), 'utf8'));
+    const configPackage = JSON.parse(fs.readFileSync(path.join(packageConfigDir, 'claude-native-audited-versions.json'), 'utf8'));
+    assert.deepEqual(configRoot.versions, initialConfig.versions, 'Root config should not be modified');
+    assert.deepEqual(configPackage.versions, initialConfig.versions, 'Package config should not be modified');
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('backfill-hooks-standalone-patches: accepts valid chunk-abc.js filename', () => {
+  const tempRoot = makeTempDir('backfill-test-');
+  try {
+    // Copy script to temp directory
+    const scriptSourcePath = path.join(__dirname, 'backfill-hooks-standalone-patches.js');
+    const scriptTempDir = path.join(tempRoot, 'scripts');
+    fs.mkdirSync(scriptTempDir, { recursive: true });
+    const scriptDestPath = path.join(scriptTempDir, 'backfill-hooks-standalone-patches.js');
+    fs.copyFileSync(scriptSourcePath, scriptDestPath);
+
+    // Create directory structure
+    const configDir = path.join(tempRoot, 'config');
+    const packageConfigDir = path.join(tempRoot, 'packages', 'claude-code', 'config');
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.mkdirSync(packageConfigDir, { recursive: true });
+
+    // Create initial config files with identical versions
+    const initialConfig = {
+      versions: {
+        '1.0.0': {
+          wrapper_spec: '@anthropic-ai/claude-code@1.0.0',
+          native_spec: '@anthropic-ai/claude-code-linux-arm64@1.0.0',
+          entry_format: 'esm-chunked',
+          tarball_integrity: 'sha512-x',
+          tarball_sha256: 'y',
+          status: 'offset_discovered',
+          num_modules: 100,
+          byte_count: 1000,
+          cycle_hoists: [],
+        },
+      },
+    };
+    fs.writeFileSync(path.join(configDir, 'claude-native-audited-versions.json'), JSON.stringify(initialConfig, null, 2) + '\n');
+    fs.writeFileSync(path.join(packageConfigDir, 'claude-native-audited-versions.json'), JSON.stringify(initialConfig, null, 2) + '\n');
+
+    // Create offset file with valid filename (chunk-abc.js with no .. substring)
+    const offsetFile = path.join(tempRoot, 'offsets.json');
+    const offsets = {
+      entry_format: 'esm-chunked',
+      tarball_integrity: 'sha512-x',
+      tarball_sha256: 'y',
+      num_modules: 100,
+      byte_count: 1000,
+      cycle_hoists: [],
+      hooks_standalone_patches: [{ file: 'chunk-abc.js', expectedOccurrences: 1 }],
+    };
+    fs.writeFileSync(offsetFile, JSON.stringify(offsets, null, 2) + '\n');
+
+    // Run backfill-hooks-standalone-patches
+    const result = cp.spawnSync('node', [scriptDestPath, '1.0.0', offsetFile, '--root', tempRoot], {
+      cwd: tempRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    // This should succeed (file exists check may fail, but hook validation should pass)
+    // Just verify that it doesn't fail due to .. validation
+    assert.ok(!result.stderr.includes("contains '..'"), 'Error should not mention .. substring for valid filename');
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});

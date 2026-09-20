@@ -761,3 +761,114 @@ test('add-candidate-metadata: rejects NUL character in file', () => {
     fs.rmSync(tempRoot, { recursive: true, force: true });
   }
 });
+
+test('add-candidate-metadata: rejects .. as substring in filename (chunk..qle.js)', () => {
+  const tempRoot = makeTempDir('add-candidate-metadata-test-');
+  try {
+    // Copy script to temp directory
+    const scriptSourcePath = path.join(__dirname, 'add-candidate-metadata.js');
+    const scriptTempDir = path.join(tempRoot, 'scripts');
+    fs.mkdirSync(scriptTempDir, { recursive: true });
+    const scriptDestPath = path.join(scriptTempDir, 'add-candidate-metadata.js');
+    fs.copyFileSync(scriptSourcePath, scriptDestPath);
+
+    // Create directory structure
+    const configDir = path.join(tempRoot, 'config');
+    const packageConfigDir = path.join(tempRoot, 'packages', 'claude-code', 'config');
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.mkdirSync(packageConfigDir, { recursive: true });
+
+    // Create initial config files
+    const initialConfig = { versions: {} };
+    fs.writeFileSync(path.join(configDir, 'claude-native-audited-versions.json'), JSON.stringify(initialConfig, null, 2) + '\n');
+    fs.writeFileSync(path.join(packageConfigDir, 'claude-native-audited-versions.json'), JSON.stringify(initialConfig, null, 2) + '\n');
+
+    // Create package.json
+    fs.mkdirSync(path.join(tempRoot, 'packages', 'claude-code'), { recursive: true });
+    fs.writeFileSync(path.join(tempRoot, 'packages', 'claude-code', 'package.json'), JSON.stringify({ version: '0.0.0', name: '@anthropic-ai/claude-code' }, null, 2) + '\n');
+
+    // Create offset file with .. as substring in filename (not as a path component)
+    const offsetFile = path.join(tempRoot, 'offsets.json');
+    const offsets = {
+      entry_format: 'esm-chunked',
+      tarball_integrity: 'sha512-x',
+      tarball_sha256: 'y',
+      num_modules: 100,
+      byte_count: 1000,
+      cycle_hoists: [],
+      hooks_standalone_patches: [{ file: 'chunk..qle.js', expectedOccurrences: 1 }],
+    };
+    fs.writeFileSync(offsetFile, JSON.stringify(offsets, null, 2) + '\n');
+
+    // Run add-candidate-metadata
+    const result = cp.spawnSync('node', [scriptDestPath, '9.9.9', offsetFile], {
+      cwd: tempRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    assert.equal(result.status, 1, 'Script should fail when file contains .. substring');
+    assert.match(result.stderr, /contains '\.\.'/  , 'Error should mention .. substring');
+
+    // Verify both config files were NOT modified
+    const configRoot = JSON.parse(fs.readFileSync(path.join(configDir, 'claude-native-audited-versions.json'), 'utf8'));
+    const configPackage = JSON.parse(fs.readFileSync(path.join(packageConfigDir, 'claude-native-audited-versions.json'), 'utf8'));
+    assert.deepEqual(configRoot.versions, {}, 'Root config should not be modified');
+    assert.deepEqual(configPackage.versions, {}, 'Package config should not be modified');
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('add-candidate-metadata: accepts valid chunk-abc.js filename', () => {
+  const tempRoot = makeTempDir('add-candidate-metadata-test-');
+  try {
+    // Copy script to temp directory
+    const scriptSourcePath = path.join(__dirname, 'add-candidate-metadata.js');
+    const scriptTempDir = path.join(tempRoot, 'scripts');
+    fs.mkdirSync(scriptTempDir, { recursive: true });
+    const scriptDestPath = path.join(scriptTempDir, 'add-candidate-metadata.js');
+    fs.copyFileSync(scriptSourcePath, scriptDestPath);
+
+    // Create directory structure
+    const configDir = path.join(tempRoot, 'config');
+    const packageConfigDir = path.join(tempRoot, 'packages', 'claude-code', 'config');
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.mkdirSync(packageConfigDir, { recursive: true });
+
+    // Create initial config files
+    const initialConfig = { versions: {} };
+    fs.writeFileSync(path.join(configDir, 'claude-native-audited-versions.json'), JSON.stringify(initialConfig, null, 2) + '\n');
+    fs.writeFileSync(path.join(packageConfigDir, 'claude-native-audited-versions.json'), JSON.stringify(initialConfig, null, 2) + '\n');
+
+    // Create package.json
+    fs.mkdirSync(path.join(tempRoot, 'packages', 'claude-code'), { recursive: true });
+    fs.writeFileSync(path.join(tempRoot, 'packages', 'claude-code', 'package.json'), JSON.stringify({ version: '0.0.0', name: '@anthropic-ai/claude-code' }, null, 2) + '\n');
+
+    // Create offset file with valid filename (chunk-abc.js with no .. substring)
+    const offsetFile = path.join(tempRoot, 'offsets.json');
+    const offsets = {
+      entry_format: 'esm-chunked',
+      tarball_integrity: 'sha512-x',
+      tarball_sha256: 'y',
+      num_modules: 100,
+      byte_count: 1000,
+      cycle_hoists: [],
+      hooks_standalone_patches: [{ file: 'chunk-abc.js', expectedOccurrences: 1 }],
+    };
+    fs.writeFileSync(offsetFile, JSON.stringify(offsets, null, 2) + '\n');
+
+    // Run add-candidate-metadata
+    const result = cp.spawnSync('node', [scriptDestPath, '9.9.9', offsetFile], {
+      cwd: tempRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    // This should succeed (file exists check may fail, but hook validation should pass)
+    // Just verify that it doesn't fail due to .. validation
+    assert.ok(!result.stderr.includes("contains '..'"), 'Error should not mention .. substring for valid filename');
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
