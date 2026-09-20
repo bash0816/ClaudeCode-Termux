@@ -1361,3 +1361,888 @@ test('recoverMissing integration: fs interception collaborates with recovery', a
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
+
+// New tests for hooks-standalone-pattern integration
+test('hooks: ok + 1 record valid: qle replacement applied', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-hooks-test-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+  const chunkFile = path.join(tempDir, 'chunk.js');
+  const source = 'var qle=(e,o,r)=>uu()?ar(o,r(),e):{module:o,folder:e};';
+  fs.writeFileSync(chunkFile, source);
+
+  try {
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: '/dummy/bin',
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm.mjs'),
+      wsStubPath: path.join(tempDir, 'ws.mjs'),
+      hooksMetadata: {
+        status: 'ok',
+        patches: [{ file: 'chunk.js', expectedOccurrences: 1 }],
+      },
+    });
+
+    let loadCalls = 0;
+    const nextLoad = async () => ({ format: 'module', source: '', shortCircuit: true });
+    const result = await loader.load(pathToFileURL(chunkFile).href, {}, nextLoad);
+    const expected = 'var qle=(e,o,r)=>(!0)?ar(o,r(),e):{module:o,folder:e};';
+    assert.equal(result.source, expected);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('hooks: other files unmodified even if they contain qle pattern', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-hooks-test2-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+  const recordedFile = path.join(tempDir, 'recorded.js');
+  const otherFile = path.join(tempDir, 'other.js');
+  const source = 'var qle=(e,o,r)=>uu()?ar(o,r(),e):{module:o,folder:e};';
+  fs.writeFileSync(recordedFile, source);
+  fs.writeFileSync(otherFile, source);
+
+  try {
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: '/dummy/bin',
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm.mjs'),
+      wsStubPath: path.join(tempDir, 'ws.mjs'),
+      hooksMetadata: {
+        status: 'ok',
+        patches: [{ file: 'recorded.js', expectedOccurrences: 1 }],
+      },
+    });
+
+    const nextLoad = async () => ({ format: 'module', source: '', shortCircuit: true });
+    const resultOther = await loader.load(pathToFileURL(otherFile).href, {}, nextLoad);
+    // other file should be unchanged
+    assert.equal(resultOther.source, source);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('hooks: ok + count mismatch triggers fallback with warning', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-hooks-test3-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+  const chunkFile = path.join(tempDir, 'chunk.js');
+  const source = 'import.meta.dir\nvar qle=(e,o,r)=>uu()?ar(o,r(),e):{module:o,folder:e};';
+  fs.writeFileSync(chunkFile, source);
+
+  let warnings = [];
+  const origError = console.error;
+  console.error = (msg) => warnings.push(msg);
+
+  try {
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: '/dummy/bin',
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm.mjs'),
+      wsStubPath: path.join(tempDir, 'ws.mjs'),
+      hooksMetadata: {
+        status: 'ok',
+        patches: [{ file: 'chunk.js', expectedOccurrences: 2 }], // expect 2 but has 1
+      },
+    });
+
+    const nextLoad = async () => ({ format: 'module', source: '', shortCircuit: true });
+    const result = await loader.load(pathToFileURL(chunkFile).href, {}, nextLoad);
+    // layer2 should apply: add import.meta.dir prelude
+    assert.ok(result.source.includes('import.meta.dir ??= import.meta.dirname;'));
+    // should have warning
+    assert.equal(warnings.length, 1);
+    assert.ok(warnings[0].includes('occurrence count mismatch'));
+  } finally {
+    console.error = origError;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('hooks: ok + invalid record triggers fallback', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-hooks-test4-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+  const chunkFile = path.join(tempDir, 'chunk.js');
+  const source = 'import.meta.dir\ncode';
+  fs.writeFileSync(chunkFile, source);
+
+  let warnings = [];
+  const origError = console.error;
+  console.error = (msg) => warnings.push(msg);
+
+  try {
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: '/dummy/bin',
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm.mjs'),
+      wsStubPath: path.join(tempDir, 'ws.mjs'),
+      hooksMetadata: {
+        status: 'ok',
+        patches: [{ file: '../invalid.js', expectedOccurrences: 1 }], // file with ..
+      },
+    });
+
+    const nextLoad = async () => ({ format: 'module', source: '', shortCircuit: true });
+    const result = await loader.load(pathToFileURL(chunkFile).href, {}, nextLoad);
+    // layer2 should apply
+    assert.ok(result.source.includes('import.meta.dir ??= import.meta.dirname;'));
+    assert.equal(warnings.length, 1);
+  } finally {
+    console.error = origError;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('hooks: ok + empty patches triggers layer2 without warning', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-hooks-test5-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+  const chunkFile = path.join(tempDir, 'chunk.js');
+  const source = 'import.meta.dir\ncode';
+  fs.writeFileSync(chunkFile, source);
+
+  let warnings = [];
+  const origError = console.error;
+  console.error = (msg) => warnings.push(msg);
+
+  try {
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: '/dummy/bin',
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm.mjs'),
+      wsStubPath: path.join(tempDir, 'ws.mjs'),
+      hooksMetadata: {
+        status: 'ok',
+        patches: [],
+      },
+    });
+
+    const nextLoad = async () => ({ format: 'module', source: '', shortCircuit: true });
+    const result = await loader.load(pathToFileURL(chunkFile).href, {}, nextLoad);
+    // layer2 should apply
+    assert.ok(result.source.includes('import.meta.dir ??= import.meta.dirname;'));
+    // no warning for empty patches
+    assert.equal(warnings.length, 0);
+  } finally {
+    console.error = origError;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('hooks: layer2 adds prelude only for import.meta.dir', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-hooks-test6-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+  const chunkFile = path.join(tempDir, 'chunk.js');
+  const source = 'const x = import.meta.dirname; // OK, should not match \\bimport\\.meta\\.dir\\b';
+  fs.writeFileSync(chunkFile, source);
+
+  try {
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: '/dummy/bin',
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm.mjs'),
+      wsStubPath: path.join(tempDir, 'ws.mjs'),
+      hooksMetadata: { status: 'ok', patches: [] },
+    });
+
+    const nextLoad = async () => ({ format: 'module', source: '', shortCircuit: true });
+    const result = await loader.load(pathToFileURL(chunkFile).href, {}, nextLoad);
+    // should not add prelude since only dirname exists
+    assert.ok(!result.source.includes('import.meta.dir ??= import.meta.dirname;'));
+    assert.equal(result.source, source);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('hooks: field-absent warning on first layer2 prelude', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-hooks-test7-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+  const chunkFile = path.join(tempDir, 'chunk.js');
+  const chunkFile2 = path.join(tempDir, 'chunk2.js');
+  const source = 'import.meta.dir\ncode';
+  fs.writeFileSync(chunkFile, source);
+  fs.writeFileSync(chunkFile2, source);
+
+  let warnings = [];
+  const origError = console.error;
+  console.error = (msg) => warnings.push(msg);
+
+  try {
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: '/dummy/bin',
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm.mjs'),
+      wsStubPath: path.join(tempDir, 'ws.mjs'),
+      hooksMetadata: { status: 'field-absent', patches: [] },
+    });
+
+    const nextLoad = async () => ({ format: 'module', source: '', shortCircuit: true });
+    // first load: should warn when layer2 prelude is applied
+    const result1 = await loader.load(pathToFileURL(chunkFile).href, {}, nextLoad);
+    assert.equal(warnings.length, 1);
+    assert.ok(warnings[0].includes('no hooks_standalone_patches record'));
+
+    // second load: warning already issued, should not repeat
+    const result2 = await loader.load(pathToFileURL(chunkFile2).href, {}, nextLoad);
+    assert.equal(warnings.length, 1); // still 1
+  } finally {
+    console.error = origError;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('hooks: state transition - layer1 valid makes layer2 inactive', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-hooks-test8-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+  const recordedFile = path.join(tempDir, 'recorded.js');
+  const otherFile = path.join(tempDir, 'other.js');
+  const recordedSource = 'var qle=(e,o,r)=>uu()?ar(o,r(),e):{module:o,folder:e};';
+  const otherSource = 'import.meta.dir\ncode'; // has import.meta.dir
+  fs.writeFileSync(recordedFile, recordedSource);
+  fs.writeFileSync(otherFile, otherSource);
+
+  try {
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: '/dummy/bin',
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm.mjs'),
+      wsStubPath: path.join(tempDir, 'ws.mjs'),
+      hooksMetadata: {
+        status: 'ok',
+        patches: [{ file: 'recorded.js', expectedOccurrences: 1 }],
+      },
+    });
+
+    const nextLoad = async () => ({ format: 'module', source: '', shortCircuit: true });
+    // Load other file first (has import.meta.dir): layer1 is valid, so layer2 should be inactive
+    const resultOther = await loader.load(pathToFileURL(otherFile).href, {}, nextLoad);
+    // should NOT add prelude because layer1 is valid
+    assert.ok(!resultOther.source.includes('import.meta.dir ??='));
+    assert.equal(resultOther.source, otherSource);
+
+    // Confirm layer1 still works
+    const resultRecorded = await loader.load(pathToFileURL(recordedFile).href, {}, nextLoad);
+    assert.equal(resultRecorded.source, 'var qle=(e,o,r)=>(!0)?ar(o,r(),e):{module:o,folder:e};');
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('hooks: initialize resets state and warnings', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-hooks-test9-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+  const chunkFile = path.join(tempDir, 'chunk.js');
+  const source = 'import.meta.dir\ncode';
+  fs.writeFileSync(chunkFile, source);
+
+  let warnings = [];
+  const origError = console.error;
+  console.error = (msg) => warnings.push(msg);
+
+  try {
+    // First initialize with field-absent
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: '/dummy/bin',
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm.mjs'),
+      wsStubPath: path.join(tempDir, 'ws.mjs'),
+      hooksMetadata: { status: 'field-absent', patches: [] },
+    });
+
+    const nextLoad = async () => ({ format: 'module', source: '', shortCircuit: true });
+    await loader.load(pathToFileURL(chunkFile).href, {}, nextLoad);
+    assert.equal(warnings.length, 1);
+
+    // Re-initialize: should reset warning flag
+    warnings = [];
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: '/dummy/bin',
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm.mjs'),
+      wsStubPath: path.join(tempDir, 'ws.mjs'),
+      hooksMetadata: { status: 'read-failed', patches: [] },
+    });
+
+    await loader.load(pathToFileURL(chunkFile).href, {}, nextLoad);
+    assert.equal(warnings.length, 1); // new warning from read-failed
+    assert.ok(warnings[0].includes('could not be read'));
+  } finally {
+    console.error = origError;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('hooks: hooksMetadata state warnings - entry-missing and read-failed', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-hooks-test10-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+  const chunkFile = path.join(tempDir, 'chunk.js');
+  fs.writeFileSync(chunkFile, 'code');
+
+  let warnings = [];
+  const origError = console.error;
+  console.error = (msg) => warnings.push(msg);
+
+  try {
+    // Test entry-missing
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: '/dummy/bin',
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm.mjs'),
+      wsStubPath: path.join(tempDir, 'ws.mjs'),
+      hooksMetadata: { status: 'entry-missing', patches: [] },
+    });
+
+    const nextLoad = async () => ({ format: 'module', source: '', shortCircuit: true });
+    warnings = [];
+    await loader.load(pathToFileURL(chunkFile).href, {}, nextLoad);
+    assert.equal(warnings.length, 1);
+    assert.ok(warnings[0].includes('metadata entry missing'));
+
+    // Test read-failed
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: '/dummy/bin',
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm.mjs'),
+      wsStubPath: path.join(tempDir, 'ws.mjs'),
+      hooksMetadata: { status: 'read-failed', patches: [] },
+    });
+
+    warnings = [];
+    await loader.load(pathToFileURL(chunkFile).href, {}, nextLoad);
+    assert.equal(warnings.length, 1);
+    assert.ok(warnings[0].includes('could not be read'));
+  } finally {
+    console.error = origError;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+// #3/#4: 記録不正の種類ごと個別テスト
+test('hooks: ok + file contains .. triggers fallback with specific reason', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-hooks-test-file-dd-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+  const chunkFile = path.join(tempDir, 'chunk.js');
+  fs.writeFileSync(chunkFile, 'import.meta.dir\ncode');
+
+  let warnings = [];
+  const origError = console.error;
+  console.error = (msg) => warnings.push(msg);
+
+  try {
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: '/dummy/bin',
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm.mjs'),
+      wsStubPath: path.join(tempDir, 'ws.mjs'),
+      hooksMetadata: {
+        status: 'ok',
+        patches: [{ file: '../escape.js', expectedOccurrences: 1 }],
+      },
+    });
+
+    const nextLoad = async () => ({ format: 'module', source: '', shortCircuit: true });
+    await loader.load(pathToFileURL(chunkFile).href, {}, nextLoad);
+    assert.equal(warnings.length, 1);
+    assert.ok(warnings[0].includes('file contains ..'));
+  } finally {
+    console.error = origError;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('hooks: ok + absolute path triggers fallback with specific reason', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-hooks-test-abs-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+  const chunkFile = path.join(tempDir, 'chunk.js');
+  fs.writeFileSync(chunkFile, 'import.meta.dir\ncode');
+
+  let warnings = [];
+  const origError = console.error;
+  console.error = (msg) => warnings.push(msg);
+
+  try {
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: '/dummy/bin',
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm.mjs'),
+      wsStubPath: path.join(tempDir, 'ws.mjs'),
+      hooksMetadata: {
+        status: 'ok',
+        patches: [{ file: '/absolute/path.js', expectedOccurrences: 1 }],
+      },
+    });
+
+    const nextLoad = async () => ({ format: 'module', source: '', shortCircuit: true });
+    await loader.load(pathToFileURL(chunkFile).href, {}, nextLoad);
+    assert.equal(warnings.length, 1);
+    assert.ok(warnings[0].includes('file is absolute path'));
+  } finally {
+    console.error = origError;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('hooks: ok + file not found triggers fallback with specific reason', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-hooks-test-notfound-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+  const chunkFile = path.join(tempDir, 'chunk.js');
+  fs.writeFileSync(chunkFile, 'import.meta.dir\ncode');
+
+  let warnings = [];
+  const origError = console.error;
+  console.error = (msg) => warnings.push(msg);
+
+  try {
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: '/dummy/bin',
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm.mjs'),
+      wsStubPath: path.join(tempDir, 'ws.mjs'),
+      hooksMetadata: {
+        status: 'ok',
+        patches: [{ file: 'nonexistent.js', expectedOccurrences: 1 }],
+      },
+    });
+
+    const nextLoad = async () => ({ format: 'module', source: '', shortCircuit: true });
+    await loader.load(pathToFileURL(chunkFile).href, {}, nextLoad);
+    assert.equal(warnings.length, 1);
+    assert.ok(warnings[0].includes('file not found or recovery failed'));
+  } finally {
+    console.error = origError;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('hooks: ok + expectedOccurrences=0 triggers fallback with specific reason', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-hooks-test-zero-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+  const chunkFile = path.join(tempDir, 'chunk.js');
+  const source = 'var qle=(e,o,r)=>uu()?ar(o,r(),e):{module:o,folder:e};';
+  fs.writeFileSync(chunkFile, source);
+
+  let warnings = [];
+  const origError = console.error;
+  console.error = (msg) => warnings.push(msg);
+
+  try {
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: '/dummy/bin',
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm.mjs'),
+      wsStubPath: path.join(tempDir, 'ws.mjs'),
+      hooksMetadata: {
+        status: 'ok',
+        patches: [{ file: 'chunk.js', expectedOccurrences: 0 }],
+      },
+    });
+
+    const nextLoad = async () => ({ format: 'module', source: '', shortCircuit: true });
+    await loader.load(pathToFileURL(chunkFile).href, {}, nextLoad);
+    assert.equal(warnings.length, 1);
+    assert.ok(warnings[0].includes('invalid expectedOccurrences'));
+  } finally {
+    console.error = origError;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('hooks: ok + file duplicate triggers fallback with specific reason', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-hooks-test-dup-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+  const chunkFile = path.join(tempDir, 'chunk.js');
+  const source = 'var qle=(e,o,r)=>uu()?ar(o,r(),e):{module:o,folder:e};';
+  fs.writeFileSync(chunkFile, source);
+
+  let warnings = [];
+  const origError = console.error;
+  console.error = (msg) => warnings.push(msg);
+
+  try {
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: '/dummy/bin',
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm.mjs'),
+      wsStubPath: path.join(tempDir, 'ws.mjs'),
+      hooksMetadata: {
+        status: 'ok',
+        patches: [
+          { file: 'chunk.js', expectedOccurrences: 1 },
+          { file: 'chunk.js', expectedOccurrences: 1 },
+        ],
+      },
+    });
+
+    const nextLoad = async () => ({ format: 'module', source: '', shortCircuit: true });
+    await loader.load(pathToFileURL(chunkFile).href, {}, nextLoad);
+    assert.equal(warnings.length, 1);
+    assert.ok(warnings[0].includes('duplicate file'));
+  } finally {
+    console.error = origError;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('hooks: ok + second record invalid: reason reflects second record failure', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-hooks-test-2nd-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+  const file1 = path.join(tempDir, 'chunk1.js');
+  const file2 = path.join(tempDir, 'chunk2.js');
+  const source = 'var qle=(e,o,r)=>uu()?ar(o,r(),e):{module:o,folder:e};';
+  fs.writeFileSync(file1, source);
+  fs.writeFileSync(file2, source);
+
+  let warnings = [];
+  const origError = console.error;
+  console.error = (msg) => warnings.push(msg);
+
+  try {
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: '/dummy/bin',
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm.mjs'),
+      wsStubPath: path.join(tempDir, 'ws.mjs'),
+      hooksMetadata: {
+        status: 'ok',
+        patches: [
+          { file: 'chunk1.js', expectedOccurrences: 1 },
+          { file: 'chunk2.js', expectedOccurrences: 0 }, // 2番目だけ不正
+        ],
+      },
+    });
+
+    const nextLoad = async () => ({ format: 'module', source: '', shortCircuit: true });
+    await loader.load(pathToFileURL(file1).href, {}, nextLoad);
+    assert.equal(warnings.length, 1);
+    // 警告に「2番目の記録由来」の内容が反映されること
+    assert.ok(warnings[0].includes('invalid expectedOccurrences'));
+  } finally {
+    console.error = origError;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('hooks: #6(b) import.meta.dir in comment/string literal also gets prelude', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-hooks-test-comment-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+  const chunkFile = path.join(tempDir, 'chunk.js');
+  const source = `// import.meta.dir is used here\nconst str = "import.meta.dir shim";\ncode`;
+  fs.writeFileSync(chunkFile, source);
+
+  try {
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: '/dummy/bin',
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm.mjs'),
+      wsStubPath: path.join(tempDir, 'ws.mjs'),
+      hooksMetadata: { status: 'ok', patches: [] },
+    });
+
+    const nextLoad = async () => ({ format: 'module', source: '', shortCircuit: true });
+    const result = await loader.load(pathToFileURL(chunkFile).href, {}, nextLoad);
+    // Even if import.meta.dir is only in comment/string, it matches \\bimport\\.meta\\.dir\\b
+    assert.ok(result.source.includes('import.meta.dir ??= import.meta.dirname;'));
+    // Original content preserved (prelude prepended, not replaced)
+    assert.ok(result.source.includes(source));
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('hooks: #7 state transition - plugin chunk loaded before qle chunk, layer1 valid', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-hooks-test-order-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+  const qleFile = path.join(tempDir, 'qle.js');
+  const pluginFile = path.join(tempDir, 'plugin.js');
+  const qleSource = 'var qle=(e,o,r)=>uu()?ar(o,r(),e):{module:o,folder:e};';
+  const pluginSource = 'import.meta.dir'; // plugin has import.meta.dir
+  fs.writeFileSync(qleFile, qleSource);
+  fs.writeFileSync(pluginFile, pluginSource);
+
+  try {
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: '/dummy/bin',
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm.mjs'),
+      wsStubPath: path.join(tempDir, 'ws.mjs'),
+      hooksMetadata: {
+        status: 'ok',
+        patches: [{ file: 'qle.js', expectedOccurrences: 1 }],
+      },
+    });
+
+    const nextLoad = async () => ({ format: 'module', source: '', shortCircuit: true });
+    // Load plugin first (has import.meta.dir)
+    const resultPlugin = await loader.load(pathToFileURL(pluginFile).href, {}, nextLoad);
+    // Layer1 is valid, so layer2 should NOT be applied
+    assert.ok(!resultPlugin.source.includes('import.meta.dir ??='));
+    assert.equal(resultPlugin.source, pluginSource);
+
+    // Load qle second
+    const resultQle = await loader.load(pathToFileURL(qleFile).href, {}, nextLoad);
+    assert.equal(resultQle.source, 'var qle=(e,o,r)=>(!0)?ar(o,r(),e):{module:o,folder:e};');
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('hooks: #8 idempotency - same file loaded twice produces identical output', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-hooks-test-idempotent-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+  const chunkFile = path.join(tempDir, 'chunk.js');
+  const source = 'import.meta.dir\ncode';
+  fs.writeFileSync(chunkFile, source);
+
+  try {
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: '/dummy/bin',
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm.mjs'),
+      wsStubPath: path.join(tempDir, 'ws.mjs'),
+      hooksMetadata: { status: 'ok', patches: [] },
+    });
+
+    const nextLoad = async () => ({ format: 'module', source: '', shortCircuit: true });
+    const result1 = await loader.load(pathToFileURL(chunkFile).href, {}, nextLoad);
+    const result2 = await loader.load(pathToFileURL(chunkFile).href, {}, nextLoad);
+    // Second load should produce identical output (no double prelude)
+    assert.equal(result1.source, result2.source);
+    assert.ok(!result1.source.includes('import.meta.dir ??= import.meta.dirname;\nimport.meta.dir ??='));
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('hooks: #9 import.meta.require prelude + hooks transformation coexist correctly', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-hooks-test-coexist-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+  const chunkFile = path.join(tempDir, 'chunk.js');
+  // Source with both qle and import.meta.require
+  const source = 'var qle=(e,o,r)=>uu()?ar(o,r(),e):{module:o,folder:e};\nimport.meta.require("/$bunfs/root/x.js");';
+  fs.writeFileSync(chunkFile, source);
+
+  try {
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: '/dummy/bin',
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm.mjs'),
+      wsStubPath: path.join(tempDir, 'ws.mjs'),
+      hooksMetadata: {
+        status: 'ok',
+        patches: [{ file: 'chunk.js', expectedOccurrences: 1 }],
+      },
+    });
+
+    const nextLoad = async () => ({ format: 'module', source: 'nextLoad result', shortCircuit: true });
+    const result = await loader.load(pathToFileURL(chunkFile).href, {}, nextLoad);
+    // QLE replacement should happen
+    assert.ok(result.source.includes('(!0)?ar'));
+    // import.meta.require replacement should happen
+    assert.ok(result.source.includes('__bunfsMetaRequire'));
+    // import.meta.require prelude should be present
+    assert.ok(result.source.includes('const __bunfsMetaRequire'));
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('hooks: ok + expectedOccurrences=1.5 (non-integer) triggers fallback', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-hooks-test-float-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+  const chunkFile = path.join(tempDir, 'chunk.js');
+  const source = 'var qle=(e,o,r)=>uu()?ar(o,r(),e):{module:o,folder:e};';
+  fs.writeFileSync(chunkFile, source);
+
+  let warnings = [];
+  const origError = console.error;
+  console.error = (msg) => warnings.push(msg);
+
+  try {
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: '/dummy/bin',
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm.mjs'),
+      wsStubPath: path.join(tempDir, 'ws.mjs'),
+      hooksMetadata: {
+        status: 'ok',
+        patches: [{ file: 'chunk.js', expectedOccurrences: 1.5 }],
+      },
+    });
+
+    const nextLoad = async () => ({ format: 'module', source: '', shortCircuit: true });
+    await loader.load(pathToFileURL(chunkFile).href, {}, nextLoad);
+    assert.equal(warnings.length, 1);
+    assert.ok(warnings[0].includes('invalid expectedOccurrences'));
+  } finally {
+    console.error = origError;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('hooks: ok + expectedOccurrences="1" (string) triggers fallback', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tempDir = path.join(os.tmpdir(), `bunfs-hooks-test-str-${process.pid}-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+  const chunkFile = path.join(tempDir, 'chunk.js');
+  fs.writeFileSync(chunkFile, 'import.meta.dir\ncode');
+
+  let warnings = [];
+  const origError = console.error;
+  console.error = (msg) => warnings.push(msg);
+
+  try {
+    loader.initialize({
+      processOwnedDir: tempDir,
+      sourceBin: '/dummy/bin',
+      childProcessGuardPath: path.join(tempDir, 'guard.mjs'),
+      vmGuardPath: path.join(tempDir, 'vm.mjs'),
+      wsStubPath: path.join(tempDir, 'ws.mjs'),
+      hooksMetadata: {
+        status: 'ok',
+        patches: [{ file: 'chunk.js', expectedOccurrences: '1' }],
+      },
+    });
+
+    const nextLoad = async () => ({ format: 'module', source: '', shortCircuit: true });
+    await loader.load(pathToFileURL(chunkFile).href, {}, nextLoad);
+    assert.equal(warnings.length, 1);
+    assert.ok(warnings[0].includes('invalid expectedOccurrences'));
+  } finally {
+    console.error = origError;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+
+
+test('hooks: #11 real ESM integration - qle export and plugin import coexist', async (t) => {
+  const { spawnSync } = require('node:child_process');
+  const { registerHooks } = await import('node:module');
+  if (typeof registerHooks !== 'function') return t.skip('registerHooks unavailable');
+  const loaderPath = path.resolve(__dirname, 'bunfs-esm-loader.mjs');
+  const run = (metadata, order = false, useLoader = true) => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bunfs-hooks-esm-'));
+    const guard = path.join(tmp, 'guard.mjs');
+    const vm = path.join(tmp, 'vm.mjs');
+    const ws = path.join(tmp, 'ws.mjs');
+    fs.writeFileSync(guard, 'export {};\n');
+    fs.writeFileSync(vm, 'export {};\n');
+    fs.writeFileSync(ws, 'export {};\n');
+    fs.writeFileSync(path.join(tmp, 'chunk-qle.mjs'), 'function uu(){return false}\nvar ar=(e,o,r)=>({module:e,scan:o.scan,files:o.files,dir:r});\nvar qle=(e,o,r)=>uu()?ar(o,r(),e):{module:o,folder:e};\nexport { qle };\n');
+    fs.writeFileSync(path.join(tmp, 'plugin-mermaid.mjs'), "import { qle } from './chunk-qle.mjs';\nexport const result={name:'mermaid',hooksModule:qle(import.meta.dir,{id:'mod-mermaid'},()=>({scan:{hooks:[],calls:[],events:['ui.render']},files:{}}))};\n");
+    fs.writeFileSync(path.join(tmp, 'plugin-agents.mjs'), "import { qle } from './chunk-qle.mjs';\nexport const result={name:'agents-md',hooksModule:qle(import.meta.dir,{id:'mod-agents'},()=>({scan:{hooks:[],calls:[],events:['session.start','prompt.context']},files:{}}))};\n");
+    const init = useLoader ? 'loader.initialize({processOwnedDir:' + JSON.stringify(tmp) + ",sourceBin:'/dummy/bin',childProcessGuardPath:" + JSON.stringify(guard) + ',vmGuardPath:' + JSON.stringify(vm) + ',wsStubPath:' + JSON.stringify(ws) + ',hooksMetadata:' + JSON.stringify(metadata) + '}); registerHooks({resolve:loader.resolve,load:loader.load});' : '';
+    const imports = order ? 'const b=await import(pathToFileURL(' + JSON.stringify(path.join(tmp, 'plugin-agents.mjs')) + ').href); const a=await import(pathToFileURL(' + JSON.stringify(path.join(tmp, 'plugin-mermaid.mjs')) + ').href);' : 'const a=await import(pathToFileURL(' + JSON.stringify(path.join(tmp, 'plugin-mermaid.mjs')) + ').href); const b=await import(pathToFileURL(' + JSON.stringify(path.join(tmp, 'plugin-agents.mjs')) + ').href);';
+    const script = 'import {registerHooks} from \'node:module\'; import {pathToFileURL} from \'node:url\'; const loader=await import(' + JSON.stringify(pathToFileURL(loaderPath).href) + '); ' + init + ' ' + imports + ' console.log(JSON.stringify({a:a.result,b:b.result}));';
+    try {
+      const child = spawnSync(process.execPath, ['--input-type=module', '-e', script], { encoding: 'utf8' });
+      assert.equal(child.status, 0, 'child failed status=' + child.status + ': ' + child.stderr);
+      return { data: JSON.parse(child.stdout.trim().split(/\r?\n/).at(-1)), stderr: child.stderr, tmp };
+    } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+  };
+  const ok = run({ status: 'ok', patches: [{ file: 'chunk-qle.mjs', expectedOccurrences: 1 }] });
+  assert.equal(ok.data.a.hooksModule.module.id, 'mod-mermaid');
+  assert.deepEqual(ok.data.a.hooksModule.scan.events, ['ui.render']);
+  assert.equal(Object.hasOwn(ok.data.a.hooksModule, 'folder'), false);
+  assert.deepEqual(ok.data.b.hooksModule.scan.events, ['session.start', 'prompt.context']);
+  assert.equal(ok.stderr, '');
+  const mismatch = run({ status: 'ok', patches: [{ file: 'chunk-qle.mjs', expectedOccurrences: 2 }] });
+  assert.deepEqual(mismatch.data.a.hooksModule, { module: { id: 'mod-mermaid' }, folder: mismatch.tmp });
+  assert.deepEqual(mismatch.data.b.hooksModule, { module: { id: 'mod-agents' }, folder: mismatch.tmp });
+  assert.equal((mismatch.stderr.match(/hooks standalone patch not applied/g) || []).length, 1);
+  const absent = run({ status: 'field-absent' });
+  assert.equal(absent.data.a.hooksModule.folder, absent.tmp);
+  assert.equal(absent.data.b.hooksModule.folder, absent.tmp);
+  assert.equal((absent.stderr.match(/no hooks_standalone_patches record/g) || []).length, 1);
+  const direct = run({ status: 'field-absent' }, false, false);
+  assert.equal(Object.hasOwn(direct.data.a.hooksModule, 'folder'), false);
+  const reversed = run({ status: 'ok', patches: [{ file: 'chunk-qle.mjs', expectedOccurrences: 1 }] }, true);
+  assert.equal(reversed.data.a.hooksModule.module.id, 'mod-mermaid');
+  assert.deepEqual(reversed.data.b.hooksModule.scan.events, ['session.start', 'prompt.context']);
+  assert.equal(Object.hasOwn(reversed.data.a.hooksModule, 'folder'), false);
+  assert.equal(reversed.stderr, '');
+});
+
+test('hooks: cycle-hoist coexists with layer1 qle and import.meta.require transforms', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bunfs-hooks-cycle1-'));
+  const target = path.join(tmp, 'target.mjs');
+  const file = path.join(tmp, 'source.mjs');
+  fs.writeFileSync(path.join(tmp, 'guard.mjs'), 'export {};'); fs.writeFileSync(path.join(tmp, 'vm.mjs'), 'export {};'); fs.writeFileSync(path.join(tmp, 'ws.mjs'), 'export {};');
+  fs.writeFileSync(target, 'export const target=1;');
+  fs.writeFileSync(file, 'var qle=(e,o,r)=>uu()?ar(o,r(),e):{module:o,folder:e};\nvar target=import.meta.require("/$bunfs/root/target.mjs");\nvar cp=import.meta.require("child_process");\nexport {qle,target,cp};');
+  try {
+    loader.initialize({ processOwnedDir: tmp, sourceBin: '/dummy/bin', childProcessGuardPath: path.join(tmp, 'guard.mjs'), vmGuardPath: path.join(tmp, 'vm.mjs'), wsStubPath: path.join(tmp, 'ws.mjs'), cycleHoists: [{ file: 'source.mjs', targetModule: 'target.mjs', expectedOccurrences: 1, assertProperties: [] }], hooksMetadata: { status: 'ok', patches: [{ file: 'source.mjs', expectedOccurrences: 1 }] } });
+    const result = await loader.load(pathToFileURL(file).href, {}, async () => ({}));
+    const hoist = 'import * as __bunfsHoisted_0 from ' + JSON.stringify(pathToFileURL(target).href) + ';';
+    assert.ok(result.source.includes('(!0)?')); assert.ok(result.source.includes(hoist)); assert.ok(result.source.includes('__bunfsMetaRequire("child_process")')); assert.ok(!result.source.includes('import.meta.require("/$bunfs/root/target.mjs")')); assert.ok(result.source.indexOf(hoist) < result.source.indexOf('var qle='));
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+});
+
+test('hooks: cycle-hoist coexists with layer2 shim in implementation order', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bunfs-hooks-cycle2-'));
+  const target = path.join(tmp, 'target.mjs'); const file = path.join(tmp, 'source.mjs');
+  fs.writeFileSync(path.join(tmp, 'guard.mjs'), 'export {};'); fs.writeFileSync(path.join(tmp, 'vm.mjs'), 'export {};'); fs.writeFileSync(path.join(tmp, 'ws.mjs'), 'export {};'); fs.writeFileSync(target, 'export const target=1;');
+  fs.writeFileSync(file, 'var qle=(e,o,r)=>uu()?ar(o,r(),e):{module:o,folder:e};\nvar target=import.meta.require("/$bunfs/root/target.mjs");\nvar cp=import.meta.require("child_process");\nconst dir=import.meta.dir;\nexport {qle,target,cp,dir};');
+  try {
+    loader.initialize({ processOwnedDir: tmp, sourceBin: '/dummy/bin', childProcessGuardPath: path.join(tmp, 'guard.mjs'), vmGuardPath: path.join(tmp, 'vm.mjs'), wsStubPath: path.join(tmp, 'ws.mjs'), cycleHoists: [{ file: 'source.mjs', targetModule: 'target.mjs', expectedOccurrences: 1, assertProperties: [] }], hooksMetadata: { status: 'ok', patches: [{ file: 'source.mjs', expectedOccurrences: 2 }] } });
+    const result = await loader.load(pathToFileURL(file).href, {}, async () => ({}));
+    const hoist = 'import * as __bunfsHoisted_0 from ' + JSON.stringify(pathToFileURL(target).href) + ';'; const shim = 'import.meta.dir ??= import.meta.dirname;\n';
+    assert.ok(result.source.startsWith(hoist)); assert.ok(result.source.includes(shim)); assert.ok(result.source.includes('__bunfsMetaRequire("child_process")')); assert.ok(result.source.indexOf(hoist) < result.source.indexOf(shim)); assert.ok(result.source.indexOf(shim) < result.source.indexOf('var qle='));
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+});
+
+test('load() delegates outside processOwnedDir unchanged without evaluating hooks state', async () => {
+  const loader = await import('./bunfs-esm-loader.mjs'); const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'bunfs-hooks-owned-')); const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'bunfs-hooks-outside-')); const file = path.join(outside, 'outside.mjs');
+  fs.writeFileSync(file, 'import.meta.dir\nexport const value=1;'); const warnings = []; const origError = console.error; console.error = (message) => warnings.push(message);
+  try {
+    loader.initialize({ processOwnedDir: tmp, sourceBin: '/dummy/bin', childProcessGuardPath: path.join(tmp, 'guard.mjs'), vmGuardPath: path.join(tmp, 'vm.mjs'), wsStubPath: path.join(tmp, 'ws.mjs'), hooksMetadata: { status: 'ok', patches: [{ file: '../invalid.js', expectedOccurrences: 1 }] } });
+    const delegated = { format: 'module', source: 'delegated source', shortCircuit: true }; let calls = 0;
+    const result = await loader.load(pathToFileURL(file).href, {}, async () => { calls++; return delegated; });
+    assert.equal(calls, 1); assert.strictEqual(result, delegated); assert.equal(result.source, 'delegated source'); assert.deepEqual(warnings, []);
+  } finally { console.error = origError; fs.rmSync(tmp, { recursive: true, force: true }); fs.rmSync(outside, { recursive: true, force: true }); }
+});

@@ -2241,3 +2241,85 @@ test('stableHash.xxHash64 implementation (G2 v3 implementation)', () => {
     assert.match(testResult, /^[0-9a-z]{1,13}$/, `Bun.hash.xxHash64('x').toString(36) should match pattern in ${markerKey}, got: ${testResult}`);
   }
 });
+
+test('hooksMetadata construction: both helper and bootstrap esmChunkedMain contain same code', () => {
+  const fullScript = fs.readFileSync(scriptPath, 'utf8');
+
+  // Extract hooksMetadata construction snippets from both esmChunkedMain blocks
+  // Pattern: "let hooksMetadata = { status: 'read-failed'..." through "} catch { ... }"
+  const pattern = /let hooksMetadata = \{ status: 'read-failed', patches: \[\] \};[\s\S]*?} catch \{[\s\S]*?\}/g;
+  const matches = fullScript.match(pattern);
+  assert.equal(matches.length, 2, 'should find hooksMetadata code in both helper and bootstrap esmChunkedMain');
+
+  // Verify both are identical
+  assert.equal(matches[0], matches[1], 'hooksMetadata construction should be identical in helper and bootstrap');
+
+  // Extract the first snippet for detailed verification
+  const snippet = matches[0];
+  assert.ok(snippet.includes('const auditedVersionsForHooks = require(path.join(process.env.CLAUDE_TERMUX_PACKAGE_DIR'), 'should construct auditedVersionsForHooks');
+  assert.ok(snippet.includes('const hooksEntry = auditedVersionsForHooks.versions?.[process.env.CURRENT_CLAUDE_VERSION]'), 'should read hooksEntry');
+  assert.ok(snippet.includes("status: 'entry-missing'"), 'should set entry-missing status');
+  assert.ok(snippet.includes("status: 'ok'"), 'should set ok status');
+  assert.ok(snippet.includes("status: 'field-absent'"), 'should set field-absent status');
+});
+
+test('hooksMetadata snippet execution: 4 status cases work correctly', () => {
+  const fullScript = fs.readFileSync(scriptPath, 'utf8');
+  const pattern = /let hooksMetadata = \{ status: 'read-failed', patches: \[\] \};[\s\S]*?} catch \{[\s\S]*?\}/;
+  const match = fullScript.match(pattern);
+  assert.ok(match, 'should find hooksMetadata snippet');
+
+  const snippet = match[0];
+
+  // Case (a): require throws exception → 'read-failed'
+  const testFnA = new Function('require', 'path', 'process', snippet + '; return hooksMetadata;');
+  const resultA = testFnA(
+    () => { throw new Error('not found'); },
+    { join: () => 'dummy' },
+    { env: { CLAUDE_TERMUX_PACKAGE_DIR: 'dummy', CURRENT_CLAUDE_VERSION: '1.0.0' } }
+  );
+  assert.equal(resultA.status, 'read-failed');
+  assert.deepEqual(resultA.patches, []);
+
+  // Case (b): hooksEntry is undefined → 'entry-missing'
+  const testFnB = new Function('require', 'path', 'process', snippet + '; return hooksMetadata;');
+  const resultB = testFnB(
+    (p) => ({ versions: {} }), // no entry for version
+    { join: () => 'dummy' },
+    { env: { CLAUDE_TERMUX_PACKAGE_DIR: 'dummy', CURRENT_CLAUDE_VERSION: 'no.such.version' } }
+  );
+  assert.equal(resultB.status, 'entry-missing');
+
+  // Case (c): hooks_standalone_patches is not an array → 'field-absent'
+  const testFnC = new Function('require', 'path', 'process', snippet + '; return hooksMetadata;');
+  const resultC = testFnC(
+    (p) => ({ versions: { '1.0.0': { hooks_standalone_patches: 'not_array' } } }),
+    { join: () => 'dummy' },
+    { env: { CLAUDE_TERMUX_PACKAGE_DIR: 'dummy', CURRENT_CLAUDE_VERSION: '1.0.0' } }
+  );
+  assert.equal(resultC.status, 'field-absent');
+
+  // Case (d): valid array → 'ok' with patches
+  const testFnD = new Function('require', 'path', 'process', snippet + '; return hooksMetadata;');
+  const patches = [{ file: 'test.js', expectedOccurrences: 1 }];
+  const resultD = testFnD(
+    (p) => ({ versions: { '1.0.0': { hooks_standalone_patches: patches } } }),
+    { join: () => 'dummy' },
+    { env: { CLAUDE_TERMUX_PACKAGE_DIR: 'dummy', CURRENT_CLAUDE_VERSION: '1.0.0' } }
+  );
+  assert.equal(resultD.status, 'ok');
+  assert.deepEqual(resultD.patches, patches);
+});
+
+test('hooksMetadata passed to loaderMod.initialize in both esmChunkedMain', () => {
+  const fullScript = fs.readFileSync(scriptPath, 'utf8');
+
+  // Both helper and bootstrap should have loaderMod.initialize({ ... hooksMetadata, ... })
+  const helperBlock = extractBlock('cat <<\'NODE\' > "$_helper"', '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+  assert.match(helperBlock, /loaderMod\.initialize\(\{[\s\S]*?hooksMetadata,[\s\S]*?\}/, 'helper: hooksMetadata should be passed to initialize');
+
+  // Count occurrences: should see hooksMetadata in initialize arguments
+  const initCalls = fullScript.match(/loaderMod\.initialize\(\{/g) || [];
+  const hooksMetadataInInit = fullScript.match(/hooksMetadata,/g) || [];
+  assert.ok(hooksMetadataInInit.length >= 2, 'hooksMetadata should appear in at least 2 initialize calls (helper + bootstrap)');
+});
