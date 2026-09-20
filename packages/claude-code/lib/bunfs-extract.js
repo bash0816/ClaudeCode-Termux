@@ -9,6 +9,13 @@ const MODULE_TABLE_ENTRY_SIZE = 52;
 const SCAN_CHUNK_SIZE = 1024 * 1024;
 const NAPI_LOADER = 10;
 
+class ModuleGraphNotFoundError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'ModuleGraphNotFoundError';
+  }
+}
+
 function readRange(fd, offset, length) {
   const buf = Buffer.alloc(length);
   const bytesRead = readSync(fd, buf, 0, length, offset);
@@ -26,7 +33,7 @@ function findTrailerOffset(fd, fileSize) {
     const idx = buf.lastIndexOf(TRAILER);
     if (idx >= 0) return start + idx;
   }
-  throw new Error('bunfs-extract: StandaloneModuleGraph trailer not found');
+  throw new ModuleGraphNotFoundError('bunfs-extract: StandaloneModuleGraph trailer not found');
 }
 
 function isSafeUint(value) {
@@ -197,6 +204,8 @@ function readEntryContentPrefix(fd, entryModule, maxLength = 256) {
 }
 
 module.exports = {
+  TRAILER,
+  ModuleGraphNotFoundError,
   discoverModuleGraph,
   extractToProcessOwnedDir,
   cleanupStaleOwnedDirs,

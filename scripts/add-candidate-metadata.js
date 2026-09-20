@@ -40,6 +40,25 @@ function validateHooksStandalonePatches(patches) {
     if (typeof file !== 'string' || file === '') {
       throw new Error('add-candidate-metadata: hooks_standalone_patches entry file must be a non-empty string');
     }
+    // Check for NUL character before using path module functions
+    if (file.includes('\0')) {
+      throw new Error(`add-candidate-metadata: hooks_standalone_patches entry file contains NUL character: ${JSON.stringify(file)}`);
+    }
+    // Check for absolute path
+    if (path.isAbsolute(file)) {
+      throw new Error(`add-candidate-metadata: hooks_standalone_patches entry file must not be absolute: ${file}`);
+    }
+    // Check for '..' in path components
+    const components = file.split(/[\\/]/);
+    if (components.includes('..')) {
+      throw new Error(`add-candidate-metadata: hooks_standalone_patches entry file must not contain '..': ${file}`);
+    }
+    // Check that resolved path stays within base directory
+    const resolved = path.resolve('/x', file);
+    const relative = path.relative('/x', resolved);
+    if (relative.startsWith('..')) {
+      throw new Error(`add-candidate-metadata: hooks_standalone_patches entry file resolves outside base directory: ${file}`);
+    }
     if (!Number.isInteger(expectedOccurrences) || expectedOccurrences < 1) {
       throw new Error('add-candidate-metadata: hooks_standalone_patches entry expectedOccurrences must be an integer >= 1');
     }

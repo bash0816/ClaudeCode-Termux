@@ -431,11 +431,16 @@ function discoverEsmChunkedOffsets(binary, packDir) {
   // エントリモジュール("cli")の実コンテンツ先頭を見て、CJSラッパー関数
   // (`function(exports, require, module, __filename, __dirname) {`)で始まって
   // いなければesm-chunkedと判定する。
-  const { discoverModuleGraph, readEntryContentPrefix } = require(path.join(__dirname, '..', 'packages', 'claude-code', 'lib', 'bunfs-extract.js'));
+  const { discoverModuleGraph, readEntryContentPrefix, ModuleGraphNotFoundError } = require(path.join(__dirname, '..', 'packages', 'claude-code', 'lib', 'bunfs-extract.js'));
   let graph;
   try {
     try { graph = discoverModuleGraph(binary); }
-    catch (error) { throw new NotEsmChunkedError(`discoverModuleGraph failed: ${error.message}`, { cause: error }); }
+    catch (error) {
+      if (error instanceof ModuleGraphNotFoundError) {
+        throw new NotEsmChunkedError(`discoverModuleGraph failed: ${error.message}`, { cause: error });
+      }
+      throw error;
+    }
     const prefix = readEntryContentPrefix(graph.fd, graph.entryModule, 256).toString('utf8');
     const cjsWrapperPrefix = 'function(exports, require, module, __filename, __dirname) {';
     // コメント行を除いた実コード部分がCJSラッパーで始まっていればlegacy-cjs形式であり、

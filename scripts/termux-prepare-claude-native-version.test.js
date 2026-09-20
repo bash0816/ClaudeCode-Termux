@@ -8,6 +8,7 @@ const os = require('os');
 const path = require('path');
 
 const { analyzeCycleHoists, discoverHooksStandalonePatches, discoverOffsets, NotEsmChunkedError, main } = require('./termux-prepare-claude-native-version.js');
+const { TRAILER } = require('../packages/claude-code/lib/bunfs-extract.js');
 
 function makeTempDir(prefix) {
   const baseDir = process.env.TMPDIR || (process.env.PREFIX ? path.join(process.env.PREFIX, 'tmp') : os.tmpdir());
@@ -215,6 +216,19 @@ test('discoverHooksStandalonePatches: parse and acorn version failures', () => {
 test('discoverOffsets: non-ESM falls through, audit errors do not', () => withHooksFixture({ bin: 'x' }, (dir) => {
   const bin=path.join(dir,'bin'); const legacy=discoverOffsets(bin,dir,{discoverEsmChunkedOffsets:()=>{throw new NotEsmChunkedError('not esm');},discoverLegacyCjsOffsets:()=>({entry_format:'legacy-cjs'})}); assert.equal(legacy.entry_format,'legacy-cjs');
   let called=false; assert.throws(()=>discoverOffsets(bin,dir,{discoverEsmChunkedOffsets:()=>{throw new Error('audit failed');},discoverLegacyCjsOffsets:()=>{called=true;return null;}}),/audit failed/); assert.equal(called,false);
+}));
+test('discoverOffsets: malformed graph with trailer rejects without legacy detection', () => withHooksFixture({ bin: Buffer.concat([Buffer.from('malformed graph'), TRAILER]) }, (dir) => {
+  const bin = path.join(dir, 'bin');
+  let called = 0;
+  assert.throws(() => discoverOffsets(bin, dir, { discoverLegacyCjsOffsets: () => { called += 1; return { entry_format: 'legacy-cjs' }; } }), /invalid trailer position/);
+  assert.equal(called, 0);
+}));
+test('discoverOffsets: binary without trailer falls through to legacy detection', () => withHooksFixture({ bin: Buffer.from('no standalone module graph trailer') }, (dir) => {
+  const bin = path.join(dir, 'bin');
+  let called = 0;
+  const result = discoverOffsets(bin, dir, { discoverLegacyCjsOffsets: () => { called += 1; return { entry_format: 'legacy-cjs' }; } });
+  assert.equal(result.entry_format, 'legacy-cjs');
+  assert.equal(called, 1);
 }));
 test('discoverOffsets: cycle analysis failure does not call legacy detector', () => withHooksFixture({ bin: 'x' }, (dir) => { let called=false; assert.throws(() => discoverOffsets(path.join(dir,'bin'),dir,{discoverEsmChunkedOffsets:()=>{throw new Error('cycle failed');},discoverLegacyCjsOffsets:()=>{called=true;return null;}}),/cycle failed/); assert.equal(called,false); }));
 test('discoverOffsets: non-ESM/non-legacy preserves error wording', () => withHooksFixture({ bin: 'x' }, (dir) => assert.throws(() => discoverOffsets(path.join(dir,'bin'),dir,{discoverEsmChunkedOffsets:()=>{throw new NotEsmChunkedError('not esm');},discoverLegacyCjsOffsets:()=>null}), /failed to find embedded JS start marker.*legacy-cjs marker also not found/)));
