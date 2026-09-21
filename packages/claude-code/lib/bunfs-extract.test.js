@@ -8,13 +8,13 @@ const path = require('node:path');
 
 const {
   discoverModuleGraph,
+  ModuleGraphNotFoundError,
+  TRAILER,
   extractToProcessOwnedDir,
   cleanupStaleOwnedDirs,
   prepareProcessOwnedDir,
   readEntryContentPrefix,
 } = require('./bunfs-extract.js');
-
-const TRAILER = '\n---- Bun! ----\n';
 
 // StandaloneModuleGraphの最小合成バイナリを構築する。
 // レイアウト: [preamble padding][module contents][module table][Offsets(32byte)][trailer]
@@ -58,7 +58,7 @@ function buildSyntheticBinary({ modules, entryPointId, corruptTrailer = false, p
   offsetsBuf.writeUInt32LE(modulesLength, 12);
   offsetsBuf.writeUInt32LE(entryPointId, 16);
 
-  const trailerBuf = Buffer.from(corruptTrailer ? '\n---- NOT BUN ----\n' : TRAILER, 'utf8');
+  const trailerBuf = corruptTrailer ? Buffer.from('\n---- NOT BUN ----\n', 'utf8') : TRAILER;
 
   return Buffer.concat([
     Buffer.alloc(preamblePadding),
@@ -109,6 +109,39 @@ test('discoverModuleGraph rejects a binary with a corrupted trailer', () => {
   const file = writeTempBinary(buf);
   try {
     assert.throws(() => discoverModuleGraph(file), /trailer not found/);
+  } finally {
+    fs.rmSync(file, { force: true });
+  }
+});
+
+test('discoverModuleGraph throws ModuleGraphNotFoundError when the trailer is absent', () => {
+  const file = writeTempBinary(Buffer.from('not a bun standalone module graph'));
+  try {
+    assert.throws(() => discoverModuleGraph(file), (error) => {
+      assert.ok(error instanceof ModuleGraphNotFoundError);
+      assert.match(error.message, /trailer not found/);
+      return true;
+    });
+  } finally {
+    fs.rmSync(file, { force: true });
+  }
+});
+
+test('discoverModuleGraph throws plain Error for a malformed graph with a trailer', () => {
+  const buf = buildSyntheticBinary({
+    modules: [{ name: '/$bunfs/root/cli', content: 'x' }],
+    entryPointId: 0,
+  });
+  const offsetsStart = buf.length - TRAILER.length - 32;
+  buf.writeUInt32LE(1, offsetsStart + 12);
+  const file = writeTempBinary(buf);
+  try {
+    assert.throws(() => discoverModuleGraph(file), (error) => {
+      assert.ok(error instanceof Error);
+      assert.equal(error instanceof ModuleGraphNotFoundError, false);
+      assert.match(error.message, /module table length is not a multiple/);
+      return true;
+    });
   } finally {
     fs.rmSync(file, { force: true });
   }

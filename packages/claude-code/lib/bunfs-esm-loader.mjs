@@ -4,6 +4,7 @@ import { createRequire, syncBuiltinESMExports } from 'node:module';
 import path from 'node:path';
 
 const require = createRequire(import.meta.url);
+const { countQleMatches, applyQlePatch } = require('./hooks-standalone-pattern.js');
 
 let PROCESS_OWNED_DIR = null;
 let SOURCE_BIN = null;
@@ -12,6 +13,10 @@ let VM_GUARD_PATH = null;
 let WS_STUB_PATH = null;
 
 let CYCLE_HOISTS = [];
+
+let HOOKS_METADATA = { status: 'field-absent', patches: [] };
+let hooksLayerState = null;
+let hooksFallbackWarned = false;
 
 let REEXTRACT = null;
 let reExtractConsecFailures = 0;
@@ -52,6 +57,31 @@ function resolveBunfsPath(id) {
   return real;
 }
 
+function normalizeHooksMetadata(m) {
+  if (!m || typeof m !== 'object') {
+    return { status: 'field-absent', patches: [] };
+  }
+  let status = m.status;
+  if (!['ok', 'field-absent', 'entry-missing', 'read-failed'].includes(status)) {
+    status = 'read-failed';
+  }
+  let patches = m.patches;
+  if (!Array.isArray(patches)) {
+    if (status === 'ok') {
+      return { status: 'field-absent', patches: [] };
+    }
+    patches = [];
+  }
+  return { status, patches };
+}
+
+function warnOnce(message) {
+  if (!hooksFallbackWarned) {
+    console.error('[claude-code] ' + message);
+    hooksFallbackWarned = true;
+  }
+}
+
 export function initialize(data) {
   PROCESS_OWNED_DIR = data.processOwnedDir;
   SOURCE_BIN = data.sourceBin;
@@ -60,11 +90,124 @@ export function initialize(data) {
   WS_STUB_PATH = data.wsStubPath;
   CYCLE_HOISTS = Array.isArray(data.cycleHoists) ? data.cycleHoists : [];
   REEXTRACT = typeof data.reExtract === 'function' ? data.reExtract : null;
+  HOOKS_METADATA = normalizeHooksMetadata(data.hooksMetadata);
+  hooksLayerState = null;
+  hooksFallbackWarned = false;
   globalThis.__bunfsRecoverMissing = recoverMissing;
   globalThis.__bunfsResolvePath = resolveBunfsPath;
   // 回復状態のリセット (テスト隔離・再 initialize 対応)
   reExtractConsecFailures = 0;
   lastReExtractMs = 0;
+}
+
+function ensureHooksLayerState() {
+  if (hooksLayerState !== null) {
+    return hooksLayerState;
+  }
+
+  const layer1 = new Map();
+  let layer2 = true;
+  const { status, patches } = HOOKS_METADATA;
+
+  if (status === 'ok' && Array.isArray(patches) && patches.length > 0) {
+    // 全記録について「成立」判定を先読み＋各失敗箇所で理由を設定
+    let allValid = true;
+    let failReason = 'unknown reason';
+    const seenFiles = new Set();
+
+    for (const record of patches) {
+      // (a) オブジェクト、file が空でない文字列、.. を含まない、絶対パスでない、PROCESS_OWNED_DIR 配下
+      if (!record || typeof record !== 'object') {
+        failReason = 'invalid record';
+        allValid = false;
+        break;
+      }
+      if (typeof record.file !== 'string' || !record.file) {
+        failReason = 'invalid file field';
+        allValid = false;
+        break;
+      }
+      if (record.file.includes('..')) {
+        failReason = 'file contains ..';
+        allValid = false;
+        break;
+      }
+      if (path.isAbsolute(record.file)) {
+        failReason = 'file is absolute path';
+        allValid = false;
+        break;
+      }
+      const real = path.resolve(PROCESS_OWNED_DIR, record.file);
+      if (path.relative(PROCESS_OWNED_DIR, real).startsWith('..')) {
+        failReason = 'path escapes owned dir';
+        allValid = false;
+        break;
+      }
+
+      // (b) expectedOccurrences が 1 以上の整数
+      if (!Number.isInteger(record.expectedOccurrences) || record.expectedOccurrences < 1) {
+        failReason = 'invalid expectedOccurrences';
+        allValid = false;
+        break;
+      }
+
+      // (c) file が他の記録と重複していない
+      if (seenFiles.has(record.file)) {
+        failReason = 'duplicate file';
+        allValid = false;
+        break;
+      }
+      seenFiles.add(record.file);
+
+      // (d) 対象ファイルを読める
+      let fileSource;
+      if (!existsSync(real)) {
+        if (!recoverMissing(real)) {
+          failReason = 'file not found or recovery failed';
+          allValid = false;
+          break;
+        }
+      }
+      try {
+        fileSource = readFileSync(real, 'utf8');
+      } catch {
+        failReason = 'file read failed';
+        allValid = false;
+        break;
+      }
+
+      // (e) countQleMatches が expectedOccurrences と一致
+      if (countQleMatches(fileSource) !== record.expectedOccurrences) {
+        const actual = countQleMatches(fileSource);
+        failReason = `occurrence count mismatch (expected ${record.expectedOccurrences}, found ${actual})`;
+        allValid = false;
+        break;
+      }
+    }
+
+    if (allValid) {
+      // 全件成立: layer1 に記録を詰める
+      for (const record of patches) {
+        layer1.set(record.file, record.expectedOccurrences);
+      }
+      layer2 = false;
+    } else {
+      // 1件でも不成立: layer1 空, layer2=true, 警告1回
+      warnOnce(`hooks standalone patch not applied (${failReason}); falling back to import.meta.dir shim (built-in plugin hooks degraded)`);
+    }
+  } else if (status === 'field-absent') {
+    // layer2=true, 警告は前置が実際に行われたときのみ
+    layer2 = true;
+  } else if (status === 'entry-missing') {
+    layer2 = true;
+    warnOnce('audited metadata entry missing for this version; built-in plugin hooks may be degraded');
+  } else if (status === 'read-failed') {
+    layer2 = true;
+    warnOnce('audited metadata could not be read; built-in plugin hooks may be degraded');
+  }
+
+  hooksLayerState = { layer1, layer2 };
+  return hooksLayerState;
 }
 
 function tryHoistCycleBreakingImports(filePath, source) {
@@ -212,6 +355,19 @@ export function load(url, context, nextLoad) {
       source = readFileSync(filePath, 'utf8');
     } else {
       throw e;
+    }
+  }
+
+  // 層1・層2処理
+  const rel = path.relative(PROCESS_OWNED_DIR, filePath);
+  const st = ensureHooksLayerState();
+  if (st.layer1.has(rel)) {
+    source = applyQlePatch(source);
+  }
+  if (st.layer2 && /\bimport\.meta\.dir\b/.test(source)) {
+    source = 'import.meta.dir ??= import.meta.dirname;\n' + source;
+    if (HOOKS_METADATA.status === 'field-absent') {
+      warnOnce('no hooks_standalone_patches record for this version but Bun-only import.meta.dir found in ' + rel + '; using import.meta.dir shim (built-in plugin hooks degraded)');
     }
   }
 

@@ -718,6 +718,17 @@ async function esmChunkedMain() {
     // 読み込み失敗時は空配列のまま(fail-closed、既存の同期require経路にフォールバック)
   }
 
+  let hooksMetadata = { status: 'read-failed', patches: [] };
+  try {
+    const auditedVersionsForHooks = require(path.join(process.env.CLAUDE_TERMUX_PACKAGE_DIR, 'config', 'claude-native-audited-versions.json'));
+    const hooksEntry = auditedVersionsForHooks.versions?.[process.env.CURRENT_CLAUDE_VERSION];
+    if (!hooksEntry) hooksMetadata = { status: 'entry-missing', patches: [] };
+    else if (Array.isArray(hooksEntry.hooks_standalone_patches)) hooksMetadata = { status: 'ok', patches: hooksEntry.hooks_standalone_patches };
+    else hooksMetadata = { status: 'field-absent', patches: [] };
+  } catch {
+    // 既定の read-failed のまま(fail-visible: ローダーが警告する)
+  }
+
   const loaderMod = require(path.join(libDir, 'bunfs-esm-loader.mjs'));
   loaderMod.initialize({
     processOwnedDir: ownedDir,
@@ -726,6 +737,7 @@ async function esmChunkedMain() {
     vmGuardPath: path.join(libDir, 'bunfs-vm-guard.mjs'),
     wsStubPath: path.join(libDir, 'bunfs-ws-stub.mjs'),
     cycleHoists,
+    hooksMetadata,
     reExtract: (sb, od) => extractToProcessOwnedDir(sb, od),
   });
   loaderMod.installFsBunfsInterception();
@@ -1768,6 +1780,17 @@ async function esmChunkedMain() {
     // 読み込み失敗時は空配列のまま(fail-closed、既存の同期require経路にフォールバック)
   }
 
+  let hooksMetadata = { status: 'read-failed', patches: [] };
+  try {
+    const auditedVersionsForHooks = require(path.join(process.env.CLAUDE_TERMUX_PACKAGE_DIR, 'config', 'claude-native-audited-versions.json'));
+    const hooksEntry = auditedVersionsForHooks.versions?.[process.env.CURRENT_CLAUDE_VERSION];
+    if (!hooksEntry) hooksMetadata = { status: 'entry-missing', patches: [] };
+    else if (Array.isArray(hooksEntry.hooks_standalone_patches)) hooksMetadata = { status: 'ok', patches: hooksEntry.hooks_standalone_patches };
+    else hooksMetadata = { status: 'field-absent', patches: [] };
+  } catch {
+    // 既定の read-failed のまま(fail-visible: ローダーが警告する)
+  }
+
   const loaderMod = require(path.join(libDir, 'bunfs-esm-loader.mjs'));
   loaderMod.initialize({
     processOwnedDir: ownedDir,
@@ -1776,6 +1799,7 @@ async function esmChunkedMain() {
     vmGuardPath: path.join(libDir, 'bunfs-vm-guard.mjs'),
     wsStubPath: path.join(libDir, 'bunfs-ws-stub.mjs'),
     cycleHoists,
+    hooksMetadata,
     reExtract: (sb, od) => extractToProcessOwnedDir(sb, od),
   });
   loaderMod.installFsBunfsInterception();

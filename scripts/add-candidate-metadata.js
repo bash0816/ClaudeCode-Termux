@@ -27,6 +27,52 @@ function loadJson(file) {
   }
 }
 
+function validateHooksStandalonePatches(patches) {
+  if (!Array.isArray(patches)) {
+    throw new Error('add-candidate-metadata: hooks_standalone_patches must be an array');
+  }
+  const seenFiles = new Set();
+  for (const entry of patches) {
+    if (typeof entry !== 'object' || entry === null) {
+      throw new Error('add-candidate-metadata: each hooks_standalone_patches entry must be an object');
+    }
+    const { file, expectedOccurrences } = entry;
+    if (typeof file !== 'string' || file === '') {
+      throw new Error('add-candidate-metadata: hooks_standalone_patches entry file must be a non-empty string');
+    }
+    // Check for NUL character before using path module functions
+    if (file.includes('\0')) {
+      throw new Error(`add-candidate-metadata: hooks_standalone_patches entry file contains NUL character: ${JSON.stringify(file)}`);
+    }
+    // Check for absolute path
+    if (path.isAbsolute(file)) {
+      throw new Error(`add-candidate-metadata: hooks_standalone_patches entry file must not be absolute: ${file}`);
+    }
+    // Check for '..' in path components
+    const components = file.split(/[\\/]/);
+    if (components.includes('..')) {
+      throw new Error(`add-candidate-metadata: hooks_standalone_patches entry file must not contain '..': ${file}`);
+    }
+    // Check for '..' anywhere in the file path (matching loader's includes('..')  check)
+    if (file.includes('..')) {
+      throw new Error(`add-candidate-metadata: hooks_standalone_patches entry file contains '..' substring: ${file}`);
+    }
+    // Check that resolved path stays within base directory
+    const resolved = path.resolve('/x', file);
+    const relative = path.relative('/x', resolved);
+    if (relative.startsWith('..')) {
+      throw new Error(`add-candidate-metadata: hooks_standalone_patches entry file resolves outside base directory: ${file}`);
+    }
+    if (!Number.isInteger(expectedOccurrences) || expectedOccurrences < 1) {
+      throw new Error('add-candidate-metadata: hooks_standalone_patches entry expectedOccurrences must be an integer >= 1');
+    }
+    if (seenFiles.has(file)) {
+      throw new Error(`add-candidate-metadata: duplicate file in hooks_standalone_patches: ${file}`);
+    }
+    seenFiles.add(file);
+  }
+}
+
 function assertSameVersionKeys() {
   const rootConfig = loadJson(configFiles[0]);
   const packageConfig = loadJson(configFiles[1]);
@@ -66,6 +112,11 @@ function main() {
     if (Object.prototype.hasOwnProperty.call(offsets, 'cycle_hoists_skipped_assets')) {
       versionEntry.cycle_hoists_skipped_assets = offsets.cycle_hoists_skipped_assets;
     }
+    if (!Object.prototype.hasOwnProperty.call(offsets, 'hooks_standalone_patches')) {
+      throw new Error('add-candidate-metadata: esm-chunked candidate is missing hooks_standalone_patches field (audit incomplete)');
+    }
+    validateHooksStandalonePatches(offsets.hooks_standalone_patches);
+    versionEntry.hooks_standalone_patches = offsets.hooks_standalone_patches;
   } else {
     if (!(offsets.entry_js_offset > 0) || !(offsets.entry_end_offset > offsets.entry_js_offset)) {
       throw new Error('legacy-cjs offsets missing entry_js_offset/entry_end_offset');
