@@ -37,7 +37,7 @@ npm が `claude` bin link を管理する状態になれば、通常の `npm ins
 Latest audited version / 最新監査済み版:
 
 ```sh
-npm install -g @bash0816/claude-code@2.1.272
+npm install -g @bash0816/claude-code@2.1.276-1
 ```
 
 ## Update / 更新
@@ -140,8 +140,8 @@ force-enable するには `env` ブロックを使う必要があります：
 { "env": { "ENABLE_TOOL_SEARCH": "force" } }
 ```
 
-> **お知らせ / Notice (2026-09-21)**: 2.1.276 は、特定の条件で起動しない問題が見つかったため、推奨から外しました。`latest` は **2.1.272** に戻しています（rollback 先: 2.1.270）。すでに 2.1.276 をお使いで起動しない場合は `npm install -g @bash0816/claude-code@2.1.272` で戻してください。修正版を準備中です。
-> Version 2.1.276 is withdrawn because it may fail to start under certain conditions. `latest` is back to **2.1.272** (rollback target: 2.1.270). If 2.1.276 does not start for you, run `npm install -g @bash0816/claude-code@2.1.272`. A fixed release is in preparation.
+> **お知らせ / Notice (2026-09-21)**: 2.1.276 は、特定の条件で起動しない問題があったため取り下げ、修正版 **2.1.276-1** を `latest` として公開しました。2.1.276 をお使いの場合は `npm install -g @bash0816/claude-code@latest` で更新してください。
+> Version 2.1.276 was withdrawn because it could fail to start under certain conditions. The fixed release **2.1.276-1** is now `latest`. If you are on 2.1.276, update with `npm install -g @bash0816/claude-code@latest`.
 
 ## Policy / 方針
 
