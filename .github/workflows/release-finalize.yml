@@ -105,7 +105,12 @@ jobs:
           notes="${NOTES:-}"
           if [ -z "$notes" ]; then
             upstream_tag="v${VER}"
-            upstream_body=$(gh api "repos/anthropics/claude-code/releases/tags/${upstream_tag}" --jq '.body' 2>/dev/null || echo "")
+            if ! upstream_body=$(gh api "repos/anthropics/claude-code/releases/tags/${upstream_tag}" --jq '.body' 2>/dev/null); then
+              upstream_body=""
+            fi
+            if [ -z "${upstream_body:-}" ] || [ "$upstream_body" = "null" ]; then
+              upstream_body=""
+            fi
             if [ -n "$upstream_body" ]; then
               notes=$(printf 'upstream claude-code %s 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。\n\n**Upstream highlights / 主な変更（upstream）**\n\n%s' \
                 "$VER" "$upstream_body")
