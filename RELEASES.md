@@ -1,3 +1,23 @@
+## 2.1.278 — 2026-09-23 ✅ Current audited / 現在の監査済み版
+
+upstream claude-code 2.1.278 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
+
+**Upstream highlights / 主な変更（upstream）**
+
+## What's changed
+
+- Changed auto mode for Claude API and Enterprise users, and on Bedrock, Vertex, Foundry and gateways, to default to the server-side classifier, which does not charge for classifier overhead (`CLAUDE_CODE_AUTO_MODE_SERVER=0` opts out on Bedrock, Vertex, Foundry and gateways); warns on billed fallback. See https://code.claude.com/docs/en/auto-mode-classifier-billing
+- Added an `Auto mode server` row to `/status` showing whether this session's auto mode classifier runs on the server
+
+```sh
+npm install -g @bash0816/claude-code@latest
+```
+
+```sh
+npm install -g @bash0816/claude-code@2.1.276-1
+```
+
+---
 ## 2.1.276-1 — 2026-09-21 ✅ Current audited / 現在の監査済み版
 
 upstream claude-code 2.1.276-1 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
