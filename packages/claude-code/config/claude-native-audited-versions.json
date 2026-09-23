@@ -2272,6 +2272,47 @@
           "expectedOccurrences": 1
         }
       ]
+    },
+    "2.1.281": {
+      "wrapper_spec": "@anthropic-ai/claude-code@2.1.281",
+      "native_spec": "@anthropic-ai/claude-code-linux-arm64@2.1.281",
+      "entry_format": "esm-chunked",
+      "tarball_integrity": "sha512-xY37iXJ+v6izc2yArEUD8T3d7S45GIztzsSW+fWv8KB63buuO1qhN6Eqzq2yR3RqWBMjwiRL/BbkLB8FZWBsXw==",
+      "tarball_sha256": "f98f689be21ef73428ccdbacba561a14c56bbf54a06905a35af6dd59817cbf7a",
+      "status": "offset_discovered",
+      "num_modules": 2249,
+      "byte_count": 148334523,
+      "cycle_hoists": [
+        {
+          "file": "chunk-k0q6ndrk.js",
+          "targetModule": "chunk-2w167jk3.js",
+          "expectedOccurrences": 1,
+          "assertProperties": [
+            "default"
+          ]
+        },
+        {
+          "file": "chunk-k0q6ndrk.js",
+          "targetModule": "chunk-p258fst0.js",
+          "expectedOccurrences": 3,
+          "assertProperties": [
+            "getWorkflowCommands",
+            "invalidateWorkflowCache",
+            "warmWorkflows"
+          ]
+        }
+      ],
+      "cycle_hoists_skipped_assets": [
+        "chart.umd.min.js",
+        "hljsBundle.generated.min.js",
+        "mermaid.min.js"
+      ],
+      "hooks_standalone_patches": [
+        {
+          "file": "chunk-8c25et1q.js",
+          "expectedOccurrences": 1
+        }
+      ]
     }
   }
 }
