@@ -45,7 +45,7 @@ Existing users on older installs should keep using `claude update` to migrate on
 Latest audited version / 最新監査済み版:
 
 ```sh
-npm install -g @bash0816/claude-code@2.1.284
+npm install -g @bash0816/claude-code@2.1.285
 ```
 
 ## Update / 更新
@@ -88,8 +88,8 @@ Only versions registered in the audited metadata can run.
 <!-- SUPPORTED_VERSIONS_TABLE_START -->
 | Version | Status |
 |---------|--------|
-| `2.1.284` | ✅ **Recommended / 推奨** — latest |
-| `2.1.283` | ✅ rollback version |
+| `2.1.285` | ✅ **Recommended / 推奨** — latest |
+| `2.1.284` | ✅ rollback version |
 | `2.1.220-2` | ✅ stable — `@stable` dist-tag |
 <!-- SUPPORTED_VERSIONS_TABLE_END -->
 
@@ -100,11 +100,11 @@ Only versions registered in the audited metadata can run.
 **日本語:** バージョン 2.1.206-1 (候補版) では、Termux 版の `/model` コマンドで Fable 5 モデル選択肢が表示されない不具合を修正しました。原因は起動時に `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` が強制 export されており、upstream の Bootstrap 処理（モデル取得）が抑制されていました。
 
 <!-- UPSTREAM_VERSION_START -->
-Official upstream (`@anthropic-ai/claude-code`): latest `2.1.284` / stable `2.1.277`
-This repo's latest audited release (release manifest): `2.1.284`
+Official upstream (`@anthropic-ai/claude-code`): latest `2.1.285` / stable `2.1.280`
+This repo's latest audited release (release manifest): `2.1.285`
 
-公式 upstream (`@anthropic-ai/claude-code`): latest `2.1.284` / stable `2.1.277`
-この repo の latest audited release (release manifest 基準): `2.1.284`
+公式 upstream (`@anthropic-ai/claude-code`): latest `2.1.285` / stable `2.1.280`
+この repo の latest audited release (release manifest 基準): `2.1.285`
 <!-- UPSTREAM_VERSION_END -->
 
 For the full version history, see [RELEASES.md](RELEASES.md).
@@ -165,7 +165,7 @@ Example:
 例:
 
 ```text
-2.1.284 (Claude Code)
+2.1.285 (Claude Code)
 ```
 
 ## Do Not Use / 非推奨
