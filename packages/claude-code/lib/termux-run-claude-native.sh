@@ -311,6 +311,20 @@ stableHash.xxHash64 = function bunHashXxHash64(value, seed) {
   return (BigInt(hi) << 32n) | BigInt(lo);
 };
 
+stableHash.crc32 = function bunHashCrc32(data, seed) {
+  let buf;
+  if (typeof data === 'string') {
+    buf = Buffer.from(data, 'utf8');
+  } else if (data instanceof ArrayBuffer) {
+    buf = Buffer.from(data);
+  } else if (data && typeof data === 'object' && data.buffer instanceof ArrayBuffer) {
+    buf = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+  } else {
+    buf = Buffer.from(data);
+  }
+  return require('node:zlib').crc32(buf, seed === undefined ? 0 : seed >>> 0);
+};
+
 function replaceRequired(source, pattern, replacement, label, expectedCount) {
   const text = String(source);
   const matches = text.match(pattern);
@@ -686,6 +700,26 @@ async function esmChunkedMain() {
     wrapAnsi,
     stripANSI,
     hash: stableHash,
+    SHA256: {
+      hash(data, encoding) {
+        let buf;
+        if (typeof data === 'string') {
+          buf = Buffer.from(data, 'utf8');
+        } else if (data instanceof ArrayBuffer) {
+          buf = Buffer.from(data);
+        } else if (data && typeof data === 'object' && data.buffer instanceof ArrayBuffer) {
+          buf = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+        } else {
+          buf = Buffer.from(data);
+        }
+        const digest = require('node:crypto').createHash('sha256').update(buf).digest();
+        if (encoding) {
+          return digest.toString(encoding);
+        } else {
+          return new Uint8Array(digest);
+        }
+      }
+    },
     which: (cmd) => {
       try {
         return require('child_process').execFileSync('which', [String(cmd)], { encoding: 'utf8' }).trim() || null;
@@ -960,6 +994,26 @@ async function legacyCjsMain() {
       wrapAnsi,
       stripANSI,
       hash: stableHash,
+      SHA256: {
+        hash(data, encoding) {
+          let buf;
+          if (typeof data === 'string') {
+            buf = Buffer.from(data, 'utf8');
+          } else if (data instanceof ArrayBuffer) {
+            buf = Buffer.from(data);
+          } else if (data && typeof data === 'object' && data.buffer instanceof ArrayBuffer) {
+            buf = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+          } else {
+            buf = Buffer.from(data);
+          }
+          const digest = require('node:crypto').createHash('sha256').update(buf).digest();
+          if (encoding) {
+            return digest.toString(encoding);
+          } else {
+            return new Uint8Array(digest);
+          }
+        }
+      },
       which: (cmd) => {
         try {
           return _realChild.execFileSync('which', [String(cmd)], { encoding: 'utf8' }).trim() || null;
@@ -1373,6 +1427,20 @@ stableHash.xxHash64 = function bunHashXxHash64(value, seed) {
   return (BigInt(hi) << 32n) | BigInt(lo);
 };
 
+stableHash.crc32 = function bunHashCrc32(data, seed) {
+  let buf;
+  if (typeof data === 'string') {
+    buf = Buffer.from(data, 'utf8');
+  } else if (data instanceof ArrayBuffer) {
+    buf = Buffer.from(data);
+  } else if (data && typeof data === 'object' && data.buffer instanceof ArrayBuffer) {
+    buf = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+  } else {
+    buf = Buffer.from(data);
+  }
+  return require('node:zlib').crc32(buf, seed === undefined ? 0 : seed >>> 0);
+};
+
 function replaceRequired(source, pattern, replacement, label, expectedCount) {
   const text = String(source);
   const matches = text.match(pattern);
@@ -1748,6 +1816,26 @@ async function esmChunkedMain() {
     wrapAnsi,
     stripANSI,
     hash: stableHash,
+    SHA256: {
+      hash(data, encoding) {
+        let buf;
+        if (typeof data === 'string') {
+          buf = Buffer.from(data, 'utf8');
+        } else if (data instanceof ArrayBuffer) {
+          buf = Buffer.from(data);
+        } else if (data && typeof data === 'object' && data.buffer instanceof ArrayBuffer) {
+          buf = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+        } else {
+          buf = Buffer.from(data);
+        }
+        const digest = require('node:crypto').createHash('sha256').update(buf).digest();
+        if (encoding) {
+          return digest.toString(encoding);
+        } else {
+          return new Uint8Array(digest);
+        }
+      }
+    },
     which: (cmd) => {
       try {
         return require('child_process').execFileSync('which', [String(cmd)], { encoding: 'utf8' }).trim() || null;
@@ -2024,6 +2112,26 @@ async function legacyCjsMain() {
       wrapAnsi,
       stripANSI,
       hash: stableHash,
+      SHA256: {
+        hash(data, encoding) {
+          let buf;
+          if (typeof data === 'string') {
+            buf = Buffer.from(data, 'utf8');
+          } else if (data instanceof ArrayBuffer) {
+            buf = Buffer.from(data);
+          } else if (data && typeof data === 'object' && data.buffer instanceof ArrayBuffer) {
+            buf = Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+          } else {
+            buf = Buffer.from(data);
+          }
+          const digest = require('node:crypto').createHash('sha256').update(buf).digest();
+          if (encoding) {
+            return digest.toString(encoding);
+          } else {
+            return new Uint8Array(digest);
+          }
+        }
+      },
       which: (cmd) => {
         try {
           return _realChild.execFileSync('which', [String(cmd)], { encoding: 'utf8' }).trim() || null;

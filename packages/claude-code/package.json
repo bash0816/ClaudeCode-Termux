@@ -10,6 +10,7 @@
   "files": [
     "bin/",
     "lib/",
+    "!lib/test-fixtures/**",
     "config/",
     "README.md",
     "LICENSE"
