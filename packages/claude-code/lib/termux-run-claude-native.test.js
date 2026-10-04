@@ -2242,6 +2242,45 @@ test('stableHash.xxHash64 implementation (G2 v3 implementation)', () => {
   }
 });
 
+test('stableHash.crc32 and Bun.SHA256 implementation (all shim additions)', () => {
+  const crypto = require('node:crypto');
+  const helperBlock = extractBlock("cat <<'NODE' > \"$_helper\"", '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+  const bootstrapBlock = extractBlock("cat <<'NODE' > \"$_bootstrap\"", '\n  export ENABLE_CLAUDEAI_MCP_SERVERS=');
+  function balancedObject(text, start) {
+    let depth = 0, quote = '', escaped = false;
+    for (let i = start; i < text.length; i++) { const c = text[i];
+      if (quote) { if (escaped) escaped = false; else if (c === '\\\\') escaped = true; else if (c === quote) quote = ''; continue; }
+      if (c === '"' || c === "'" || c === '`') quote = c; else if (c === '{') depth++; else if (c === '}' && --depth === 0) return text.slice(start, i + 1);
+    } throw new Error('unbalanced object');
+  }
+  const blocks = [helperBlock, bootstrapBlock];
+  const shaSources = blocks.flatMap(block => [...block.matchAll(/SHA256:\s*\{/g)].map(m => balancedObject(block, m.index + m[0].indexOf('{'))));
+  const crcSources = blocks.flatMap(block => [...block.matchAll(/stableHash\.crc32\s*=\s*function\s+bunHashCrc32/g)].map(m => {
+    const start = block.lastIndexOf('function stableHash(value, seed) {', m.index);
+    return block.slice(start, block.indexOf('\n};', start) + 3) + '\n' + block.slice(m.index, block.indexOf('};', m.index) + 2) + '\nmodule.exports=stableHash.crc32;';
+  }));
+  assert.equal(shaSources.length, 4); assert.equal(crcSources.length, 2);
+  const shaFns = shaSources.map(source => { const module = { exports: {} }; vm.runInNewContext(`module.exports=${source}`, { module, require, Buffer, Uint8Array, ArrayBuffer }); return module.exports.hash; });
+  const crcFns = crcSources.map(source => { const module = { exports: {} }; vm.runInNewContext(source, { module, require, Buffer, Uint8Array, ArrayBuffer }); return module.exports; });
+  const digest = value => crypto.createHash('sha256').update(value).digest('hex');
+  const expected = Buffer.from('known-input'), backing = Buffer.from('!known-input?');
+  const u16Backing = new Uint8Array([33,107,110,111,119,110,45,105,110,112,117,116,63]);
+  const u16Input = new Uint16Array(u16Backing.buffer, 2, 5);
+  const u16Digest = digest(Buffer.from(u16Input.buffer, u16Input.byteOffset, u16Input.byteLength));
+  const inputs = [['string','known-input',digest(expected)], ['Buffer',expected,digest(expected)], ['ArrayBuffer',expected.buffer.slice(expected.byteOffset,expected.byteOffset+expected.byteLength),digest(expected)], ['DataView',new DataView(backing.buffer,backing.byteOffset+1,11),digest(expected)], ['Uint8Array',new Uint8Array(expected),digest(expected)], ['offset subarray',backing.subarray(1,12),digest(expected)], ['Uint16Array',u16Input,u16Digest]];
+  for (const [i, sha] of shaFns.entries()) { for (const [name,value,want] of inputs) assert.equal(sha(value,'hex'),want,`SHA256 #${i+1} ${name}`); assert.equal(sha('abc','base64'),'ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0='); const raw=sha('abc'); assert.ok(raw instanceof Uint8Array,`SHA256 #${i+1} default result is Uint8Array`); assert.equal(raw.length,32,`SHA256 #${i+1} default result length`); assert.deepEqual(Buffer.from(raw),crypto.createHash('sha256').update('abc').digest(),`SHA256 #${i+1} default digest`); }
+  for (const [i, crc] of crcFns.entries()) {
+    assert.equal(crc('123456789'),0xcbf43926,`CRC32 #${i+1}`); assert.equal(crc(''),0); assert.equal(crc('test'),crc(Buffer.from('test')));
+    const a=Buffer.from('hello'), b=Buffer.from('world'); assert.equal(crc(b,crc(a)),crc(Buffer.concat([a,b])));
+    assert.equal(crc('123456789',0),0xcbf43926); assert.notEqual(crc('123456789',1),crc('123456789',0));
+    const view=Buffer.from('!test?'); assert.equal(crc(new DataView(view.buffer,view.byteOffset+1,4)),crc('test'));
+    const ab=Buffer.from('!test?'); assert.equal(crc(ab.buffer.slice(ab.byteOffset+1,ab.byteOffset+5)),crc('test'),`CRC32 #${i+1} ArrayBuffer`);
+    const u16=new Uint16Array(new Uint8Array([33,116,101,115,116,63]).buffer,2,2); assert.equal(crc(u16),crc(Buffer.from(u16.buffer,u16.byteOffset,u16.byteLength)),`CRC32 #${i+1} Uint16Array`);
+    assert.equal(crc(new DataView(ab.buffer,ab.byteOffset+1,4)),crc('test'),`CRC32 #${i+1} DataView`);
+    assert.equal(crc(ab.subarray(1,5)),crc('test'),`CRC32 #${i+1} offset subarray`);
+  }
+});
+
 test('hooksMetadata construction: both helper and bootstrap esmChunkedMain contain same code', () => {
   const fullScript = fs.readFileSync(scriptPath, 'utf8');
 
