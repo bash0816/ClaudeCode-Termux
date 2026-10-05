@@ -6,10 +6,6 @@ name: Promote to Latest
 # The check job runs without an approval gate; the promote job (which writes
 # to npm) only runs and requests the gate when retag is actually needed.
 
-concurrency:
-  group: npm-promote
-  cancel-in-progress: true
-
 on:
   push:
     branches: [main]
@@ -29,6 +25,9 @@ jobs:
   check:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    concurrency:
+      group: npm-promote
+      cancel-in-progress: true
     outputs:
       skip: ${{ steps.check.outputs.skip }}
       latest_audited: ${{ steps.check.outputs.latest_audited }}
@@ -72,9 +71,6 @@ jobs:
     if: needs.check.outputs.skip == 'false'
     runs-on: ubuntu-latest
     environment: npm-publish
-    concurrency:
-      group: npm-promote-deploy
-      cancel-in-progress: false
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
