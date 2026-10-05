@@ -71,6 +71,9 @@ jobs:
     if: needs.check.outputs.skip == 'false'
     runs-on: ubuntu-latest
     environment: npm-publish
+    concurrency:
+      group: npm-promote-deploy
+      cancel-in-progress: false
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
