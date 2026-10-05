@@ -45,7 +45,7 @@ Existing users on older installs should keep using `claude update` to migrate on
 Latest audited version / 最新監査済み版:
 
 ```sh
-npm install -g @bash0816/claude-code@2.1.288
+npm install -g @bash0816/claude-code@2.1.289
 ```
 
 ## Update / 更新
@@ -88,8 +88,8 @@ Only versions registered in the audited metadata can run.
 <!-- SUPPORTED_VERSIONS_TABLE_START -->
 | Version | Status |
 |---------|--------|
-| `2.1.288` | ✅ **Recommended / 推奨** — latest |
-| `2.1.287` | ✅ rollback version |
+| `2.1.289` | ✅ **Recommended / 推奨** — latest |
+| `2.1.288` | ✅ rollback version |
 | `2.1.220-2` | ✅ stable — `@stable` dist-tag |
 <!-- SUPPORTED_VERSIONS_TABLE_END -->
 
@@ -101,10 +101,10 @@ Only versions registered in the audited metadata can run.
 
 <!-- UPSTREAM_VERSION_START -->
 Official upstream (`@anthropic-ai/claude-code`): latest `2.1.289` / stable `2.1.285`
-This repo's latest audited release (release manifest): `2.1.288`
+This repo's latest audited release (release manifest): `2.1.289`
 
 公式 upstream (`@anthropic-ai/claude-code`): latest `2.1.289` / stable `2.1.285`
-この repo の latest audited release (release manifest 基準): `2.1.288`
+この repo の latest audited release (release manifest 基準): `2.1.289`
 <!-- UPSTREAM_VERSION_END -->
 
 For the full version history, see [RELEASES.md](RELEASES.md).
@@ -165,7 +165,7 @@ Example:
 例:
 
 ```text
-2.1.288 (Claude Code)
+2.1.289 (Claude Code)
 ```
 
 ## Do Not Use / 非推奨
