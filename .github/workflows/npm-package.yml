@@ -150,6 +150,9 @@ jobs:
     needs: verify
     runs-on: ubuntu-latest
     environment: npm-publish
+    concurrency:
+      group: npm-promote-deploy
+      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write
