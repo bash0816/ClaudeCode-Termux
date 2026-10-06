@@ -92,11 +92,11 @@ async function resolveManifest(forceRefresh) {
   }
 }
 
-function updateNoticeCache(cache, latestVersion) {
+function updateNoticeCache(cache, latestVersion, version = currentVersion) {
   const nextCache = {
     ...cache,
     last_notice: {
-      current_version: currentVersion,
+      current_version: version,
       latest_audited_version: latestVersion,
       notified_at: Date.now(),
     },
@@ -104,10 +104,10 @@ function updateNoticeCache(cache, latestVersion) {
   writeCache(nextCache);
 }
 
-function shouldNotify(cache, latestVersion) {
+function shouldNotify(cache, latestVersion, version = currentVersion) {
   const lastNotice = cache.last_notice;
   if (!lastNotice) return true;
-  if (lastNotice.current_version !== currentVersion) return true;
+  if (lastNotice.current_version !== version) return true;
   if (lastNotice.latest_audited_version !== latestVersion) return true;
   return Date.now() - Number(lastNotice.notified_at || 0) >= ttlMs;
 }
@@ -130,15 +130,15 @@ function installTarget(packageName, targetVersion) {
   return result.status === null ? 1 : result.status;
 }
 
-async function runNotify() {
+async function runNotify(version = currentVersion) {
   const { manifest, cache } = await resolveManifest(false);
   const latest = manifest.latest_audited_version || localManifest.latest_audited_version || pkg.version;
-  if (compareVersions(currentVersion, latest) >= 0) return 0;
-  if (!shouldNotify(cache, latest)) return 0;
+  if (compareVersions(version, latest) >= 0) return 0;
+  if (!shouldNotify(cache, latest, version)) return 0;
 
-  console.error(`Audited update available: ${currentVersion} -> ${latest}`);
+  console.error(`Audited update available: ${version} -> ${latest}`);
   console.error('Run: claude update');
-  updateNoticeCache(cache, latest);
+  updateNoticeCache(cache, latest, version);
   return 0;
 }
 
@@ -167,7 +167,15 @@ async function main() {
   throw new Error(`Unknown mode: ${mode}`);
 }
 
-main().catch(error => {
-  console.error(error && error.stack ? error.stack : String(error));
-  process.exit(1);
-});
+async function notify(version) {
+  return runNotify(version || currentVersion);
+}
+
+if (require.main === module) {
+  main().catch(error => {
+    console.error(error && error.stack ? error.stack : String(error));
+    process.exit(1);
+  });
+}
+
+module.exports = { notify, runNotify, runUpdate, main };
