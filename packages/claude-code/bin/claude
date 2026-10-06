@@ -26,6 +26,44 @@ process.exit(ok ? 0 : 1);
   exit 1
 fi
 
+LAUNCH_MODE="${CLAUDE_TERMUX_LAUNCH_MODE:-}"
+if [ "$LAUNCH_MODE" = "patchelf" ] && [ "${1:-}" != "update" ]; then
+  if [ -n "${KSH_VERSION:-}" ]; then echo "patchelf mode requires Termux sh/dash with fd inheritance" >&2; exit 1; fi
+  CLI="${PACKAGE_DIR}/lib/patchelf-runtime-cli.js"
+  case "${1:-}" in
+    --termux-hook-env-path) exec "$NODE" "$CLI" hook-path ;;
+    --termux-verify) exec "$NODE" "$CLI" verify ;;
+    --termux-gc) exec "$NODE" "$CLI" gc ;;
+  esac
+  FLOCK="${PREFIX:-/data/data/com.termux/files/usr}/bin/flock"
+  attempt=1
+  while [ "$attempt" -le 3 ]; do
+    PREPARED=$(mktemp "${TMPDIR:-/tmp}/claude-patchelf-launch.XXXXXX") || exit 1
+    if "$NODE" "$CLI" launch-prep >"$PREPARED"; then STATUS=0; else STATUS=$?; fi
+    if [ "$STATUS" -ne 0 ]; then rm -f "$PREPARED"; exit "$STATUS"; fi
+    if [ "$(wc -l <"$PREPARED")" -ne 4 ] || [ "$(tail -c 1 "$PREPARED" | wc -l)" -ne 1 ]; then rm -f "$PREPARED"; echo "Invalid patchelf launch output: expected exactly four newline-terminated lines" >&2; exit 1; fi
+    exec 3<"$PREPARED"
+    if IFS= read -r GEN <&3 && IFS= read -r PATCHED <&3 && IFS= read -r GLIBC_MIN <&3 && IFS= read -r SHELL_WRAP <&3 && ! IFS= read -r EXTRA <&3; then OUTPUT_VALID=1; else OUTPUT_VALID=0; fi
+    rm -f "$PREPARED"; exec 3<&-
+    if [ "$OUTPUT_VALID" -ne 1 ]; then echo "Invalid patchelf launch output: expected exactly four lines" >&2; exit 1; fi
+    for launch_path in "$GEN" "$PATCHED" "$GLIBC_MIN" "$SHELL_WRAP"; do
+      case "$launch_path" in /*) ;; *) echo "Invalid patchelf launch path: expected absolute paths" >&2; exit 1 ;; esac
+    done
+    case "$PATCHED" in "$GEN"/*) ;; *) echo "GEN, PATCHED and GLIBC_MIN are inconsistent" >&2; exit 1 ;; esac
+    case "$GLIBC_MIN" in "$GEN"/*) ;; *) echo "GEN, PATCHED and GLIBC_MIN are inconsistent" >&2; exit 1 ;; esac
+    if [ ! -x "$FLOCK" ]; then echo "flock is unavailable at $FLOCK; install with: pkg install util-linux" >&2; exit 1; fi
+    command exec 9>&2
+    if command exec 8<"$GEN/.inuse" 2>/dev/null; then command exec 2>&9 9>&-; else open_status=$?; command exec 2>&9 9>&-; attempt=$((attempt + 1)); continue; fi
+    if "$FLOCK" -E 73 -s -n 8; then flock_status=0; else flock_status=$?; fi
+    if [ "$flock_status" -ne 0 ]; then command exec 8<&-; if [ "$flock_status" -eq 73 ]; then attempt=$((attempt + 1)); continue; fi; echo "flock failed (status $flock_status); patchelf mode requires Termux sh/dash with fd inheritance and util-linux flock" >&2; exit 1; fi
+    if [ ! "$GEN/.inuse" -ef /proc/self/fd/8 ] || [ ! -f "$GEN/READY" ]; then command exec 8<&-; attempt=$((attempt + 1)); continue; fi
+    if [ "${CLAUDE_CODE_SHELL+x}" = x ]; then exec env -u LD_PRELOAD LD_LIBRARY_PATH="$GLIBC_MIN" DISABLE_UPDATES=1 "$PATCHED" "$@"; else exec env -u LD_PRELOAD LD_LIBRARY_PATH="$GLIBC_MIN" DISABLE_UPDATES=1 CLAUDE_CODE_SHELL="$SHELL_WRAP" "$PATCHED" "$@"; fi
+  done
+  echo "patchelf launch failed after 3 generation retries; native was not executed" >&2; exit 1
+fi
+if [ -n "$LAUNCH_MODE" ] && [ "$LAUNCH_MODE" != "patchelf" ]; then echo "Warning: unknown CLAUDE_TERMUX_LAUNCH_MODE '$LAUNCH_MODE'; using shim launcher" >&2; fi
+if [ "${1:-}" = "--termux-hook-env-path" ]; then echo "--termux-hook-env-path is supported only with CLAUDE_TERMUX_LAUNCH_MODE=patchelf" >&2; exit 1; fi
+
 CONFIG_FILE="${PACKAGE_DIR}/config/claude-native-audited-versions.json"
 PACKAGE_VERSION=$("$NODE" -e 'const fs=require("fs"); const path=require("path"); const p=JSON.parse(fs.readFileSync(path.join(process.argv[1],"package.json"),"utf8")); process.stdout.write(p.version)' "${PACKAGE_DIR}")
 CLAUDE_VERSION="${CLAUDE_TERMUX_CLAUDE_VERSION:-${PACKAGE_VERSION}}"
