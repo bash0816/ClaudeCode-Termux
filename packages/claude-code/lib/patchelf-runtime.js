@@ -465,10 +465,39 @@ function termuxPaths(prefix = process.env.PREFIX) {
   return { prefix, flock: path.join(prefix, 'bin', 'flock'), patchelf: path.join(prefix, 'bin', 'patchelf'), readelf: path.join(prefix, 'bin', 'readelf'), glibc: path.join(prefix, 'glibc'), bash: path.join(prefix, 'bin', 'bash'), sh: path.join(prefix, 'bin', 'sh'), preload: path.join(prefix, 'lib', 'libtermux-exec-ld-preload.so') };
 }
 
+const DEPENDENCY_PACKAGES = [
+  ['flock', 'util-linux'],
+  ['patchelf', 'patchelf'],
+  ['readelf', 'llvm'],
+  ['sh', 'dash'],
+  ['preload', 'termux-exec'],
+  ['bash', 'bash'],
+  ['glibc', 'glibc'],
+];
+const GLIBC_INSTALL_STEPS = ['pkg install glibc-repo', 'pkg update', 'pkg install glibc'];
+
+// resolved: CLI-resolved paths. glibcLoader is the glibc dynamic loader path.
+// exists is injectable for tests; only existence is checked, nothing is installed.
+function checkDependencies(resolved, { exists = fs.existsSync } = {}) {
+  const paths = { flock: resolved.flock, patchelf: resolved.patchelf, readelf: resolved.readelf, sh: resolved.sh, preload: resolved.preload, bash: resolved.bash, glibc: resolved.glibcLoader };
+  return DEPENDENCY_PACKAGES.filter(([id]) => !exists(paths[id])).map(([id, pkgName]) => ({ id, package: pkgName, path: paths[id] }));
+}
+
+function dependencyGuidance(missing) {
+  if (!missing.length) return '';
+  const lines = [`Missing: ${missing.map(m => `${m.id} (package: ${m.package}) at ${m.path}`).join(', ')}`];
+  if (missing.some(m => m.id === 'glibc')) lines.push(...GLIBC_INSTALL_STEPS);
+  const others = [...new Set(missing.filter(m => m.id !== 'glibc').map(m => m.package))];
+  if (others.length) lines.push(`pkg install ${others.join(' ')}`);
+  return lines.join('\n');
+}
+
 function makeNonce() { return `${Date.now()}-${process.pid}-${crypto.randomBytes(6).toString('hex')}`; }
 
 module.exports = {
   gcGenerations,
+  checkDependencies,
+  dependencyGuidance,
   hookPath,
   launchPrep,
   maybeDailyGc,

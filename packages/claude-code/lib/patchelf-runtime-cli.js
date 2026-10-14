@@ -26,8 +26,9 @@ function main(argv=process.argv.slice(2)) {
  const runtimeFiles=['glibc/lib/libc.so.6','glibc/lib/libm.so.6'];
  const tools={patchelf:process.env.CLAUDE_TERMUX_PATCHELF||tp.patchelf,readelf:process.env.CLAUDE_TERMUX_READELF||tp.readelf};
  const glibcLib=process.env.CLAUDE_TERMUX_GLIBC_LIB||path.join(tp.glibc,'lib');
- const inventory=glibcInventory(glibcLib);
  const runShell=shellPath(path.join(path.dirname(tp.bash),'sh')), preload=shellPath(tp.preload), bash=shellPath(tp.bash);
+ if(command==='launch-prep'){ const missing=r.checkDependencies({flock:tp.flock,patchelf:tools.patchelf,readelf:tools.readelf,sh:runShell,preload,bash,glibcLoader:path.join(glibcLib,'ld-linux-aarch64.so.1')}); if(missing.length){ process.stderr.write(r.dependencyGuidance(missing)+'\n'); process.exitCode=1; return; } }
+ const inventory=glibcInventory(glibcLib);
  const wrapperRun=`#!${runShell}\nunset LD_LIBRARY_PATH\nexport LD_PRELOAD='${preload}'\nexec '${runShell}' -c 'exec "$@"' hook-run "$@"\n`;
  const wrapperBash=`#!${runShell}\nunset LD_LIBRARY_PATH\nexport LD_PRELOAD='${preload}'\nexec '${bash}' "$@"\n`;
  const wid=r.wrapperIdentity(wrapperRun,wrapperBash);

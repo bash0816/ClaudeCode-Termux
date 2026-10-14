@@ -741,9 +741,82 @@ test('verifyGlibcLoader runs the real prefix glibc loader', {skip: !fs.existsSyn
 test('real CLI launch-prep rejects a missing glibc loader with a clear message', () => {
   const {root,cli,env}=makeCliFixture();
   try {
-    fs.rmSync(path.join(env.CLAUDE_TERMUX_GLIBC_LIB,'ld-linux-aarch64.so.1'));
+    fs.writeFileSync(path.join(env.CLAUDE_TERMUX_GLIBC_LIB,'ld-linux-aarch64.so.1'),'not an ELF loader',{mode:0o755});
     const result=spawnSync(process.execPath,[cli,'launch-prep'],{encoding:'utf8',env,timeout:30000});
     assert.notEqual(result.status,0);
     assert.match(result.stderr,/glibc loader is not usable/);
+  } finally {fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('checkDependencies returns only missing dependencies in fixed order', () => {
+  const resolved={flock:'/p/flock',patchelf:'/p/patchelf',readelf:'/p/readelf',sh:'/p/sh',preload:'/p/preload',bash:'/p/bash',glibcLoader:'/p/glibc/ld.so'};
+  const absent=new Set(['/p/readelf','/p/glibc/ld.so']);
+  assert.deepEqual(runtime.checkDependencies(resolved,{exists:p=>!absent.has(p)}),[
+    {id:'readelf',package:'llvm',path:'/p/readelf'},
+    {id:'glibc',package:'glibc',path:'/p/glibc/ld.so'},
+  ]);
+  assert.deepEqual(runtime.checkDependencies(resolved,{exists:()=>true}),[]);
+});
+
+test('dependencyGuidance is empty when nothing is missing', () => {
+  assert.equal(runtime.dependencyGuidance([]),'');
+});
+
+test('dependencyGuidance covers every combination of missing dependencies', () => {
+  const resolved={flock:'/p/flock',patchelf:'/p/patchelf',readelf:'/p/readelf',sh:'/p/sh',preload:'/p/preload',bash:'/p/bash',glibcLoader:'/p/glibc/ld.so'};
+  const pathOf={flock:resolved.flock,patchelf:resolved.patchelf,readelf:resolved.readelf,sh:resolved.sh,preload:resolved.preload,bash:resolved.bash,glibc:resolved.glibcLoader};
+  const packageOf={flock:'util-linux',patchelf:'patchelf',readelf:'llvm',sh:'dash',preload:'termux-exec',bash:'bash',glibc:'glibc'};
+  const ids=Object.keys(pathOf);
+  const glibcSteps=['pkg install glibc-repo','pkg update','pkg install glibc'];
+  let combinations=0;
+  for (let mask=1; mask<(1<<ids.length); mask++) {
+    combinations++;
+    const chosen=ids.filter((_,i)=>mask&(1<<i));
+    const absent=new Set(chosen.map(id=>pathOf[id]));
+    const missing=runtime.checkDependencies(resolved,{exists:p=>!absent.has(p)});
+    assert.deepEqual(missing.map(m=>m.id),chosen);
+    assert.deepEqual(missing.map(m=>m.package),chosen.map(id=>packageOf[id]));
+    const lines=runtime.dependencyGuidance(missing).split('\n');
+    assert.equal(lines[0],`Missing: ${chosen.map(id=>`${id} (package: ${packageOf[id]}) at ${pathOf[id]}`).join(', ')}`);
+    const others=[...new Set(chosen.filter(id=>id!=='glibc').map(id=>packageOf[id]))];
+    const expected=[...(chosen.includes('glibc')?glibcSteps:[]),...(others.length?[`pkg install ${others.join(' ')}`]:[])];
+    assert.deepEqual(lines.slice(1),expected);
+    assert.equal(lines.filter(l=>l.startsWith('pkg ')).length,expected.length);
+  }
+  assert.equal(combinations,127);
+});
+
+test('dependencyGuidance prints three glibc lines alone, or one install line without glibc', () => {
+  assert.equal(runtime.dependencyGuidance([{id:'glibc',package:'glibc',path:'/p/glibc/ld.so'}]),
+    ['Missing: glibc (package: glibc) at /p/glibc/ld.so','pkg install glibc-repo','pkg update','pkg install glibc'].join('\n'));
+  assert.equal(runtime.dependencyGuidance([{id:'flock',package:'util-linux',path:'/p/flock'},{id:'readelf',package:'llvm',path:'/p/readelf'}]),
+    ['Missing: flock (package: util-linux) at /p/flock, readelf (package: llvm) at /p/readelf','pkg install util-linux llvm'].join('\n'));
+});
+
+test('dependencyGuidance de-duplicates package names in the install line', () => {
+  const guidance=runtime.dependencyGuidance([
+    {id:'glibc',package:'glibc',path:'/p/glibc/ld.so'},
+    {id:'a',package:'llvm',path:'/p/a'},
+    {id:'b',package:'llvm',path:'/p/b'},
+    {id:'c',package:'util-linux',path:'/p/c'},
+    {id:'d',package:'util-linux',path:'/p/d'},
+  ]);
+  assert.deepEqual(guidance.split('\n').slice(1),['pkg install glibc-repo','pkg update','pkg install glibc','pkg install llvm util-linux']);
+});
+
+test('real CLI launch-prep reports every missing dependency before touching glibc', () => {
+  const {root,cli,env}=makeCliFixture();
+  try {
+    fs.rmSync(env.CLAUDE_TERMUX_GLIBC_LIB,{recursive:true,force:true});
+    fs.rmSync(path.join(env.PREFIX,'bin','flock'));
+    const result=spawnSync(process.execPath,[cli,'launch-prep'],{encoding:'utf8',env,timeout:30000});
+    assert.notEqual(result.status,0);
+    assert.equal(result.stdout,'');
+    const lines=result.stderr.trimEnd().split('\n');
+    assert.match(lines.find(l=>l.startsWith('Missing:')),/^Missing: flock \(package: util-linux\) at .*\/bin\/flock, glibc \(package: glibc\) at .*\/ld-linux-aarch64\.so\.1$/);
+    assert.deepEqual(lines.filter(l=>l.startsWith('pkg ')),['pkg install glibc-repo','pkg update','pkg install glibc','pkg install util-linux']);
+    assert.doesNotMatch(result.stderr,/ENOENT/);
+    assert.doesNotMatch(result.stderr,/patchelf runtime failed/);
+    assert.equal(fs.existsSync(env.CLAUDE_TERMUX_PACKAGE_CACHE),false);
   } finally {fs.rmSync(root,{recursive:true,force:true});}
 });
