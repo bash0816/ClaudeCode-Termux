@@ -402,7 +402,7 @@ function prepareGeneration(options) {
       let renamed = false;
       try {
         fs.writeFileSync(path.join(temp, '.inuse'), '', { flag: 'wx', mode: 0o600 });
-        const payload = populate(temp) || {};
+        const payload = populate(temp, { notify }) || {};
         const name = generationName(identity, nonce());
         finalPath = path.join(versionDir, name);
         fs.renameSync(temp, finalPath);
