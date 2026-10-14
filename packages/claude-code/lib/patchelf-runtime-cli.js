@@ -81,7 +81,7 @@ function main(argv=process.argv.slice(2)) {
  if(!['launch-prep','hook-path'].includes(command)) throw new Error(`Unknown patchelf runtime command: ${command||'(missing)'}`);
  if(command==='launch-prep') r.verifyGlibcLoader(path.join(glibcLib,'ld-linux-aarch64.so.1'));
  let x=resolve();
- if(!x) { prepare(); x=resolve(); }
+ if(!x) { if(command==='launch-prep') r.checkFreeSpace({dir:root,required:r.PREPARE_REQUIRED_FREE_BYTES}); prepare(); x=resolve(); }
  // Revalidate immediately before publishing paths to the shell launcher.
  if(!x) throw new Error('READY changed or failed validation before launch paths were published');
  const out=command==='hook-path'?[r.hookPath({run:x.wrapperMap.wrapperRun})]:Object.values(r.launchPrep({generationPath:x.generationPath,patchedPath:path.join(x.generationPath,'patched/claude'),shellWrap:x.wrapperMap.wrapperBash,flockPath:tp.flock}));

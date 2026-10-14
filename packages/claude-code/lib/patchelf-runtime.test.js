@@ -738,7 +738,7 @@ test('verifyGlibcLoader runs the real prefix glibc loader', {skip: !fs.existsSyn
   assert.doesNotThrow(()=>runtime.verifyGlibcLoader(REAL_GLIBC_LOADER));
 });
 
-test('real CLI launch-prep rejects a missing glibc loader with a clear message', () => {
+test('real CLI launch-prep rejects an unusable glibc loader with a clear message', () => {
   const {root,cli,env}=makeCliFixture();
   try {
     fs.writeFileSync(path.join(env.CLAUDE_TERMUX_GLIBC_LIB,'ld-linux-aarch64.so.1'),'not an ELF loader',{mode:0o755});
@@ -819,4 +819,113 @@ test('real CLI launch-prep reports every missing dependency before touching glib
     assert.doesNotMatch(result.stderr,/patchelf runtime failed/);
     assert.equal(fs.existsSync(env.CLAUDE_TERMUX_PACKAGE_CACHE),false);
   } finally {fs.rmSync(root,{recursive:true,force:true});}
+});
+
+function captureStderr(fn) {
+  const original = process.stderr.write;
+  let text = '';
+  process.stderr.write = chunk => { text += String(chunk); return true; };
+  try { fn(); } finally { process.stderr.write = original; }
+  return text;
+}
+
+function populateWithLeftovers(dir) {
+  fs.mkdirSync(path.join(dir, 'source')); fs.writeFileSync(path.join(dir, 'source/claude'), 'source');
+  fs.mkdirSync(path.join(dir, 'patched')); fs.writeFileSync(path.join(dir, 'patched/claude'), 'patched');
+  fs.writeFileSync(path.join(dir, 'native.tgz'), 'tarball');
+  fs.mkdirSync(path.join(dir, '.extract')); fs.writeFileSync(path.join(dir, '.extract/claude'), 'elf');
+}
+
+test('checkFreeSpace passes when available bytes cover the requirement', () => {
+  const root = tempDir();
+  try {
+    let seen;
+    const statfs = dir => { seen = dir; return { bavail: 1000, bsize: 4096 }; };
+    assert.doesNotThrow(() => runtime.checkFreeSpace({ dir: root, required: 1000 * 4096, statfs }));
+    assert.equal(seen, root);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('checkFreeSpace rejects insufficient space with integer MiB figures', () => {
+  const root = tempDir();
+  try {
+    assert.equal(runtime.PREPARE_REQUIRED_FREE_BYTES, 973012152);
+    // 927 MiB plus 512 bytes available: need rounds up to 928 MiB (ceil), available rounds down to 927 MiB (floor).
+    const statfs = () => ({ bavail: 972030464, bsize: 1 });
+    assert.throws(() => runtime.checkFreeSpace({ dir: root, statfs }), error => {
+      assert.equal(error.message, `Not enough free disk space to prepare claude: need about 928 MiB free (peak during first-time preparation), available 927 MiB at ${root}. Free up space and run again.`);
+      return true;
+    });
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('checkFreeSpace searches the nearest existing ancestor of a missing directory', () => {
+  const root = tempDir();
+  try {
+    const missing = path.join(root, 'not', 'yet', 'created');
+    const seen = [];
+    runtime.checkFreeSpace({ dir: missing, required: 1, statfs: target => { seen.push(target); return { bavail: 1, bsize: 1 }; } });
+    assert.deepEqual(seen, [root]);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('checkFreeSpace warns and continues when statfs throws', () => {
+  const root = tempDir();
+  try {
+    const stderr = captureStderr(() => assert.doesNotThrow(() => runtime.checkFreeSpace({ dir: root, required: 1, statfs: () => { throw new Error('statfs failed'); } })));
+    assert.match(stderr, /^warning: could not check free disk space \(statfs failed\); continuing\n$/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('checkFreeSpace warns and continues when statfs is unavailable', () => {
+  const root = tempDir();
+  try {
+    // statfs: null stands in for "fs.statfsSync unavailable"; undefined would fall back to the real fs.statfsSync default.
+    const stderr = captureStderr(() => assert.doesNotThrow(() => runtime.checkFreeSpace({ dir: root, required: 1, statfs: null })));
+    assert.match(stderr, /^warning: could not check free disk space \(fs\.statfsSync is unavailable\); continuing\n$/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('prepareGeneration removes download leftovers after READY and current are published and keeps source and patched', () => {
+  const root = tempDir(); const flock = '/data/data/com.termux/files/usr/bin/flock';
+  if (!fs.existsSync(flock)) return;
+  try {
+    const versionDir = path.join(root, 'cache', '2.1.296');
+    const options = { versionDir, identity: hash('leftover-success'), flockPath: flock, fingerprintPaths: [['patched', 'patched/claude']], nonce: () => 'n1', populate: populateWithLeftovers };
+    const first = runtime.prepareGeneration(options);
+    assert.equal(first.reused, false);
+    assert.match(first.ready.identity, /^[a-f0-9]{64}$/);
+    assert.equal(fs.readlinkSync(path.join(versionDir, 'current')), first.generation);
+    assert.ok(fs.existsSync(path.join(first.generationPath, 'READY')));
+    assert.ok(fs.existsSync(path.join(first.generationPath, 'source/claude')));
+    assert.ok(fs.existsSync(path.join(first.generationPath, 'patched/claude')));
+    assert.equal(fs.existsSync(path.join(first.generationPath, 'native.tgz')), false);
+    assert.equal(fs.existsSync(path.join(first.generationPath, '.extract')), false);
+    const second = runtime.prepareGeneration({ ...options, nonce: () => 'unused', populate() { throw new Error('must not rebuild'); } });
+    assert.equal(second.reused, true);
+    assert.equal(second.generation, first.generation);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('prepareGeneration keeps startup going when a download leftover cannot be removed', () => {
+  const root = tempDir(); const flock = '/data/data/com.termux/files/usr/bin/flock';
+  if (!fs.existsSync(flock)) return;
+  const originalRmSync = fs.rmSync;
+  try {
+    const versionDir = path.join(root, 'cache', '2.1.296');
+    // Fail only for the leftover names so that generation GC keeps working.
+    fs.rmSync = function (target, options) {
+      if (['native.tgz', '.extract'].includes(path.basename(target))) throw Object.assign(new Error('EACCES: permission denied (simulated)'), { code: 'EACCES' });
+      return originalRmSync.call(fs, target, options);
+    };
+    let result;
+    const stderr = captureStderr(() => { result = runtime.prepareGeneration({ versionDir, identity: hash('leftover-failure'), flockPath: flock, fingerprintPaths: [['patched', 'patched/claude']], nonce: () => 'n1', populate: populateWithLeftovers }); });
+    assert.equal(result.reused, false);
+    assert.ok(fs.existsSync(path.join(result.generationPath, 'READY')));
+    assert.equal(fs.readlinkSync(path.join(versionDir, 'current')), result.generation);
+    assert.ok(fs.existsSync(path.join(result.generationPath, 'native.tgz')));
+    assert.ok(fs.existsSync(path.join(result.generationPath, '.extract')));
+    assert.match(stderr, /warning: could not remove download leftover native\.tgz: EACCES: permission denied \(simulated\)/);
+    assert.match(stderr, /warning: could not remove download leftover \.extract: EACCES: permission denied \(simulated\)/);
+  } finally { fs.rmSync = originalRmSync; fs.rmSync(root, { recursive: true, force: true }); }
 });

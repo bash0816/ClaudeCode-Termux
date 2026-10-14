@@ -409,6 +409,10 @@ function prepareGeneration(options) {
         const currentTemp = path.join(versionDir, `.current-tmp-${crypto.randomBytes(8).toString('hex')}`);
         fs.symlinkSync(name, currentTemp);
         fs.renameSync(currentTemp, path.join(versionDir, 'current'));
+        // Download leftovers are removed only after READY and current are published; source/ and patched/ are kept.
+        for (const leftover of ['native.tgz', '.extract']) {
+          try { fs.rmSync(path.join(finalPath, leftover), { recursive: true, force: true }); } catch (error) { process.stderr.write(`warning: could not remove download leftover ${leftover}: ${error.message}\n`); }
+        }
         try { collectLocked(versionDir, flockPath); recordGcStamp(versionDir, Date.now()); } catch (error) { process.stderr.write(`warning: patchelf GC failed: ${error.message}\n`); }
         return { generation: name, generationPath: finalPath, ready, reused: false };
       } catch (error) {
@@ -494,9 +498,42 @@ function dependencyGuidance(missing) {
 
 function makeNonce() { return `${Date.now()}-${process.pid}-${crypto.randomBytes(6).toString('hex')}`; }
 
+// Measured peak disk use of first-time preparation for claude 2.1.296 (tgz + extracted ELF + source + patched).
+const PREPARE_PEAK_BYTES = 884556501;
+const PREPARE_REQUIRED_FREE_BYTES = Math.ceil(PREPARE_PEAK_BYTES * 1.1);
+const MIB = 1024 * 1024;
+
+// Walks up from dir to the nearest existing ancestor and checks bavail * bsize against required.
+// statfs is injectable for tests; if it is unavailable or throws, a warning is printed and the check is skipped.
+function checkFreeSpace({ dir, required = PREPARE_REQUIRED_FREE_BYTES, statfs = fs.statfsSync } = {}) {
+  let available;
+  try {
+    if (typeof statfs !== 'function') throw new Error('fs.statfsSync is unavailable');
+    let target = path.resolve(dir);
+    while (!fs.existsSync(target)) {
+      const parent = path.dirname(target);
+      if (parent === target) break;
+      target = parent;
+    }
+    const stats = statfs(target);
+    available = Number(stats.bavail) * Number(stats.bsize);
+  } catch (error) {
+    process.stderr.write(`warning: could not check free disk space (${error.message}); continuing\n`);
+    return;
+  }
+  if (available < required) {
+    const needMiB = Math.ceil(required / MIB);
+    const availableMiB = Math.floor(available / MIB);
+    throw new Error(`Not enough free disk space to prepare claude: need about ${needMiB} MiB free (peak during first-time preparation), available ${availableMiB} MiB at ${dir}. Free up space and run again.`);
+  }
+}
+
 module.exports = {
   gcGenerations,
   checkDependencies,
+  checkFreeSpace,
+  PREPARE_PEAK_BYTES,
+  PREPARE_REQUIRED_FREE_BYTES,
   dependencyGuidance,
   hookPath,
   launchPrep,
