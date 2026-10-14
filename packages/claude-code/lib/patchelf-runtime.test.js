@@ -267,10 +267,10 @@ test('verify hashes patched, glibc, tool and wrapper files despite same-size res
 test('launchPrep returns absolute launch values and rejects GEN mismatch; hookPath returns stable run path', () => {
   const root = tempDir();
   try {
-    const gen = path.join(root, 'gen-1'); fs.mkdirSync(gen); const patched = path.join(gen, 'patched', 'claude'); const glibc = path.join(gen, 'glibc-min');
-    fs.mkdirSync(path.dirname(patched)); fs.mkdirSync(glibc); fs.writeFileSync(patched, 'x');
-    assert.deepEqual(runtime.launchPrep({ generationPath: gen, patchedPath: patched, glibcMinPath: glibc, shellWrap: path.join(root, 'shell', 'wid', 'bash') }), { GEN: gen, PATCHED: patched, GLIBC_MIN: glibc, SHELL_WRAP: path.join(root, 'shell', 'wid', 'bash') });
-    assert.throws(() => runtime.launchPrep({ generationPath: gen, patchedPath: path.join(root, 'other', 'patched'), glibcMinPath: glibc, shellWrap: path.join(root, 'shell', 'bash') }), /same generation/);
+    const gen = path.join(root, 'gen-1'); fs.mkdirSync(gen); const patched = path.join(gen, 'patched', 'claude');
+    fs.mkdirSync(path.dirname(patched)); fs.writeFileSync(patched, 'x');
+    assert.deepEqual(runtime.launchPrep({ generationPath: gen, patchedPath: patched, shellWrap: path.join(root, 'shell', 'wid', 'bash') }), { GEN: gen, PATCHED: patched, SHELL_WRAP: path.join(root, 'shell', 'wid', 'bash') });
+    assert.throws(() => runtime.launchPrep({ generationPath: gen, patchedPath: path.join(root, 'other', 'patched'), shellWrap: path.join(root, 'shell', 'bash') }), /same generation/);
     assert.equal(runtime.hookPath({ run: path.join(root, 'shell', 'wid', 'run') }), path.join(root, 'shell', 'wid', 'run'));
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
@@ -288,13 +288,12 @@ test('real bin/claude dash path runs --termux-gc and reports --termux-verify err
   } finally {fs.rmSync(root,{recursive:true,force:true});}
 });
 
-test('real bin launcher reads four launch values and retains fd 8', () => {
+test('real bin launcher reads three launch values, retains fd 8, and leaves LD_LIBRARY_PATH unset', () => {
   const root = tempDir();
   try {
     const gen = path.join(root, 'gen-x'); fs.mkdirSync(gen); fs.writeFileSync(path.join(gen, '.inuse'), ''); fs.writeFileSync(path.join(gen, 'READY'), '{}');
-    const patched = path.join(gen, 'patched'); fs.writeFileSync(patched, '#!/system/bin/sh\n[ -e /proc/self/fd/8 ] || exit 61\nreadlink /proc/self/fd/8\n', { mode: 0o755 }); fs.chmodSync(patched, 0o755);
-    fs.mkdirSync(path.join(gen, 'glibc-min'));
-    const node = path.join(root, 'node'); fs.writeFileSync(node, `#!/system/bin/sh\n[ \"${'${1:-}'}\" = -e ] && exit 0\nprintf '%s\\n' '${gen}' '${patched}' '${path.join(gen,'glibc-min')}' '${path.join(root,'shell')}'\n`, { mode: 0o755 }); fs.chmodSync(node, 0o755);
+    const patched = path.join(gen, 'patched'); fs.writeFileSync(patched, '#!/system/bin/sh\n[ -e /proc/self/fd/8 ] || exit 61\n[ -z "${LD_LIBRARY_PATH+x}" ] || exit 62\nreadlink /proc/self/fd/8\n', { mode: 0o755 }); fs.chmodSync(patched, 0o755);
+    const node = path.join(root, 'node'); fs.writeFileSync(node, `#!/system/bin/sh\n[ \"${'${1:-}'}\" = -e ] && exit 0\nprintf '%s\\n' '${gen}' '${patched}' '${path.join(root,'shell')}'\n`, { mode: 0o755 }); fs.chmodSync(node, 0o755);
     const result = spawnSync('/data/data/com.termux/files/usr/bin/sh', [path.resolve(__dirname, '../bin/claude'), '--version'], { encoding: 'utf8', timeout: 30000, env: { ...process.env, MAGI_NODE: node, CLAUDE_TERMUX_LAUNCH_MODE: 'patchelf', PREFIX: '/data/data/com.termux/files/usr', HOME: root, TMPDIR: root } });
     assert.equal(result.status, 0, `stdout=${result.stdout} stderr=${result.stderr}`); assert.match(result.stdout.trim(), /\.inuse$/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
@@ -407,11 +406,11 @@ function launcherFixture(root, records, options = {}) {
   fs.writeFileSync(node, `#!/system/bin/sh\n[ "\${1:-}" = -e ] && exit 0\nexec "\${REAL_NODE}" -e 'const fs=require("fs");const calls=process.env.CALL_FILE;let n=0;try{n=Number(fs.readFileSync(calls,"utf8"))}catch{};n++;fs.writeFileSync(calls,String(n));const rows=JSON.parse(fs.readFileSync(process.env.SEQUENCE_FILE,"utf8"));const row=rows[Math.min(n-1,rows.length-1)];const text=row.join("\\n")+"\\n";process.stdout.write(process.env.NO_FINAL_NEWLINE?text+"fifth":text)'\n`, { mode: 0o755 });
   fs.chmodSync(node, 0o755);
   const makeGeneration = name => {
-    const gen = path.join(genRoot, name); fs.mkdirSync(path.join(gen, 'glibc-min'), { recursive: true });
+    const gen = path.join(genRoot, name); fs.mkdirSync(gen, { recursive: true });
     fs.writeFileSync(path.join(gen, '.inuse'), ''); fs.writeFileSync(path.join(gen, 'READY'), '{}');
     const patched = path.join(gen, 'patched');
     fs.writeFileSync(patched, `#!/system/bin/sh\nprintf '%s\\n' ran > '${nativeMarker}'\n[ -e /proc/self/fd/8 ] || exit 61\nprintf '%s\\n' "$(readlink /proc/self/fd/8)"\n`, { mode: 0o755 }); fs.chmodSync(patched, 0o755);
-    return { gen, patched, glibc: path.join(gen, 'glibc-min'), shell: path.join(root, 'shell') };
+    return { gen, patched, shell: path.join(root, 'shell') };
   };
   const made = new Map();
   for (const row of records) {
@@ -422,7 +421,7 @@ function launcherFixture(root, records, options = {}) {
   return { callFile, made, nativeMarker, run, genRoot };
 }
 
-function rowFor(fixture, name) { const x = fixture.made.get(name); return [x.gen, x.patched, x.glibc, x.shell]; }
+function rowFor(fixture, name) { const x = fixture.made.get(name); return [x.gen, x.patched, x.shell]; }
 function waitFile(file, label) { return waitFor(() => fs.existsSync(file), `${label} (path=${file}, exists=${fs.existsSync(file)})`); }
 
 test('real dash launcher retries a GC exclusive-lock conflict and launches after release', async () => {
@@ -430,8 +429,8 @@ test('real dash launcher retries a GC exclusive-lock conflict and launches after
   if (!fs.existsSync(flock)) return;
   let holder,proc;const release=path.join(root,'holder-release');
   try {
-    const initial=launcherFixture(root,[]),gen=path.join(initial.genRoot,'gen-gc');fs.mkdirSync(path.join(gen,'glibc-min'),{recursive:true});fs.writeFileSync(path.join(gen,'.inuse'),'');fs.writeFileSync(path.join(gen,'READY'),'{}');const patched=path.join(gen,'patched');fs.writeFileSync(patched,`#!/system/bin/sh\ntouch '${initial.nativeMarker}'\n[ -e /proc/self/fd/8 ] || exit 61\n`,{mode:0o755});
-    const row=[gen,patched,path.join(gen,'glibc-min'),path.join(root,'shell')];fs.writeFileSync(path.join(root,'sequence.json'),JSON.stringify([row]));
+    const initial=launcherFixture(root,[]),gen=path.join(initial.genRoot,'gen-gc');fs.mkdirSync(gen,{recursive:true});fs.writeFileSync(path.join(gen,'.inuse'),'');fs.writeFileSync(path.join(gen,'READY'),'{}');const patched=path.join(gen,'patched');fs.writeFileSync(patched,`#!/system/bin/sh\ntouch '${initial.nativeMarker}'\n[ -e /proc/self/fd/8 ] || exit 61\n`,{mode:0o755});
+    const row=[gen,patched,path.join(root,'shell')];fs.writeFileSync(path.join(root,'sequence.json'),JSON.stringify([row]));
     const entered=path.join(root,'holder-entered'),events=path.join(root,'flock-events'),prefix=path.join(root,'prefix');fs.mkdirSync(path.join(prefix,'bin'),{recursive:true});fs.symlinkSync('/data/data/com.termux/files/usr/bin/sh',path.join(prefix,'bin','sh'));
     fs.writeFileSync(path.join(prefix,'bin','flock'),`#!/system/bin/sh\n'${flock}' "$@"\nstatus=$?\nprintf '%s\\n' "$status" >> '${events}'\nexit "$status"\n`,{mode:0o755});
     holder=spawn(flock,['-x',path.join(gen,'.inuse'),'-c',`touch '${entered}'; while [ ! -e '${release}' ]; do :; done`],{stdio:'ignore',detached:true});await waitFile(entered,'GC lock acquisition');
@@ -456,8 +455,8 @@ test('real dash launcher detects an opened stale inode after rename and rm, then
   const startedWall=Date.now(),startedMono=performance.now();
   try {
     const seed=launcherFixture(root,[]), one=path.join(seed.genRoot,'gen-old'),two=path.join(seed.genRoot,'gen-new');
-    for(const p of [one,two]){fs.mkdirSync(path.join(p,'glibc-min'),{recursive:true});fs.writeFileSync(path.join(p,'.inuse'),'');fs.writeFileSync(path.join(p,'READY'),'{}');fs.writeFileSync(path.join(p,'patched'),`#!/system/bin/sh\ntouch '${seed.nativeMarker}'\n[ -e /proc/self/fd/8 ] || exit 61\n`,{mode:0o755});}
-    const rows=[[one,path.join(one,'patched'),path.join(one,'glibc-min'),path.join(root,'shell')],[two,path.join(two,'patched'),path.join(two,'glibc-min'),path.join(root,'shell')]];
+    for(const p of [one,two]){fs.mkdirSync(p,{recursive:true});fs.writeFileSync(path.join(p,'.inuse'),'');fs.writeFileSync(path.join(p,'READY'),'{}');fs.writeFileSync(path.join(p,'patched'),`#!/system/bin/sh\ntouch '${seed.nativeMarker}'\n[ -e /proc/self/fd/8 ] || exit 61\n`,{mode:0o755});}
+    const rows=[[one,path.join(one,'patched'),path.join(root,'shell')],[two,path.join(two,'patched'),path.join(root,'shell')]];
     fs.writeFileSync(path.join(root,'sequence.json'),JSON.stringify(rows));
     const prefix=path.join(root,'prefix'), openMarker=path.join(root,'opened');proceed=path.join(root,'proceed');
     fs.mkdirSync(path.join(prefix,'bin'),{recursive:true});fs.symlinkSync('/data/data/com.termux/files/usr/bin/sh',path.join(prefix,'bin','sh'));
@@ -475,7 +474,7 @@ test('real dash launcher detects an opened stale inode after rename and rm, then
 test('real dash launcher stops after three flock conflicts without executing native', async () => {
   const root=tempDir(),flock='/data/data/com.termux/files/usr/bin/flock';let holder,proc;const release=path.join(root,'release');
   try {
-    const seed=launcherFixture(root,[]),gen=path.join(seed.genRoot,'gen-contended');fs.mkdirSync(path.join(gen,'glibc-min'),{recursive:true});fs.writeFileSync(path.join(gen,'.inuse'),'');fs.writeFileSync(path.join(gen,'READY'),'{}');const patched=path.join(gen,'patched');fs.writeFileSync(patched,`#!/system/bin/sh\ntouch '${seed.nativeMarker}'\n`,{mode:0o755});fs.writeFileSync(path.join(root,'sequence.json'),JSON.stringify([[gen,patched,path.join(gen,'glibc-min'),path.join(root,'shell')]]));
+    const seed=launcherFixture(root,[]),gen=path.join(seed.genRoot,'gen-contended');fs.mkdirSync(gen,{recursive:true});fs.writeFileSync(path.join(gen,'.inuse'),'');fs.writeFileSync(path.join(gen,'READY'),'{}');const patched=path.join(gen,'patched');fs.writeFileSync(patched,`#!/system/bin/sh\ntouch '${seed.nativeMarker}'\n`,{mode:0o755});fs.writeFileSync(path.join(root,'sequence.json'),JSON.stringify([[gen,patched,path.join(root,'shell')]]));
     const entered=path.join(root,'holder-entered'),events=path.join(root,'flock-events'),prefix=path.join(root,'prefix');fs.mkdirSync(path.join(prefix,'bin'),{recursive:true});fs.symlinkSync('/data/data/com.termux/files/usr/bin/sh',path.join(prefix,'bin','sh'));fs.writeFileSync(path.join(prefix,'bin','flock'),`#!/system/bin/sh\n'${flock}' "$@"\nstatus=$?\nprintf '%s\\n' "$status" >> '${events}'\nexit "$status"\n`,{mode:0o755});
     holder=spawn(flock,['-x',path.join(gen,'.inuse'),'-c',`touch '${entered}'; while [ ! -e '${release}' ]; do :; done`],{stdio:'ignore',detached:true});await waitFile(entered,'GC lock acquisition');
     proc=spawn('/data/data/com.termux/files/usr/bin/sh',[path.resolve(__dirname,'../bin/claude'),'--version'],{stdio:['ignore','pipe','pipe'],detached:true,env:{...process.env,MAGI_NODE:path.join(root,'node'),REAL_NODE:process.execPath,CALL_FILE:seed.callFile,SEQUENCE_FILE:path.join(root,'sequence.json'),CLAUDE_TERMUX_LAUNCH_MODE:'patchelf',PREFIX:prefix,HOME:root,TMPDIR:root}});
@@ -513,16 +512,16 @@ test('process group cleanup releases descendants after a forced synchronization 
 
 test('real launcher rejects missing or mismatched generation paths before native execution', () => {
   const root=tempDir();try {
-    const seed=launcherFixture(root,[]),gen=path.join(root,'gen-a'),other=path.join(root,'gen-b');fs.mkdirSync(path.join(gen,'glibc-min'),{recursive:true});fs.writeFileSync(path.join(gen,'.inuse'),'');fs.writeFileSync(path.join(gen,'READY'),'{}');const native=path.join(gen,'patched');fs.writeFileSync(native,`#!/system/bin/sh\ntouch '${seed.nativeMarker}'\n`,{mode:0o755});
-    const cases=[[['',native,path.join(gen,'glibc-min'),path.join(root,'shell')],/Invalid patchelf launch path/],[[gen,native,path.join(other,'glibc-min'),path.join(root,'shell')],/GEN, PATCHED and GLIBC_MIN are inconsistent/]];
+    const seed=launcherFixture(root,[]),gen=path.join(root,'gen-a'),other=path.join(root,'gen-b');fs.mkdirSync(gen,{recursive:true});fs.writeFileSync(path.join(gen,'.inuse'),'');fs.writeFileSync(path.join(gen,'READY'),'{}');const native=path.join(gen,'patched');fs.writeFileSync(native,`#!/system/bin/sh\ntouch '${seed.nativeMarker}'\n`,{mode:0o755});
+    const cases=[[['',native,path.join(root,'shell')],/Invalid patchelf launch path/],[[gen,path.join(other,'patched'),path.join(root,'shell')],/GEN and PATCHED are inconsistent/]];
     for(const [record,expected] of cases){fs.writeFileSync(path.join(root,'sequence.json'),JSON.stringify([record]));const result=seed.run();assert.notEqual(result.status,0);assert.match(result.stderr,expected);assert.equal(fs.existsSync(seed.nativeMarker),false);}
   }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
 
 test('mksh launcher reports unsupported fd inheritance without retrying', () => {
   const root=tempDir();try {
-    const gen=path.join(root,'gen');fs.mkdirSync(path.join(gen,'glibc-min'),{recursive:true});fs.writeFileSync(path.join(gen,'.inuse'),'');fs.writeFileSync(path.join(gen,'READY'),'{}');const native=path.join(gen,'patched'),marker=path.join(root,'native-ran');fs.writeFileSync(native,`#!/system/bin/sh\ntouch '${marker}'\n`,{mode:0o755});
-    const node=path.join(root,'node');fs.writeFileSync(node,`#!/system/bin/sh\n[ "$1" = -e ] && exit 0\nprintf '%s\n' '${gen}' '${native}' '${path.join(gen,'glibc-min')}' '${path.join(root,'shell')}'\n`,{mode:0o755});
+    const gen=path.join(root,'gen');fs.mkdirSync(gen,{recursive:true});fs.writeFileSync(path.join(gen,'.inuse'),'');fs.writeFileSync(path.join(gen,'READY'),'{}');const native=path.join(gen,'patched'),marker=path.join(root,'native-ran');fs.writeFileSync(native,`#!/system/bin/sh\ntouch '${marker}'\n`,{mode:0o755});
+    const node=path.join(root,'node');fs.writeFileSync(node,`#!/system/bin/sh\n[ "$1" = -e ] && exit 0\nprintf '%s\n' '${gen}' '${native}' '${path.join(root,'shell')}'\n`,{mode:0o755});
     const result=spawnSync('/system/bin/sh',[path.resolve(__dirname,'../bin/claude'),'--version'],{encoding:'utf8',env:{...process.env,MAGI_NODE:node,CLAUDE_TERMUX_LAUNCH_MODE:'patchelf',PREFIX:'/data/data/com.termux/files/usr',HOME:root,TMPDIR:root}});
     assert.notEqual(result.status,0);assert.match(result.stderr,/requires Termux sh\/dash/);assert.equal(fs.existsSync(marker),false);
   }finally{fs.rmSync(root,{recursive:true,force:true});}
@@ -549,8 +548,8 @@ test('real CLI cold launch-prep, corrupt READY recovery, lock-free warm/verify a
     fs.writeFileSync(npm,`#!${realSh}\nprintf '%s\\n' 'https://example.invalid/native.tgz'\n`,{mode:0o755});fs.writeFileSync(source,'native fixture');
     const env={...process.env,PREFIX:prefix,HOME:path.join(root,'home'),TMPDIR:path.join(root,'tmp'),CLAUDE_TERMUX_PACKAGE_CACHE:cache,CLAUDE_TERMUX_GLIBC_LIB:glibc,CLAUDE_TERMUX_PATCHELF:patchelf,CLAUDE_TERMUX_READELF:readelf,CLAUDE_TERMUX_NPM:npm,CLAUDE_TERMUX_NATIVE_BIN:source};fs.mkdirSync(env.HOME);fs.mkdirSync(env.TMPDIR);
     const invoke=command=>spawnSync(process.execPath,[cli,command],{encoding:'utf8',env});
-    const first=invoke('launch-prep');assert.equal(first.status,0,first.stderr);const firstRows=first.stdout.trim().split('\n');assert.equal(firstRows.length,4);const ready1=JSON.parse(fs.readFileSync(path.join(firstRows[0],'READY'),'utf8'));
-    assert.equal(ready1.sha256.glibc0,hash(fs.readFileSync(ready1.glibcPaths[0])));assert.equal(ready1.fingerprintPaths.length,2+2+ready1.glibcPaths.length*3);
+    const first=invoke('launch-prep');assert.equal(first.status,0,first.stderr);const firstRows=first.stdout.trim().split('\n');assert.equal(firstRows.length,3);const ready1=JSON.parse(fs.readFileSync(path.join(firstRows[0],'READY'),'utf8'));
+    assert.equal(ready1.sha256.glibc0,hash(fs.readFileSync(ready1.glibcPaths[0])));assert.equal(ready1.fingerprintPaths.length,2+2+ready1.glibcPaths.length*2);
     const warm=invoke('launch-prep');assert.equal(warm.status,0,warm.stderr);assert.equal(warm.stdout,first.stdout,'warm reuses the prepared generation');
     const verified=invoke('verify');assert.equal(verified.status,0,verified.stderr);assert.match(verified.stderr,/verification passed/);
     const recover=mutate=>{const current=path.join(env.CLAUDE_TERMUX_PACKAGE_CACHE,'patchelf',require('../package.json').version,'current');const gen=path.join(path.dirname(current),fs.readlinkSync(current)),readyPath=path.join(gen,'READY'),record=JSON.parse(fs.readFileSync(readyPath,'utf8'));mutate(gen,record);fs.writeFileSync(readyPath,JSON.stringify(record));const result=invoke('launch-prep');assert.equal(result.status,0,result.stderr);assert.notEqual(result.stdout.trim().split('\n')[0],gen,'corrupt current is replaced with a fresh generation');assert.equal(invoke('verify').status,0,'recovered generation verifies');};
@@ -598,14 +597,14 @@ test('READY rejects omitted required fingerprint, wid, wrapper and inuse metadat
   const root=tempDir(),generation=path.join(root,`gen-${id.slice(0,16)}-nonce`);try{fs.mkdirSync(generation);fs.symlinkSync('/tmp/not-a-file',path.join(generation,'.inuse'));assert.throws(()=>runtime.parseReady(JSON.stringify(base),{generationPath:generation}),/regular file/);}finally{fs.rmSync(root,{recursive:true,force:true});}
 });
 
-test('real launcher rejects each relative field, missing lines and extra fifth line without native execution', () => {
+test('real launcher rejects each relative field, missing lines and extra fourth line without native execution', () => {
   const root=tempDir();try {
-    const fixture=launcherFixture(root,[]),gen=path.join(root,'gen-a');fs.mkdirSync(path.join(gen,'glibc-min'),{recursive:true});fs.writeFileSync(path.join(gen,'.inuse'),'');fs.writeFileSync(path.join(gen,'READY'),'{}');const patched=path.join(gen,'patched');fs.writeFileSync(patched,`#!/system/bin/sh\ntouch '${fixture.nativeMarker}'\n`,{mode:0o755});
-    const valid=[gen,patched,path.join(gen,'glibc-min'),path.join(root,'shell')],bad=[];
-    for(let i=0;i<4;i++){const row=valid.slice();row[i]='relative/path';bad.push(row);}
-    bad.push(valid.slice(0,3),[...valid,'extra']);
+    const fixture=launcherFixture(root,[]),gen=path.join(root,'gen-a');fs.mkdirSync(gen,{recursive:true});fs.writeFileSync(path.join(gen,'.inuse'),'');fs.writeFileSync(path.join(gen,'READY'),'{}');const patched=path.join(gen,'patched');fs.writeFileSync(patched,`#!/system/bin/sh\ntouch '${fixture.nativeMarker}'\n`,{mode:0o755});
+    const valid=[gen,patched,path.join(root,'shell')],bad=[];
+    for(let i=0;i<3;i++){const row=valid.slice();row[i]='relative/path';bad.push(row);}
+    bad.push(valid.slice(0,2),[...valid,'extra']);
     for(const row of bad){fs.writeFileSync(path.join(root,'sequence.json'),JSON.stringify([row]));const result=fixture.run();assert.notEqual(result.status,0);assert.equal(fs.existsSync(fixture.nativeMarker),false);}
-    fs.writeFileSync(path.join(root,'sequence.json'),JSON.stringify([valid]));const unterminated=fixture.run('/data/data/com.termux/files/usr/bin/sh',{NO_FINAL_NEWLINE:'1'});assert.notEqual(unterminated.status,0);assert.match(unterminated.stderr,/exactly four newline-terminated lines/);assert.equal(fs.existsSync(fixture.nativeMarker),false);
+    fs.writeFileSync(path.join(root,'sequence.json'),JSON.stringify([valid]));const unterminated=fixture.run('/data/data/com.termux/files/usr/bin/sh',{NO_FINAL_NEWLINE:'1'});assert.notEqual(unterminated.status,0);assert.match(unterminated.stderr,/expected exactly three newline-terminated lines/);assert.equal(fs.existsSync(fixture.nativeMarker),false);
   }finally{fs.rmSync(root,{recursive:true,force:true});}
 });
 

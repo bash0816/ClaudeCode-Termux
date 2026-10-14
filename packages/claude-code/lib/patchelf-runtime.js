@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
-const SCHEMA = 1;
+const SCHEMA = 2;
 const FINGERPRINT_FIELDS = Object.freeze(['realpath', 'dev', 'ino', 'size', 'mtimeNs', 'ctimeNs']);
 
 function fingerprint(filePath) {
@@ -248,14 +248,12 @@ function warmGeneration(options) {
 }
 
 function launchPrep(options) {
-  const { generationPath, patchedPath, glibcMinPath, shellWrap } = options || {};
-  if (![generationPath, patchedPath, glibcMinPath, shellWrap].every(value => typeof value === 'string' && path.isAbsolute(value))) throw new TypeError('generationPath, patchedPath, glibcMinPath and shellWrap must be absolute paths');
+  const { generationPath, patchedPath, shellWrap } = options || {};
+  if (![generationPath, patchedPath, shellWrap].every(value => typeof value === 'string' && path.isAbsolute(value))) throw new TypeError('generationPath, patchedPath and shellWrap must be absolute paths');
   const gen = path.resolve(generationPath);
-  for (const file of [patchedPath, glibcMinPath]) {
-    const rel = path.relative(gen, path.resolve(file));
-    if (!rel || rel.startsWith(`..${path.sep}`) || rel === '..' || path.isAbsolute(rel)) throw new Error('GEN, PATCHED and GLIBC_MIN must belong to the same generation');
-  }
-  return { GEN: gen, PATCHED: path.resolve(patchedPath), GLIBC_MIN: path.resolve(glibcMinPath), SHELL_WRAP: path.resolve(shellWrap) };
+  const rel = path.relative(gen, path.resolve(patchedPath));
+  if (!rel || rel.startsWith(`..${path.sep}`) || rel === '..' || path.isAbsolute(rel)) throw new Error('GEN and PATCHED must belong to the same generation');
+  return { GEN: gen, PATCHED: path.resolve(patchedPath), SHELL_WRAP: path.resolve(shellWrap) };
 }
 
 // Build the payload only; prepareGeneration owns publication and READY.
@@ -282,16 +280,16 @@ function populateGeneration(options) {
   const needed = [...runChecked(readelfPath, ['-d', patched]).matchAll(/Shared library: \[([^\]]+)\]/g)].map(match => match[1]);
   const allGlibcSonames = fs.readdirSync(glibcLib).filter(name => /^[A-Za-z0-9_.+-]+\.so(?:\.[A-Za-z0-9_.+-]+)*$/.test(name));
   const sonames = [...new Set([...needed, ...allGlibcSonames, 'libc.so.6', 'libm.so.6', 'libpthread.so.0', 'libdl.so.2', 'librt.so.1', 'ld-linux-aarch64.so.1', 'libresolv.so.2', 'libutil.so.1', 'libnss_dns.so.2', 'libnss_files.so.2', 'libgcc_s.so.1', 'libstdc++.so.6'])];
-  const glibcMin = path.join(tempDir, 'glibc-min'); fs.mkdirSync(glibcMin); const glibcPaths = [];
+  const glibcPaths = [];
   for (const soname of sonames) {
     if (!/^[A-Za-z0-9_.+-]+\.so(?:\.[A-Za-z0-9_.+-]+)*$/.test(soname)) continue;
-    try { const real = fs.realpathSync(path.join(glibcLib, soname)); if (!fs.statSync(real).isFile()) throw new Error(); fs.symlinkSync(real, path.join(glibcMin, soname)); glibcPaths.push(real); }
+    try { const real = fs.realpathSync(path.join(glibcLib, soname)); if (!fs.statSync(real).isFile()) throw new Error(); glibcPaths.push(real); }
     catch (error) { if (needed.includes(soname)) throw new Error(`required glibc library is missing: ${soname}`, { cause: error }); }
   }
   const wrappers = ensureShellWrappers(shellRoot, runTemplate, bashTemplate);
   const wrapperHashes = { wrapperRun: sha256File(wrappers.run), wrapperBash: sha256File(wrappers.bash) };
   const glibcHashes = Object.fromEntries(glibcPaths.map((file, index) => [`glibc${index}`, sha256File(file)]));
-  return { source, patched, glibcMin, wrappers, wid: wrappers.wid, needed, glibcPaths, readyFields: { needed, glibcPaths, sha256: { ...wrapperHashes, ...glibcHashes } } };
+  return { source, patched, wrappers, wid: wrappers.wid, needed, glibcPaths, readyFields: { needed, glibcPaths, sha256: { ...wrapperHashes, ...glibcHashes } } };
 }
 function findNamed(root, name) {
   const out = [];

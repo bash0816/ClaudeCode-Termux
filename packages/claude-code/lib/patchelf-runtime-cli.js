@@ -34,12 +34,12 @@ function main(argv=process.argv.slice(2)) {
  const widDir=path.join(shellRoot,wid);
  const wrappers=fs.existsSync(widDir)?r.ensureShellWrappers(shellRoot,wrapperRun,wrapperBash):r.ensureShellWrappersLocked(shellRoot,wrapperRun,wrapperBash,tp.flock);
  const wrapperFiles={wrapperRun:wrappers.run,wrapperBash:wrappers.bash};
- const fingerprintPaths=[['patched','patched/claude'],['patchelf',tools.patchelf],['readelf',tools.readelf],['glibcLoader',path.join(glibcLib,'ld-linux-aarch64.so.1')],...inventory.flatMap((x,i)=>[[`glibc${i}`,x.realpath],[`glibcLink${i}`,path.join(glibcLib,x.soname)],[`glibcMinLink${i}`,path.join('glibc-min',x.soname)]])];
+ const fingerprintPaths=[['patched','patched/claude'],['patchelf',tools.patchelf],['readelf',tools.readelf],['glibcLoader',path.join(glibcLib,'ld-linux-aarch64.so.1')],...inventory.flatMap((x,i)=>[[`glibc${i}`,x.realpath],[`glibcLink${i}`,path.join(glibcLib,x.soname)]])];
  const identity=r.createIdentity({schema:r.SCHEMA,version,tarball_sha256:item.tarball_sha256,tarball_integrity:item.tarball_integrity,wid,glibc:inventory,tools:Object.fromEntries(Object.entries(tools).map(([k,p])=>[k,r.fingerprint(p)]))});
  const wrappersField={wid,run:`${wid}/run`,bash:`${wid}/bash`};
  function isReusable(generationPath, ready) {
    try {
-     r.validateReady(ready,{generationPath,fingerprintPaths,requiredSha256:['patched','patchelf','readelf','wrapperRun','wrapperBash',...inventory.map((_,i)=>`glibc${i}`),...inventory.map((_,i)=>[`glibcLink${i}`,`glibcMinLink${i}`]).flat()]});
+     r.validateReady(ready,{generationPath,fingerprintPaths,requiredSha256:['patched','patchelf','readelf','wrapperRun','wrapperBash',...inventory.map((_,i)=>`glibc${i}`),...inventory.map((_,i)=>`glibcLink${i}`)]});
      if(ready.identity!==identity) throw new Error('identity mismatch');
      if(ready.wid!==wid) throw new Error('wid mismatch');
      if(JSON.stringify(ready.glibcLinks)!==JSON.stringify(inventory)||JSON.stringify(ready.glibcPaths)!==JSON.stringify(inventory.map(x=>x.realpath))||JSON.stringify(ready.fingerprintPaths)!==JSON.stringify(fingerprintPaths)) throw new Error('READY omits or changes code-required runtime targets');
@@ -49,7 +49,7 @@ function main(argv=process.argv.slice(2)) {
    } catch { return false; }
  }
  function validateCLIReady(ready) {
-   r.validateReady(ready,{generationPath:path.join(versionDir,currentName(versionDir)||''),fingerprintPaths,requiredSha256:['patched','patchelf','readelf','wrapperRun','wrapperBash',...inventory.map((_,i)=>`glibc${i}`),...inventory.map((_,i)=>[`glibcLink${i}`,`glibcMinLink${i}`]).flat()]});
+   r.validateReady(ready,{generationPath:path.join(versionDir,currentName(versionDir)||''),fingerprintPaths,requiredSha256:['patched','patchelf','readelf','wrapperRun','wrapperBash',...inventory.map((_,i)=>`glibc${i}`),...inventory.map((_,i)=>`glibcLink${i}`)]});
    if(JSON.stringify(ready.glibcLinks)!==JSON.stringify(inventory)||JSON.stringify(ready.glibcPaths)!==JSON.stringify(inventory.map(x=>x.realpath))||JSON.stringify(ready.fingerprintPaths)!==JSON.stringify(fingerprintPaths)) throw new Error('READY omits or changes code-required runtime targets');
  }
  function resolve() {
@@ -64,7 +64,7 @@ function main(argv=process.argv.slice(2)) {
  function prepare() {
    const sourcePath=process.env.CLAUDE_TERMUX_NATIVE_BIN||path.join(root,'versions',version,'app/node_modules/@anthropic-ai/claude-code-linux-arm64/claude');
    const tarballUrl=run(process.env.CLAUDE_TERMUX_NPM||'npm',['view',item.native_spec,'dist.tarball','--json']).replace(/^"|"$/g,'');
-   const built=r.prepareGeneration({versionDir,flockPath:tp.flock,identity,fingerprintPaths,sha256Paths:{patched:'patched/claude',patchelf:tools.patchelf,readelf:tools.readelf,wrapperRun:wrappers.run,wrapperBash:wrappers.bash,...Object.fromEntries(inventory.map((x,i)=>[`glibc${i}`,x.realpath])),...Object.fromEntries(inventory.map((x,i)=>[`glibcLink${i}`,path.join(glibcLib,x.soname)])),...Object.fromEntries(inventory.map((x,i)=>[`glibcMinLink${i}`,path.join('glibc-min',x.soname)]))},wrapperFiles,readyFields:{fingerprintPaths,wid,wrappers:wrappersField,glibcLinks:inventory,glibcPaths:inventory.map(x=>x.realpath),sha256:{wrapperRun:sha(wrappers.run),wrapperBash:sha(wrappers.bash),patchelf:sha(tools.patchelf),readelf:sha(tools.readelf),...Object.fromEntries(inventory.map((x,i)=>[`glibc${i}`,sha(x.realpath)]))}},populate:tempDir=>r.populateGeneration({tempDir,sourcePath,tarballUrl,tarballSha256:item.tarball_sha256,tarballIntegrity:item.tarball_integrity,patchelfPath:tools.patchelf,readelfPath:tools.readelf,glibcLib,loaderPath:path.join(glibcLib,'ld-linux-aarch64.so.1'),shellRoot,runTemplate:wrapperRun,bashTemplate:wrapperBash}),isReusable});
+   const built=r.prepareGeneration({versionDir,flockPath:tp.flock,identity,fingerprintPaths,sha256Paths:{patched:'patched/claude',patchelf:tools.patchelf,readelf:tools.readelf,wrapperRun:wrappers.run,wrapperBash:wrappers.bash,...Object.fromEntries(inventory.map((x,i)=>[`glibc${i}`,x.realpath])),...Object.fromEntries(inventory.map((x,i)=>[`glibcLink${i}`,path.join(glibcLib,x.soname)]))},wrapperFiles,readyFields:{fingerprintPaths,wid,wrappers:wrappersField,glibcLinks:inventory,glibcPaths:inventory.map(x=>x.realpath),sha256:{wrapperRun:sha(wrappers.run),wrapperBash:sha(wrappers.bash),patchelf:sha(tools.patchelf),readelf:sha(tools.readelf),...Object.fromEntries(inventory.map((x,i)=>[`glibc${i}`,sha(x.realpath)]))}},populate:tempDir=>r.populateGeneration({tempDir,sourcePath,tarballUrl,tarballSha256:item.tarball_sha256,tarballIntegrity:item.tarball_integrity,patchelfPath:tools.patchelf,readelfPath:tools.readelf,glibcLib,loaderPath:path.join(glibcLib,'ld-linux-aarch64.so.1'),shellRoot,runTemplate:wrapperRun,bashTemplate:wrapperBash}),isReusable});
    return {generationPath:built.generationPath,ready:built.ready,wrapperMap:wrapperFiles};
  }
  if(command==='verify'||command==='--termux-verify'){
@@ -73,7 +73,7 @@ function main(argv=process.argv.slice(2)) {
    if(ready.identity!==identity||ready.wid!==wid) throw new Error('READY identity mismatch: current generation does not match the audited runtime inputs');
    validateCLIReady(ready); const files={patched:path.join(generationPath,'patched/claude'),patchelf:tools.patchelf,readelf:tools.readelf};
    for(const [i,file] of ready.glibcPaths.entries()) files[`glibc${i}`]=file;
-   for(const [i,x] of ready.glibcLinks.entries()) { files[`glibcLink${i}`]=path.join(glibcLib,x.soname); files[`glibcMinLink${i}`]=path.join(generationPath,'glibc-min',x.soname); }
+   for(const [i,x] of ready.glibcLinks.entries()) { files[`glibcLink${i}`]=path.join(glibcLib,x.soname); }
    const result=r.verifyGeneration({generationPath,ready,files,wrappers:[{key:'wrapperRun',path:path.join(shellRoot,ready.wrappers.run)},{key:'wrapperBash',path:path.join(shellRoot,ready.wrappers.bash)}]});
    process.stderr.write(`patchelf runtime verification passed (${result.checked.length} files)\n`); return;
  }
@@ -82,7 +82,7 @@ function main(argv=process.argv.slice(2)) {
  if(!x) { prepare(); x=resolve(); }
  // Revalidate immediately before publishing paths to the shell launcher.
  if(!x) throw new Error('READY changed or failed validation before launch paths were published');
- const out=command==='hook-path'?[r.hookPath({run:x.wrapperMap.wrapperRun})]:Object.values(r.launchPrep({generationPath:x.generationPath,patchedPath:path.join(x.generationPath,'patched/claude'),glibcMinPath:path.join(x.generationPath,'glibc-min'),shellWrap:x.wrapperMap.wrapperBash,flockPath:tp.flock}));
+ const out=command==='hook-path'?[r.hookPath({run:x.wrapperMap.wrapperRun})]:Object.values(r.launchPrep({generationPath:x.generationPath,patchedPath:path.join(x.generationPath,'patched/claude'),shellWrap:x.wrapperMap.wrapperBash,flockPath:tp.flock}));
  if(out.some(v=>/[\r\n]/.test(v))) throw new Error('unsafe output path'); process.stdout.write(out.join('\n')+'\n');
 }
 if(require.main===module){try{main();}catch(e){console.error(`patchelf runtime failed: ${e.message||e}`);process.exitCode=1;}}
