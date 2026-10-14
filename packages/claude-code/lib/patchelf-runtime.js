@@ -258,17 +258,21 @@ function launchPrep(options) {
 
 // Build the payload only; prepareGeneration owns publication and READY.
 function populateGeneration(options) {
-  const { tempDir, sourcePath, tarballUrl, tarballSha256, tarballIntegrity, patchelfPath, readelfPath, glibcLib, loaderPath, shellRoot, runTemplate, bashTemplate } = options || {};
+  const { tempDir, sourcePath, tarballUrl, tarballSha256, tarballIntegrity, patchelfPath, readelfPath, glibcLib, loaderPath, shellRoot, runTemplate, bashTemplate, notify = defaultNotify } = options || {};
   if (typeof tempDir !== 'string' || !path.isAbsolute(tempDir)) throw new TypeError('tempDir must be absolute');
   const source = path.join(tempDir, 'source', 'claude'); fs.mkdirSync(path.dirname(source), { recursive: true });
   if (sourcePath && fs.existsSync(sourcePath)) fs.copyFileSync(sourcePath, source);
   else {
     if (!tarballUrl) throw new Error('native source binary and tarball URL are unavailable');
     const archive = path.join(tempDir, 'native.tgz');
-    runChecked(options.curlPath || 'curl', ['--fail', '--location', '--retry', process.env.CLAUDE_TERMUX_FETCH_RETRIES || '4', '--connect-timeout', process.env.CLAUDE_TERMUX_FETCH_CONNECT_TIMEOUT || '20', '--max-time', process.env.CLAUDE_TERMUX_FETCH_MAX_TIME || '300', '--output', archive, '--', tarballUrl]);
+    notify('[claude-termux] Downloading...');
+    // curl's own progress bar goes to the inherited stderr; the tarball itself still goes to --output.
+    runChecked(options.curlPath || 'curl', ['--fail', '--location', '--progress-bar', '--retry', process.env.CLAUDE_TERMUX_FETCH_RETRIES || '4', '--connect-timeout', process.env.CLAUDE_TERMUX_FETCH_CONNECT_TIMEOUT || '20', '--max-time', process.env.CLAUDE_TERMUX_FETCH_MAX_TIME || '300', '--output', archive, '--', tarballUrl], { inheritStderr: true });
+    notify('[claude-termux] Verifying download...');
     if (tarballSha256 && sha256File(archive) !== tarballSha256) throw new Error('native tarball sha256 mismatch');
     if (tarballIntegrity && `sha512-${crypto.createHash('sha512').update(fs.readFileSync(archive)).digest('base64')}` !== tarballIntegrity) throw new Error('native tarball integrity mismatch');
     const extract = path.join(tempDir, '.extract'); fs.mkdirSync(extract);
+    notify('[claude-termux] Extracting...');
     runChecked(options.tarPath || 'tar', ['-xzf', archive, '-C', extract]);
     const found = findNamed(extract, 'claude').find(file => { try { return fs.statSync(file).isFile(); } catch { return false; } });
     if (!found) throw new Error('native tarball does not contain claude');
@@ -276,7 +280,9 @@ function populateGeneration(options) {
   }
   fs.chmodSync(source, 0o755);
   const patched = path.join(tempDir, 'patched', 'claude'); fs.mkdirSync(path.dirname(patched), { recursive: true }); fs.copyFileSync(source, patched); fs.chmodSync(patched, 0o755);
+  notify('[claude-termux] Patching...');
   runChecked(patchelfPath, ['--set-interpreter', loaderPath, patched]);
+  notify('[claude-termux] Verifying...');
   const needed = [...runChecked(readelfPath, ['-d', patched]).matchAll(/Shared library: \[([^\]]+)\]/g)].map(match => match[1]);
   const allGlibcSonames = fs.readdirSync(glibcLib).filter(name => /^[A-Za-z0-9_.+-]+\.so(?:\.[A-Za-z0-9_.+-]+)*$/.test(name));
   const sonames = [...new Set([...needed, ...allGlibcSonames, 'libc.so.6', 'libm.so.6', 'libpthread.so.0', 'libdl.so.2', 'librt.so.1', 'ld-linux-aarch64.so.1', 'libresolv.so.2', 'libutil.so.1', 'libnss_dns.so.2', 'libnss_files.so.2', 'libgcc_s.so.1', 'libstdc++.so.6'])];
@@ -296,8 +302,9 @@ function findNamed(root, name) {
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) { const file = path.join(root, entry.name); if (entry.isDirectory()) out.push(...findNamed(file, name)); else if (entry.name === name) out.push(file); }
   return out;
 }
-function runChecked(command, args) {
-  const result = spawnSync(command, args, { encoding: 'utf8' });
+function runChecked(command, args, options = {}) {
+  // inheritStderr lets the child's own progress output reach the terminal; stderr is then not captured.
+  const result = spawnSync(command, args, { encoding: 'utf8', stdio: options.inheritStderr ? ['pipe', 'pipe', 'inherit'] : 'pipe' });
   if (result.error || result.status !== 0) throw new Error(`${command} ${args.join(' ')} failed: ${result.error?.message || result.stderr || result.status}`);
   return result.stdout || '';
 }
@@ -371,7 +378,7 @@ function withFlock(lockPath, flockPath, operation) {
 }
 
 function prepareGeneration(options) {
-  const { versionDir, identity, flockPath = termuxPaths().flock, populate, fingerprintPaths = [], sha256Paths = {}, wrapperFiles = {}, readyFields = {}, nonce = makeNonce, isReusable: isReusablePred } = options || {};
+  const { versionDir, identity, flockPath = termuxPaths().flock, populate, fingerprintPaths = [], sha256Paths = {}, wrapperFiles = {}, readyFields = {}, nonce = makeNonce, isReusable: isReusablePred, version, notify = defaultNotify } = options || {};
   if (typeof versionDir !== 'string' || !path.isAbsolute(versionDir)) throw new TypeError('versionDir must be an absolute path');
   if (typeof flockPath !== 'string' || !path.isAbsolute(flockPath)) throw new TypeError('flockPath must be an absolute path');
   if (typeof populate !== 'function') throw new TypeError('populate(tempDir) must be a function');
@@ -385,6 +392,8 @@ function prepareGeneration(options) {
       try { collectLocked(versionDir, flockPath); recordGcStamp(versionDir, Date.now()); } catch (error) { process.stderr.write(`warning: patchelf GC failed: ${error.message}\n`); }
       return { ...reusable, reused: true };
     }
+    // Announced once, only after the existing generation has been ruled out; a warm start prints nothing.
+    notify(`[claude-termux] Preparing Claude Code ${version} for Termux (first run only). Download ~${Math.ceil(PREPARE_DOWNLOAD_BYTES / MIB)} MiB, extract ~${Math.ceil(PREPARE_EXTRACTED_BYTES / MIB)} MiB; needs about ${Math.ceil(PREPARE_REQUIRED_FREE_BYTES / MIB)} MiB free temporarily and keeps ~${Math.ceil(PREPARE_KEPT_BYTES / MIB)} MiB afterwards.`);
     let collision;
     for (let attempt = 0; attempt < 3; attempt++) {
       const temp = path.join(versionDir, `.tmp-${process.pid}-${crypto.randomBytes(8).toString('hex')}`);
@@ -413,6 +422,7 @@ function prepareGeneration(options) {
         for (const leftover of ['native.tgz', '.extract']) {
           try { fs.rmSync(path.join(finalPath, leftover), { recursive: true, force: true }); } catch (error) { process.stderr.write(`warning: could not remove download leftover ${leftover}: ${error.message}\n`); }
         }
+        notify('[claude-termux] Done.');
         try { collectLocked(versionDir, flockPath); recordGcStamp(versionDir, Date.now()); } catch (error) { process.stderr.write(`warning: patchelf GC failed: ${error.message}\n`); }
         return { generation: name, generationPath: finalPath, ready, reused: false };
       } catch (error) {
@@ -502,6 +512,13 @@ function makeNonce() { return `${Date.now()}-${process.pid}-${crypto.randomBytes
 const PREPARE_PEAK_BYTES = 884556501;
 const PREPARE_REQUIRED_FREE_BYTES = Math.ceil(PREPARE_PEAK_BYTES * 1.1);
 const MIB = 1024 * 1024;
+// Measured sizes for claude 2.1.296; used only for the first-run announcement, not for the free-space check.
+// Native tgz 115122331 B (about 110 MiB), extracted ELF 256434168 B (about 245 MiB), kept after preparation 513000408 B (about 490 MiB).
+const PREPARE_DOWNLOAD_BYTES = 115122331;
+const PREPARE_EXTRACTED_BYTES = 256434168;
+const PREPARE_KEPT_BYTES = 513000408;
+// Progress and stage lines go to stderr only; stdout is reserved for the launch-prep output.
+function defaultNotify(message) { process.stderr.write(message + '\n'); }
 
 // Walks up from dir to the nearest existing ancestor and checks bavail * bsize against required.
 // statfs is injectable for tests; if it is unavailable or throws, a warning is printed and the check is skipped.
