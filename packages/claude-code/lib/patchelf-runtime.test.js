@@ -12,6 +12,14 @@ const runtime = require('./patchelf-runtime');
 
 function tempDir() { return fs.mkdtempSync(path.join(os.tmpdir(), 'patchelf-runtime-')); }
 function hash(value) { return crypto.createHash('sha256').update(value).digest('hex'); }
+const REAL_GLIBC_LOADER = path.join(process.env.PREFIX || '/data/data/com.termux/files/usr', 'glibc/lib/ld-linux-aarch64.so.1');
+function elfHeader({ cls = 2, data = 1, machine = 183 } = {}) {
+  const header = Buffer.alloc(64);
+  header.set([0x7f, 0x45, 0x4c, 0x46], 0);
+  header[4] = cls; header[5] = data; header[6] = 1;
+  if (data === 2) header.writeUInt16BE(machine, 18); else header.writeUInt16LE(machine, 18);
+  return header;
+}
 
 test('fingerprint detects inode replacement, symlink changes and same-size writes with restored mtime', async () => {
   const root = tempDir();
@@ -388,7 +396,8 @@ function makeCliFixture() {
   fs.mkdirSync(path.join(prefix,'bin'),{recursive:true});fs.mkdirSync(path.join(prefix,'lib'),{recursive:true});fs.mkdirSync(glibc);
   fs.symlinkSync(realFlock,path.join(prefix,'bin','flock'));fs.symlinkSync(realSh,path.join(prefix,'bin','sh'));
   fs.writeFileSync(path.join(prefix,'bin','bash'),`#!/system/bin/sh\nexit 0\n`,{mode:0o755});fs.writeFileSync(path.join(prefix,'lib','libtermux-exec-ld-preload.so'),'preload');
-  for(const name of ['libc.so.6','libm.so.6','ld-linux-aarch64.so.1']) fs.writeFileSync(path.join(glibc,name),`library:${name}`);
+  for(const name of ['libc.so.6','libm.so.6']) fs.writeFileSync(path.join(glibc,name),`library:${name}`);
+  fs.copyFileSync(REAL_GLIBC_LOADER,path.join(glibc,'ld-linux-aarch64.so.1'));
   const patchelf=path.join(prefix,'bin','patchelf'),readelf=path.join(prefix,'bin','readelf'),npm=path.join(prefix,'bin','npm');
   for(const f of [patchelf,readelf]) fs.writeFileSync(f,`#!${realSh}\nexit 0\n`,{mode:0o755});
   fs.writeFileSync(npm,`#!${realSh}\nprintf '%s\\n' 'https://example.invalid/x.tgz'\n`,{mode:0o755});fs.writeFileSync(path.join(root,'native'),'native');
@@ -541,7 +550,8 @@ test('real CLI cold launch-prep, corrupt READY recovery, lock-free warm/verify a
     fs.symlinkSync(realFlock,path.join(prefix,'bin','flock'));fs.symlinkSync(realSh,path.join(prefix,'bin','sh'));
     fs.writeFileSync(path.join(prefix,'bin','bash'),'#!/data/data/com.termux/files/usr/bin/sh\nexit 0\n',{mode:0o755});fs.writeFileSync(path.join(prefix,'lib','libtermux-exec-ld-preload.so'),'preload');
     const names=['libc.so.6','libm.so.6','libpthread.so.0','libdl.so.2','librt.so.1','ld-linux-aarch64.so.1','libresolv.so.2','libutil.so.1','libnss_dns.so.2','libnss_files.so.2','libgcc_s.so.1','libstdc++.so.6'];
-    for(const name of names) fs.writeFileSync(path.join(glibc,name),`library:${name}`);
+    for(const name of names) if(name!=='ld-linux-aarch64.so.1') fs.writeFileSync(path.join(glibc,name),`library:${name}`);
+    fs.copyFileSync(REAL_GLIBC_LOADER,path.join(glibc,'ld-linux-aarch64.so.1'));
     fs.writeFileSync(path.join(glibc,'libc-alt.so'),'replacement libc');fs.unlinkSync(path.join(glibc,'libc.so.6'));fs.symlinkSync(path.join(glibc,'libc-alt.so'),path.join(glibc,'libc.so.6'));
     const patchelf=path.join(prefix,'bin','patchelf'),readelf=path.join(prefix,'bin','readelf'),npm=path.join(prefix,'bin','npm');
     for(const file of [patchelf,readelf,npm]) fs.writeFileSync(file,`#!${realSh}\nexit 0\n`,{mode:0o755});
@@ -662,4 +672,78 @@ test('real CLI detects READY mutations (wrapper path, fingerprint, glibcLinks or
     }finally{fs.rmSync(root,{recursive:true,force:true});}
   }
   assert.deepEqual(executed,['swapRun','extraFp','glibcLinksEdit'],'all three mutations executed');
+});
+
+test('verifyGlibcLoader rejects a missing loader without running it', () => {
+  const root=tempDir();
+  try {
+    assert.throws(()=>runtime.verifyGlibcLoader(path.join(root,'missing'),{run:()=>{throw new Error('must not run');}}),/glibc loader is not usable: missing/);
+  } finally {fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('verifyGlibcLoader rejects a directory as a loader', () => {
+  const root=tempDir();
+  try {
+    fs.mkdirSync(path.join(root,'dir'));
+    assert.throws(()=>runtime.verifyGlibcLoader(path.join(root,'dir'),{run:()=>{throw new Error('must not run');}}),/glibc loader is not usable: missing/);
+  } finally {fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('verifyGlibcLoader rejects an empty non-ELF loader', () => {
+  const root=tempDir();
+  try {
+    const loader=path.join(root,'ld.so');fs.writeFileSync(loader,'');
+    assert.throws(()=>runtime.verifyGlibcLoader(loader,{run:()=>{throw new Error('must not run');}}),/not an ELF64 little-endian AArch64 binary/);
+  } finally {fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('verifyGlibcLoader rejects ELF32, big-endian and non-AArch64 headers', () => {
+  const root=tempDir();
+  try {
+    for(const [name,header] of [['elf32',elfHeader({cls:1})],['big-endian',elfHeader({data:2})],['x86_64',elfHeader({machine:62})]]) {
+      const loader=path.join(root,name);fs.writeFileSync(loader,header);
+      assert.throws(()=>runtime.verifyGlibcLoader(loader,{run:()=>{throw new Error('must not run');}}),/not an ELF64 little-endian AArch64 binary/,name);
+    }
+  } finally {fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('verifyGlibcLoader reports a non-zero --version exit code', () => {
+  const root=tempDir();
+  try {
+    const loader=path.join(root,'ld.so');fs.writeFileSync(loader,elfHeader());
+    assert.throws(()=>runtime.verifyGlibcLoader(loader,{run:()=>({status:3,signal:null})}),/glibc loader is not usable: --version failed \(exit code 3\)。 Install the glibc runtime: pkg install glibc-repo && pkg update && pkg install glibc$/);
+  } finally {fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('verifyGlibcLoader reports a --version run terminated by a signal', () => {
+  const root=tempDir();
+  try {
+    const loader=path.join(root,'ld.so');fs.writeFileSync(loader,elfHeader());
+    assert.throws(()=>runtime.verifyGlibcLoader(loader,{run:()=>({status:null,signal:'SIGKILL'})}),/--version failed \(signal SIGKILL\)/);
+  } finally {fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('verifyGlibcLoader accepts a valid AArch64 ELF64 loader whose --version exits 0', () => {
+  const root=tempDir();
+  try {
+    const loader=path.join(root,'ld.so');fs.writeFileSync(loader,elfHeader());
+    const calls=[];
+    const result=runtime.verifyGlibcLoader(loader,{run:(file,args,options)=>{calls.push({file,args,options});return {status:0,signal:null};}});
+    assert.equal(result.path,loader);
+    assert.deepEqual(calls.map(c=>[c.file,c.args,c.options.timeout]),[[loader,['--version'],5000]]);
+  } finally {fs.rmSync(root,{recursive:true,force:true});}
+});
+
+test('verifyGlibcLoader runs the real prefix glibc loader', {skip: !fs.existsSync(REAL_GLIBC_LOADER)}, () => {
+  assert.doesNotThrow(()=>runtime.verifyGlibcLoader(REAL_GLIBC_LOADER));
+});
+
+test('real CLI launch-prep rejects a missing glibc loader with a clear message', () => {
+  const {root,cli,env}=makeCliFixture();
+  try {
+    fs.rmSync(path.join(env.CLAUDE_TERMUX_GLIBC_LIB,'ld-linux-aarch64.so.1'));
+    const result=spawnSync(process.execPath,[cli,'launch-prep'],{encoding:'utf8',env,timeout:30000});
+    assert.notEqual(result.status,0);
+    assert.match(result.stderr,/glibc loader is not usable/);
+  } finally {fs.rmSync(root,{recursive:true,force:true});}
 });

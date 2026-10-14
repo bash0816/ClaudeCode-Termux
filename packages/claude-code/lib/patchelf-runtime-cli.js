@@ -78,6 +78,7 @@ function main(argv=process.argv.slice(2)) {
    process.stderr.write(`patchelf runtime verification passed (${result.checked.length} files)\n`); return;
  }
  if(!['launch-prep','hook-path'].includes(command)) throw new Error(`Unknown patchelf runtime command: ${command||'(missing)'}`);
+ if(command==='launch-prep') r.verifyGlibcLoader(path.join(glibcLib,'ld-linux-aarch64.so.1'));
  let x=resolve();
  if(!x) { prepare(); x=resolve(); }
  // Revalidate immediately before publishing paths to the shell launcher.

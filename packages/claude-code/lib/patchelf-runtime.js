@@ -440,6 +440,26 @@ function inspectCurrent(current, identity, fingerprintPaths, wrapperFiles = {}, 
   } catch { return null; }
 }
 
+const GLIBC_LOADER_HINT = 'Install the glibc runtime: pkg install glibc-repo && pkg update && pkg install glibc';
+
+function verifyGlibcLoader(loaderPath, { run = spawnSync } = {}) {
+  const fail = reason => { throw new Error(`glibc loader is not usable: ${reason}。 ${GLIBC_LOADER_HINT}`); };
+  let real;
+  try { real = fs.realpathSync(loaderPath); } catch { fail(`missing (${loaderPath})`); }
+  if (!fs.statSync(real).isFile()) fail(`missing (not a regular file: ${loaderPath})`);
+  const header = Buffer.alloc(20);
+  const fd = fs.openSync(real, 'r');
+  let bytesRead;
+  try { bytesRead = fs.readSync(fd, header, 0, 20, 0); } finally { fs.closeSync(fd); }
+  const isElf64Le = bytesRead === 20 && header[0] === 0x7f && header[1] === 0x45 && header[2] === 0x4c && header[3] === 0x46 && header[4] === 2 && header[5] === 1;
+  if (!isElf64Le || header.readUInt16LE(18) !== 183) fail('not an ELF64 little-endian AArch64 binary');
+  const result = run(loaderPath, ['--version'], { encoding: 'utf8', timeout: 5000 });
+  if (result.error) fail(`--version failed (${result.error.message})`);
+  if (result.signal) fail(`--version failed (signal ${result.signal})`);
+  if (result.status !== 0) fail(`--version failed (exit code ${result.status})`);
+  return { path: loaderPath, realpath: real };
+}
+
 function termuxPaths(prefix = process.env.PREFIX) {
   if (typeof prefix !== 'string' || !path.isAbsolute(prefix)) throw new Error('PREFIX must be an absolute path');
   return { prefix, flock: path.join(prefix, 'bin', 'flock'), patchelf: path.join(prefix, 'bin', 'patchelf'), readelf: path.join(prefix, 'bin', 'readelf'), glibc: path.join(prefix, 'glibc'), bash: path.join(prefix, 'bin', 'bash'), sh: path.join(prefix, 'bin', 'sh'), preload: path.join(prefix, 'lib', 'libtermux-exec-ld-preload.so') };
@@ -468,6 +488,7 @@ module.exports = {
   termuxPaths,
   validateReady,
   verifyGeneration,
+  verifyGlibcLoader,
   warmGeneration,
   wrapperIdentity,
   withFlock,
