@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
 const r = require('./patchelf-runtime');
+const { writeFakeReadelf } = require('./test-support/fake-readelf');
 
 const FLOCK = r.termuxPaths().flock;
 const SKIP = fs.existsSync(FLOCK) ? false : `flock not found: ${FLOCK}`;
@@ -39,7 +40,7 @@ function fixture(t) {
   writeScript(fx.curl, `const fs = require('fs');\n${record('curl')}\nconst args = process.argv.slice(2);\nfs.writeFileSync(args[args.indexOf('--output') + 1], 'fake-archive');`);
   writeScript(fx.tar, `const fs = require('fs');\nconst path = require('path');\n${record('tar')}\nconst args = process.argv.slice(2);\nfs.writeFileSync(path.join(args[3], 'claude'), 'fake-claude');`);
   writeScript(fx.patchelf, `const fs = require('fs');\n${record('patchelf')}`);
-  writeScript(fx.readelf, `const fs = require('fs');\n${record('readelf')}`);
+  writeFakeReadelf(fx.readelf, { loaderPath: path.join(fx.glibcLib, 'ld-linux-aarch64.so.1'), needed: [], logFile: callsFile });
   return fx;
 }
 

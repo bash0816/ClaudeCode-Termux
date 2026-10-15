@@ -9,6 +9,7 @@ const test = require('node:test');
 const { performance } = require('node:perf_hooks');
 const { spawn, spawnSync } = require('node:child_process');
 const runtime = require('./patchelf-runtime');
+const { writeFakeReadelf } = require('./test-support/fake-readelf');
 
 function tempDir() { return fs.mkdtempSync(path.join(os.tmpdir(), 'patchelf-runtime-')); }
 function hash(value) { return crypto.createHash('sha256').update(value).digest('hex'); }
@@ -413,7 +414,8 @@ function makeCliFixture() {
   for(const name of ['libc.so.6','libm.so.6']) fs.writeFileSync(path.join(glibc,name),`library:${name}`);
   fs.copyFileSync(REAL_GLIBC_LOADER,path.join(glibc,'ld-linux-aarch64.so.1'));
   const patchelf=path.join(prefix,'bin','patchelf'),readelf=path.join(prefix,'bin','readelf'),npm=path.join(prefix,'bin','npm');
-  for(const f of [patchelf,readelf]) fs.writeFileSync(f,`#!${realSh}\nexit 0\n`,{mode:0o755});
+  fs.writeFileSync(patchelf,`#!${realSh}\nexit 0\n`,{mode:0o755});
+  writeFakeReadelf(readelf,{loaderPath:path.join(glibc,'ld-linux-aarch64.so.1')});
   fs.writeFileSync(npm,`#!${realSh}\nprintf '%s\\n' 'https://example.invalid/x.tgz'\n`,{mode:0o755});fs.writeFileSync(path.join(root,'native'),'native');
   const env={...process.env,PREFIX:prefix,HOME:path.join(root,'home'),TMPDIR:path.join(root,'tmp'),CLAUDE_TERMUX_PACKAGE_CACHE:cache,CLAUDE_TERMUX_GLIBC_LIB:glibc,CLAUDE_TERMUX_PATCHELF:patchelf,CLAUDE_TERMUX_READELF:readelf,CLAUDE_TERMUX_NPM:npm,CLAUDE_TERMUX_NATIVE_BIN:path.join(root,'native')};
   fs.mkdirSync(env.HOME);fs.mkdirSync(env.TMPDIR);
@@ -568,7 +570,8 @@ test('real CLI cold launch-prep, corrupt READY recovery, lock-free warm/verify a
     fs.copyFileSync(REAL_GLIBC_LOADER,path.join(glibc,'ld-linux-aarch64.so.1'));
     fs.writeFileSync(path.join(glibc,'libc-alt.so'),'replacement libc');fs.unlinkSync(path.join(glibc,'libc.so.6'));fs.symlinkSync(path.join(glibc,'libc-alt.so'),path.join(glibc,'libc.so.6'));
     const patchelf=path.join(prefix,'bin','patchelf'),readelf=path.join(prefix,'bin','readelf'),npm=path.join(prefix,'bin','npm');
-    for(const file of [patchelf,readelf,npm]) fs.writeFileSync(file,`#!${realSh}\nexit 0\n`,{mode:0o755});
+    for(const file of [patchelf,npm]) fs.writeFileSync(file,`#!${realSh}\nexit 0\n`,{mode:0o755});
+    writeFakeReadelf(readelf,{loaderPath:path.join(glibc,'ld-linux-aarch64.so.1')});
     fs.writeFileSync(npm,`#!${realSh}\nprintf '%s\\n' 'https://example.invalid/native.tgz'\n`,{mode:0o755});fs.writeFileSync(source,'native');
     const env={...process.env,PREFIX:prefix,HOME:path.join(root,'home'),TMPDIR:path.join(root,'tmp'),CLAUDE_TERMUX_PACKAGE_CACHE:cache,CLAUDE_TERMUX_GLIBC_LIB:glibc,CLAUDE_TERMUX_PATCHELF:patchelf,CLAUDE_TERMUX_READELF:readelf,CLAUDE_TERMUX_NPM:npm,CLAUDE_TERMUX_NATIVE_BIN:source};fs.mkdirSync(env.HOME);fs.mkdirSync(env.TMPDIR);
     const invoke=command=>spawnSync(process.execPath,[cli,command],{encoding:'utf8',env});

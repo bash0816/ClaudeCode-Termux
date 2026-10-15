@@ -294,9 +294,9 @@ function populateGeneration(options) {
   notify('[claude-termux] Patching...');
   runChecked(patchelfPath, ['--set-interpreter', loaderPath, patched]);
   notify('[claude-termux] Verifying...');
-  const needed = [...runChecked(readelfPath, ['-d', patched]).matchAll(/Shared library: \[([^\]]+)\]/g)].map(match => match[1]);
+  const needed = verifyPatchedElf({ readelfPath, patchedPath: patched, loaderPath });
   const allGlibcSonames = fs.readdirSync(glibcLib).filter(name => /^[A-Za-z0-9_.+-]+\.so(?:\.[A-Za-z0-9_.+-]+)*$/.test(name));
-  const sonames = [...new Set([...needed, ...allGlibcSonames, 'libc.so.6', 'libm.so.6', 'libpthread.so.0', 'libdl.so.2', 'librt.so.1', 'ld-linux-aarch64.so.1', 'libresolv.so.2', 'libutil.so.1', 'libnss_dns.so.2', 'libnss_files.so.2', 'libgcc_s.so.1', 'libstdc++.so.6'])];
+  const sonames = [...new Set([...needed, ...allGlibcSonames, ...NEEDED_ALLOWLIST])];
   const glibcPaths = [];
   for (const soname of sonames) {
     if (!/^[A-Za-z0-9_.+-]+\.so(?:\.[A-Za-z0-9_.+-]+)*$/.test(soname)) continue;
@@ -318,6 +318,28 @@ function runChecked(command, args, options = {}) {
   const result = spawnSync(command, args, { encoding: 'utf8', stdio: options.inheritStderr ? ['pipe', 'pipe', 'inherit'] : 'pipe' });
   if (result.error || result.status !== 0) throw new Error(`${command} ${args.join(' ')} failed: ${result.error?.message || result.stderr || result.status}`);
   return result.stdout || '';
+}
+// glibc sonames a patched claude may depend on; any NEEDED entry outside this list fails verification.
+const NEEDED_ALLOWLIST = Object.freeze(['libc.so.6', 'libm.so.6', 'libpthread.so.0', 'libdl.so.2', 'librt.so.1', 'ld-linux-aarch64.so.1', 'libresolv.so.2', 'libutil.so.1', 'libnss_dns.so.2', 'libnss_files.so.2', 'libgcc_s.so.1', 'libstdc++.so.6']);
+function verifyPatchedElf({ readelfPath, patchedPath, loaderPath, run = runChecked }) {
+  const header = run(readelfPath, ['-h', patchedPath]);
+  const field = name => { const match = header.match(new RegExp(`^\\s*${name}:\\s+(.+?)\\s*$`, 'm')); return match ? match[1] : null; };
+  const elfClass = field('Class');
+  const data = field('Data');
+  const machine = field('Machine');
+  const type = field('Type');
+  if (elfClass === null || data === null || machine === null || type === null) throw new Error(`patched ELF header is missing or unparseable (Class=${elfClass} Data=${data} Machine=${machine} Type=${type})`);
+  if (elfClass !== 'ELF64') throw new Error(`patched ELF class is ${elfClass}, expected ELF64`);
+  if (data !== "2's complement, little endian") throw new Error(`patched ELF data encoding is ${data}, expected little endian`);
+  if (machine !== 'AArch64') throw new Error(`patched ELF machine is ${machine}, expected AArch64`);
+  if (!/^(EXEC|DYN)(?:\s|$)/.test(type)) throw new Error(`patched ELF type is ${type}, expected EXEC or DYN`);
+  const interpreters = [...run(readelfPath, ['-l', patchedPath]).matchAll(/\[Requesting program interpreter: ([^\]]+)\]/g)].map(match => match[1]);
+  if (interpreters.length !== 1) throw new Error(`patched ELF must have exactly one program interpreter line, found ${interpreters.length}`);
+  if (interpreters[0] !== loaderPath) throw new Error(`patched ELF interpreter is ${interpreters[0]}, expected ${loaderPath}`);
+  const needed = [...run(readelfPath, ['-d', patchedPath]).matchAll(/Shared library: \[([^\]]+)\]/g)].map(match => match[1]);
+  const disallowed = needed.filter(name => !NEEDED_ALLOWLIST.includes(name));
+  if (disallowed.length > 0) throw new Error(`patched ELF needs libraries outside the allowlist: ${disallowed.join(', ')}`);
+  return needed;
 }
 
 function hookPath(wrappers) {
@@ -630,6 +652,7 @@ module.exports = {
   validateReady,
   verifyGeneration,
   verifyGlibcLoader,
+  verifyPatchedElf,
   warmGeneration,
   wrapperIdentity,
   withFlock,
