@@ -341,12 +341,22 @@ function trustedSource(sourcePath, sourceSha256) {
   }
 }
 
+// コピー後の dest を再ハッシュして監査済み sha256 と照合する。不一致・例外時は dest を消して false を返す。
+function copyTrustedSource(sourcePath, dest, sourceSha256, { copy = fs.copyFileSync } = {}) {
+  if (!trustedSource(sourcePath, sourceSha256)) return false;
+  try {
+    copy(sourcePath, dest);
+    if (sha256File(dest) === sourceSha256) return true;
+  } catch {}
+  try { fs.rmSync(dest, { force: true }); } catch {}
+  return false;
+}
+
 function populateGeneration(options) {
   const { tempDir, sourcePath, sourceSha256, tarballUrl, tarballSha256, tarballIntegrity, patchelfPath, readelfPath, glibcLib, loaderPath, shellRoot, runTemplate, bashTemplate, notify = defaultNotify } = options || {};
   if (typeof tempDir !== 'string' || !path.isAbsolute(tempDir)) throw new TypeError('tempDir must be absolute');
   const source = path.join(tempDir, 'source', 'claude'); fs.mkdirSync(path.dirname(source), { recursive: true });
-  const reuseSource = trustedSource(sourcePath, sourceSha256);
-  if (reuseSource) fs.copyFileSync(sourcePath, source);
+  if (copyTrustedSource(sourcePath, source, sourceSha256)) { /* copied and re-verified */ }
   else {
     if (sourcePath && fs.existsSync(sourcePath)) notify('[claude-termux] Existing native binary could not be verified; downloading a fresh copy...');
     if (!tarballUrl) throw new Error('native source binary and tarball URL are unavailable');
@@ -653,6 +663,12 @@ function checkFreeSpace({ dir, required = PREPARE_REQUIRED_FREE_BYTES, statfs = 
   }
 }
 
+// 環境変数などの文字列を必要空き容量（バイト）として解釈する。正の10進整数以外は fallback を返す。
+function parseRequiredFreeBytes(value, fallback) {
+  if (typeof value === 'string' && /^[0-9]+$/.test(value) && Number(value) > 0 && Number.isFinite(Number(value))) return Number(value);
+  return fallback;
+}
+
 function gcVersions(options) {
   const { patchRoot, currentVersion, flockPath = termuxPaths().flock, now = Date.now(), maxAgeDays = 7 } = options || {};
   if (typeof patchRoot !== 'string' || !path.isAbsolute(patchRoot)) throw new TypeError('patchRoot must be an absolute path');
@@ -705,6 +721,8 @@ module.exports = {
   repairRuntime,
   checkDependencies,
   checkFreeSpace,
+  parseRequiredFreeBytes,
+  copyTrustedSource,
   PREPARE_PEAK_BYTES,
   PREPARE_REQUIRED_FREE_BYTES,
   dependencyGuidance,
