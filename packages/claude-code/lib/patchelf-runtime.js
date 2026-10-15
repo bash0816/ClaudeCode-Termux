@@ -500,15 +500,27 @@ function validateReady(ready, options = {}) {
 }
 
 
-function withFlock(lockPath, flockPath, operation) {
+function withFlock(lockPath, flockPath, operation, options) {
   if (typeof operation !== 'function') throw new TypeError('operation must be a function');
+  const onWait = options && typeof options.onWait === 'function' ? options.onWait : null;
   let fd;
   try {
     fs.mkdirSync(path.dirname(lockPath), { recursive: true });
     fd = fs.openSync(lockPath, 'a');
-    const result = spawnSync(flockPath, ['-E', '73', '-x', '3'], { stdio: ['ignore', 'ignore', 'pipe', fd], encoding: 'utf8' });
-    if (result.error) throw result.error;
-    if (result.status !== 0) throw new Error(`flock lock acquisition failed (status ${result.status}): ${(result.stderr || '').trim()}`);
+    let acquired = false;
+    if (onWait) {
+      // Probe without blocking; exit 73 means another process holds the lock, so announce the wait before blocking.
+      const probe = spawnSync(flockPath, ['-E', '73', '-x', '-n', '3'], { stdio: ['ignore', 'ignore', 'pipe', fd], encoding: 'utf8' });
+      if (probe.error) throw probe.error;
+      if (probe.status === 0) acquired = true;
+      else if (probe.status === 73) onWait();
+      else throw new Error(`flock lock acquisition failed (status ${probe.status}): ${(probe.stderr || '').trim()}`);
+    }
+    if (!acquired) {
+      const result = spawnSync(flockPath, ['-E', '73', '-x', '3'], { stdio: ['ignore', 'ignore', 'pipe', fd], encoding: 'utf8' });
+      if (result.error) throw result.error;
+      if (result.status !== 0) throw new Error(`flock lock acquisition failed (status ${result.status}): ${(result.stderr || '').trim()}`);
+    }
     return operation();
   } catch (cause) {
     if (cause.code === 'ENOENT' || cause.code === 'EACCES' || cause.code === 'ENOLCK' || /ENOLCK|No locks available/i.test(cause.message || '')) {
@@ -575,7 +587,7 @@ function prepareGeneration(options) {
       }
     }
     throw new Error('generation name collided three times; refusing to replace an existing generation', { cause: collision });
-  });
+  }, { onWait: () => notify('[claude-termux] Another claude process is preparing the runtime; waiting for it to finish...') });
 }
 
 function inspectCurrent(current, identity, fingerprintPaths, wrapperFiles = {}, requiredSha256 = [], isReusable) {

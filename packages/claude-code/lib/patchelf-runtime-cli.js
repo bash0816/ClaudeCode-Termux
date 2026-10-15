@@ -9,7 +9,8 @@ const r = require('./patchelf-runtime');
 const packageDir = path.resolve(__dirname, '..');
 const pkg = require(path.join(packageDir, 'package.json'));
 const config = require(path.join(packageDir, 'config/claude-native-audited-versions.json'));
-function run(command, args) { const x = spawnSync(command,args,{encoding:'utf8'}); if(x.error||x.status!==0) throw new Error(`${command} failed: ${x.error?.message||x.stderr||x.status}`); return (x.stdout||'').trim(); }
+const NPM_VIEW_TIMEOUT_MS = (() => { const v = Number(process.env.CLAUDE_TERMUX_NPM_TIMEOUT_MS); return Number.isInteger(v) && v > 0 ? v : 60000; })();
+function run(command, args, { timeoutMs } = {}) { const x = spawnSync(command,args,{encoding:'utf8',...(timeoutMs?{timeout:timeoutMs}:{})}); if(timeoutMs&&(x.error?.code==='ETIMEDOUT'||(x.signal==='SIGTERM'&&x.error))) throw new Error(`${command} timed out after ${Math.round(timeoutMs/1000)}s; check your network connection and try again`); if(x.error||x.status!==0) throw new Error(`${command} failed: ${x.error?.message||x.stderr||x.status}`); return (x.stdout||'').trim(); }
 function sha(file) { return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex'); }
 function shellPath(value) { if (!path.isAbsolute(value) || /[\s'"`$;&|<>\\(){}\[\]*?!]/.test(value)) throw new Error(`PREFIX-derived wrapper path contains unsupported shell characters: ${value}`); return value; }
 function currentName(versionDir){ try { const name=fs.readlinkSync(path.join(versionDir,'current')); return /^gen-[a-f0-9]{16}-[A-Za-z0-9-]+$/.test(name)?name:null; } catch { return null; } }
@@ -65,7 +66,8 @@ function main(argv=process.argv.slice(2)) {
  }
  function prepare() {
    const sourcePath=process.env.CLAUDE_TERMUX_NATIVE_BIN||path.join(root,'versions',version,'app/node_modules/@anthropic-ai/claude-code-linux-arm64/claude');
-   const tarballUrl=run(process.env.CLAUDE_TERMUX_NPM||'npm',['view',item.native_spec,'dist.tarball','--json']).replace(/^"|"$/g,'');
+   process.stderr.write('[claude-termux] Looking up the download location...\n');
+   const tarballUrl=run(process.env.CLAUDE_TERMUX_NPM||'npm',['view',item.native_spec,'dist.tarball','--json'],{timeoutMs:NPM_VIEW_TIMEOUT_MS}).replace(/^"|"$/g,'');
    const built=r.prepareGeneration({versionDir,version,flockPath:tp.flock,identity,fingerprintPaths,sha256Paths:{patched:'patched/claude',patchelf:tools.patchelf,readelf:tools.readelf,wrapperRun:wrappers.run,wrapperBash:wrappers.bash,...Object.fromEntries(inventory.map((x,i)=>[`glibc${i}`,x.realpath])),...Object.fromEntries(inventory.map((x,i)=>[`glibcLink${i}`,path.join(glibcLib,x.soname)]))},wrapperFiles,readyFields:{fingerprintPaths,wid,wrappers:wrappersField,glibcLinks:inventory,glibcPaths:inventory.map(x=>x.realpath),sha256:{wrapperRun:sha(wrappers.run),wrapperBash:sha(wrappers.bash),patchelf:sha(tools.patchelf),readelf:sha(tools.readelf),...Object.fromEntries(inventory.map((x,i)=>[`glibc${i}`,sha(x.realpath)]))}},populate:(tempDir,opts={})=>r.populateGeneration({tempDir,notify:opts.notify,sourcePath,tarballUrl,tarballSha256:item.tarball_sha256,sourceSha256:item.source_sha256,tarballIntegrity:item.tarball_integrity,patchelfPath:tools.patchelf,readelfPath:tools.readelf,glibcLib,loaderPath:path.join(glibcLib,'ld-linux-aarch64.so.1'),shellRoot,runTemplate:wrapperRun,bashTemplate:wrapperBash}),isReusable});
    return {generationPath:built.generationPath,ready:built.ready,wrapperMap:wrapperFiles};
  }
