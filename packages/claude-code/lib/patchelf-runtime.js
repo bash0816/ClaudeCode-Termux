@@ -88,6 +88,9 @@ function ensureShellWrappers(shellRoot, run, bash) {
 
 
 function ensureShellWrappersLocked(shellRoot, run, bash, flockPath = termuxPaths().flock, now = Date.now()) {
+  if (typeof run !== 'string' || typeof bash !== 'string') throw new TypeError('wrapper contents must be strings');
+  const wid = wrapperIdentity(run, bash);
+  const dir = path.join(shellRoot, wid);
   return withFlock(path.join(path.dirname(shellRoot), 'shell.lock'), flockPath, () => {
     fs.mkdirSync(shellRoot, { recursive: true });
     for (const entry of fs.readdirSync(shellRoot, { withFileTypes: true })) {
@@ -95,7 +98,8 @@ function ensureShellWrappersLocked(shellRoot, run, bash, flockPath = termuxPaths
       const target = path.join(shellRoot, entry.name);
       try { if (now - fs.statSync(target).mtimeMs > 86400000) fs.rmSync(target, { recursive: true, force: true }); } catch {}
     }
-    return ensureShellWrappers(shellRoot, run, bash);
+    repairWrappersLocked(shellRoot, run, bash);
+    return { wid, dir, run: path.join(dir, 'run'), bash: path.join(dir, 'bash') };
   });
 }
 
@@ -236,12 +240,35 @@ function replaceWrapperFile(dir, file, contents) {
   }
 }
 
+function wrapperFileOk(file, want) {
+  try {
+    const stat = fs.lstatSync(file);
+    return stat.isFile() && (stat.mode & 0o100) !== 0 && sha256File(file) === want;
+  } catch {
+    return false;
+  }
+}
+
+function wrappersIntact(shellRoot, run, bash) {
+  try {
+    const dir = path.join(shellRoot, wrapperIdentity(run, bash));
+    return wrapperFileOk(path.join(dir, 'run'), sha256Text(run)) && wrapperFileOk(path.join(dir, 'bash'), sha256Text(bash));
+  } catch {
+    return false;
+  }
+}
+
 function repairWrappersLocked(shellRoot, run, bash) {
   const wid = wrapperIdentity(run, bash);
   const dir = path.join(shellRoot, wid);
   if (!fs.existsSync(dir)) {
-    ensureShellWrappers(shellRoot, run, bash);
-    return 'recreated';
+    try {
+      ensureShellWrappers(shellRoot, run, bash);
+      return 'recreated';
+    } catch (error) {
+      // A concurrent unlocked writer may have created the wid directory after the check; repair its files below.
+      if (!fs.existsSync(dir)) throw error;
+    }
   }
   const expected = [
     [path.join(dir, 'run'), sha256Text(run), run],
@@ -249,9 +276,7 @@ function repairWrappersLocked(shellRoot, run, bash) {
   ];
   let replaced = false;
   for (const [file, want, contents] of expected) {
-    let actual = null;
-    try { actual = sha256File(file); } catch {}
-    if (actual === want) continue;
+    if (wrapperFileOk(file, want)) continue;
     replaceWrapperFile(dir, file, contents);
     replaced = true;
   }
@@ -756,6 +781,7 @@ module.exports = {
   createReady,
   ensureShellWrappers,
   ensureShellWrappersLocked,
+  wrappersIntact,
   fingerprint,
   fingerprintsEqual,
   generationName,

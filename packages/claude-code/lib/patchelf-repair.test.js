@@ -6,6 +6,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
 const { once } = require('node:events');
+const crypto = require('node:crypto');
+const { writeFakeReadelf } = require('./test-support/fake-readelf');
 const r = require('./patchelf-runtime');
 
 const FLOCK = r.termuxPaths().flock;
@@ -241,6 +243,156 @@ test('the repair CLI exits 0 and reports a replaced wrapper', { skip: SKIP }, ()
     const second = spawnSync(process.execPath, [cli, 'repair'], { env, encoding: 'utf8' });
     assert.equal(second.status, 0, second.stderr);
     assert.equal(JSON.parse(second.stderr).wrappers, 'replaced');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('wrappersIntact requires matching content, a regular file and owner-execute permission', { skip: SKIP }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'patchelf-repair-'));
+  try {
+    const { shellRoot } = layout(root);
+    r.ensureShellWrappers(shellRoot, RUN, BASH);
+    const runPath = path.join(widDirOf(root), 'run');
+    assert.equal(r.wrappersIntact(shellRoot, RUN, BASH), true);
+
+    fs.writeFileSync(runPath, 'corrupted\n');
+    assert.equal(r.wrappersIntact(shellRoot, RUN, BASH), false);
+
+    fs.writeFileSync(runPath, RUN);
+    assert.equal(r.wrappersIntact(shellRoot, RUN, BASH), true);
+
+    fs.rmSync(runPath);
+    assert.equal(r.wrappersIntact(shellRoot, RUN, BASH), false);
+
+    fs.writeFileSync(runPath, RUN);
+    fs.chmodSync(runPath, 0o644);
+    assert.equal(r.wrappersIntact(shellRoot, RUN, BASH), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('ensureShellWrappersLocked repairs damaged, missing and non-executable wrappers without throwing', { skip: SKIP }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'patchelf-repair-'));
+  try {
+    const { shellRoot } = layout(root);
+    const first = r.ensureShellWrappersLocked(shellRoot, RUN, BASH, FLOCK);
+    const bashIno = fs.statSync(first.bash).ino;
+
+    fs.writeFileSync(first.run, 'corrupted\n');
+    let second;
+    assert.doesNotThrow(() => { second = r.ensureShellWrappersLocked(shellRoot, RUN, BASH, FLOCK); });
+    assert.equal(second.wid, r.wrapperIdentity(RUN, BASH));
+    assert.equal(second.dir, widDirOf(root));
+    assert.equal(second.run, first.run);
+    assert.equal(second.bash, first.bash);
+    assert.equal(fs.readFileSync(second.run, 'utf8'), RUN);
+    assert.equal(fs.readFileSync(second.bash, 'utf8'), BASH);
+    assert.equal(fs.statSync(second.bash).ino, bashIno);
+    assert.ok(r.wrappersIntact(shellRoot, RUN, BASH));
+
+    fs.rmSync(first.run);
+    const third = r.ensureShellWrappersLocked(shellRoot, RUN, BASH, FLOCK);
+    assert.equal(fs.readFileSync(third.run, 'utf8'), RUN);
+    assert.ok(r.wrappersIntact(shellRoot, RUN, BASH));
+
+    fs.chmodSync(third.run, 0o644);
+    const fourth = r.ensureShellWrappersLocked(shellRoot, RUN, BASH, FLOCK);
+    assert.equal(fs.statSync(fourth.run).mode & 0o777, 0o755);
+    assert.equal(fs.readFileSync(fourth.run, 'utf8'), RUN);
+    assert.deepEqual(fs.readdirSync(widDirOf(root)).filter((name) => name.startsWith('.tmp-')), []);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('repairRuntime restores execute permission on a content-matching run wrapper', { skip: SKIP }, () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'patchelf-repair-'));
+  try {
+    const { shellRoot } = layout(root);
+    r.ensureShellWrappers(shellRoot, RUN, BASH);
+    const runPath = path.join(widDirOf(root), 'run');
+    fs.chmodSync(runPath, 0o644);
+
+    const result = repair(root);
+
+    assert.equal(result.wrappers, 'replaced');
+    assert.equal(fs.readFileSync(runPath, 'utf8'), RUN);
+    assert.equal(fs.statSync(runPath).mode & 0o777, 0o755);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+const REAL_GLIBC_LOADER = path.join(PREFIX, 'glibc', 'lib', 'ld-linux-aarch64.so.1');
+const LAUNCH_SKIP = SKIP || (fs.existsSync(REAL_GLIBC_LOADER) ? false : 'glibc loader not available');
+
+function tempDir() { return fs.mkdtempSync(path.join(os.tmpdir(), 'patchelf-runtime-')); }
+function hash(value) { return crypto.createHash('sha256').update(value).digest('hex'); }
+
+function makeMiniCli(root) {
+  const realPkgDir=path.resolve(__dirname,'..'),pkgDir=path.join(root,'pkg'),libDir=path.join(pkgDir,'lib'),configDir=path.join(pkgDir,'config');
+  fs.mkdirSync(libDir,{recursive:true});fs.mkdirSync(configDir,{recursive:true});
+  fs.copyFileSync(path.join(realPkgDir,'package.json'),path.join(pkgDir,'package.json'));
+  const version=JSON.parse(fs.readFileSync(path.join(realPkgDir,'package.json'),'utf8')).version;
+  const config=JSON.parse(fs.readFileSync(path.join(realPkgDir,'config/claude-native-audited-versions.json'),'utf8'));
+  if(!config.versions||!config.versions[version]) throw new Error(`audited config has no entry for ${version}`);
+  config.versions[version].source_sha256=hash('native');
+  fs.writeFileSync(path.join(configDir,'claude-native-audited-versions.json'),JSON.stringify(config,null,2));
+  fs.copyFileSync(path.resolve(__dirname,'patchelf-runtime-cli.js'),path.join(libDir,'patchelf-runtime-cli.js'));
+  fs.copyFileSync(path.resolve(__dirname,'patchelf-runtime.js'),path.join(libDir,'patchelf-runtime.js'));
+  return path.join(libDir,'patchelf-runtime-cli.js');
+}
+
+function makeFullCliFixture() {
+  const root=tempDir(),cli=makeMiniCli(root),realSh='/data/data/com.termux/files/usr/bin/sh',realFlock='/data/data/com.termux/files/usr/bin/flock',prefix=path.join(root,'prefix'),cache=path.join(root,'cache'),glibc=path.join(root,'glibc');
+  fs.mkdirSync(path.join(prefix,'bin'),{recursive:true});fs.mkdirSync(path.join(prefix,'lib'),{recursive:true});fs.mkdirSync(glibc);
+  fs.symlinkSync(realFlock,path.join(prefix,'bin','flock'));fs.symlinkSync(realSh,path.join(prefix,'bin','sh'));
+  fs.writeFileSync(path.join(prefix,'bin','bash'),`#!/system/bin/sh\nexit 0\n`,{mode:0o755});fs.writeFileSync(path.join(prefix,'lib','libtermux-exec-ld-preload.so'),'preload');
+  for(const name of ['libc.so.6','libm.so.6']) fs.writeFileSync(path.join(glibc,name),`library:${name}`);
+  fs.copyFileSync(REAL_GLIBC_LOADER,path.join(glibc,'ld-linux-aarch64.so.1'));
+  const patchelf=path.join(prefix,'bin','patchelf'),readelf=path.join(prefix,'bin','readelf'),npm=path.join(prefix,'bin','npm');
+  fs.writeFileSync(patchelf,`#!${realSh}\nexit 0\n`,{mode:0o755});
+  writeFakeReadelf(readelf,{loaderPath:path.join(glibc,'ld-linux-aarch64.so.1')});
+  fs.writeFileSync(npm,`#!${realSh}\nprintf '%s\\n' 'https://example.invalid/x.tgz'\n`,{mode:0o755});fs.writeFileSync(path.join(root,'native'),'native');
+  const env={...process.env,PREFIX:prefix,HOME:path.join(root,'home'),TMPDIR:path.join(root,'tmp'),CLAUDE_TERMUX_PACKAGE_CACHE:cache,CLAUDE_TERMUX_GLIBC_LIB:glibc,CLAUDE_TERMUX_PATCHELF:patchelf,CLAUDE_TERMUX_READELF:readelf,CLAUDE_TERMUX_NPM:npm,CLAUDE_TERMUX_NATIVE_BIN:path.join(root,'native')};
+  fs.mkdirSync(env.HOME);fs.mkdirSync(env.TMPDIR);
+  return {root,cli,env};
+}
+
+test('launch-prep repairs a damaged shared run wrapper instead of stopping for manual removal', { skip: LAUNCH_SKIP }, () => {
+  const { root, cli, env } = makeFullCliFixture();
+  try {
+    const first = spawnSync(process.execPath, [cli, 'launch-prep'], { env, encoding: 'utf8' });
+    assert.equal(first.status, 0, first.stderr);
+    const shellRoot = path.join(env.CLAUDE_TERMUX_PACKAGE_CACHE, 'patchelf', 'shell');
+    const [wid] = fs.readdirSync(shellRoot);
+    const runFile = path.join(shellRoot, wid, 'run');
+    const original = fs.readFileSync(runFile);
+    fs.writeFileSync(runFile, 'corrupted\n');
+
+    const launch = spawnSync(process.execPath, [cli, 'launch-prep'], { env, encoding: 'utf8' });
+    assert.equal(launch.status, 0, launch.stderr);
+    assert.doesNotMatch(launch.stderr, /manually/);
+    assert.match(launch.stderr, /Repaired the shared shell wrapper/);
+    assert.deepEqual(fs.readFileSync(runFile), original);
+    assert.equal(fs.statSync(runFile).mode & 0o777, 0o755);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('launch-prep does not report a repair on first install when no wrapper directory exists yet', { skip: LAUNCH_SKIP }, () => {
+  const { root, cli, env } = makeFullCliFixture();
+  try {
+    const shellRoot = path.join(env.CLAUDE_TERMUX_PACKAGE_CACHE, 'patchelf', 'shell');
+    assert.equal(fs.existsSync(shellRoot), false);
+
+    const launch = spawnSync(process.execPath, [cli, 'launch-prep'], { env, encoding: 'utf8' });
+    assert.equal(launch.status, 0, launch.stderr);
+    assert.doesNotMatch(launch.stderr, /Repaired the shared shell wrapper/);
+    assert.equal(fs.readdirSync(shellRoot).length, 1);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
