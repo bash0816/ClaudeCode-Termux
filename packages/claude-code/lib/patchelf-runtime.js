@@ -670,29 +670,42 @@ function parseRequiredFreeBytes(value, fallback) {
 }
 
 function gcVersions(options) {
-  const { patchRoot, currentVersion, flockPath = termuxPaths().flock, now = Date.now(), maxAgeDays = 7 } = options || {};
+  const { patchRoot, currentVersion, flockPath = termuxPaths().flock, now = Date.now(), maxAgeDays = 7, onStage } = options || {};
   if (typeof patchRoot !== 'string' || !path.isAbsolute(patchRoot)) throw new TypeError('patchRoot must be an absolute path');
   if (typeof currentVersion !== 'string' || currentVersion.length === 0) throw new TypeError('currentVersion must be a non-empty string');
   const removedVersions = [];
   const skipped = [];
   if (!fs.existsSync(patchRoot)) return { removedVersions, skipped };
   const maxAgeMs = maxAgeDays * 86400000;
+  // .last-used の mtime を返す（無ければ null）。ロック取得の前後で読み直すため関数にする。
+  const readLastUsedMtime = (versionDir) => { try { return fs.statSync(path.join(versionDir, '.last-used')).mtimeMs; } catch { return null; } };
+  // gen- で始まるディレクトリ名を昇順で返す。
+  const listGenerations = (versionDir) => fs.readdirSync(versionDir, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name.startsWith('gen-')).map((e) => e.name).sort();
   for (const entry of fs.readdirSync(patchRoot, { withFileTypes: true })) {
     const version = entry.name;
     if (!entry.isDirectory() || version === 'shell' || version.startsWith('gen-') || version.startsWith('.')) continue;
     if (version === currentVersion) { skipped.push({ version, reason: 'current' }); continue; }
     const versionDir = path.join(patchRoot, version);
-    let lastUsed;
-    try { lastUsed = fs.statSync(path.join(versionDir, '.last-used')); } catch { skipped.push({ version, reason: 'no-last-used' }); continue; }
-    if (now - lastUsed.mtimeMs <= maxAgeMs) { skipped.push({ version, reason: 'recent' }); continue; }
+    // (a) 早期スキップ（最適化のみ。回収の判断はロック取得後の再確認で行う）
+    const earlyMtime = readLastUsedMtime(versionDir);
+    if (earlyMtime === null) { skipped.push({ version, reason: 'no-last-used' }); continue; }
+    if (now - earlyMtime <= maxAgeMs) { skipped.push({ version, reason: 'recent' }); continue; }
     const held = [];
     try {
-      const genNames = fs.readdirSync(versionDir, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name.startsWith('gen-')).map((e) => e.name);
-      let locked = false;
+      // (b) prepare.lock を非ブロック排他で取得。取れなければ locked
       const lockFd = tryInuseExclusive(path.join(versionDir, 'prepare.lock'), flockPath);
-      if (lockFd === null) locked = true; else held.push(lockFd);
+      if (lockFd === null) { skipped.push({ version, reason: 'locked' }); continue; }
+      held.push(lockFd);
+      if (onStage) onStage('locked', { version });
+      // (c) ロック取得後に .last-used を読み直す
+      const mtimeAfterLock = readLastUsedMtime(versionDir);
+      if (mtimeAfterLock === null) { skipped.push({ version, reason: 'no-last-used' }); continue; }
+      if (now - mtimeAfterLock <= maxAgeMs) { skipped.push({ version, reason: 'recent' }); continue; }
+      // (d) ロック取得後に世代一覧を読む
+      const genNames = listGenerations(versionDir);
+      // (e) 全世代の .inuse を非ブロック排他で取得。取れなければ locked
+      let locked = false;
       for (const gen of genNames) {
-        if (locked) break;
         const inuse = path.join(versionDir, gen, '.inuse');
         let stat = null;
         try { stat = fs.lstatSync(inuse); } catch (error) { if (error.code !== 'ENOENT') throw error; }
@@ -701,6 +714,14 @@ function gcVersions(options) {
         if (fd === null) { locked = true; break; } else held.push(fd);
       }
       if (locked) { skipped.push({ version, reason: 'locked' }); continue; }
+      if (onStage) onStage('inuse-locked', { version });
+      // (f) 全 .inuse の排他取得後に .last-used を再読込し、世代一覧を再列挙して (d) と比較する
+      const mtimeBeforeRemove = readLastUsedMtime(versionDir);
+      if (mtimeBeforeRemove === null) { skipped.push({ version, reason: 'no-last-used' }); continue; }
+      if (now - mtimeBeforeRemove <= maxAgeMs) { skipped.push({ version, reason: 'recent' }); continue; }
+      const genNamesAfter = listGenerations(versionDir);
+      if (genNamesAfter.length !== genNames.length || genNamesAfter.some((name, i) => name !== genNames[i])) { skipped.push({ version, reason: 'changed' }); continue; }
+      // (g) ここまで全部通った場合のみ回収する
       const targets = [...genNames];
       try { if (fs.lstatSync(path.join(versionDir, 'current')).isSymbolicLink()) targets.push('current'); } catch {}
       targets.push('.last-used');
