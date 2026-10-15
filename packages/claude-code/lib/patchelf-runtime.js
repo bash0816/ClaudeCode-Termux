@@ -87,7 +87,7 @@ function ensureShellWrappers(shellRoot, run, bash) {
 }
 
 
-function ensureShellWrappersLocked(shellRoot, run, bash, flockPath = termuxPaths().flock, now = Date.now()) {
+function ensureShellWrappersLocked(shellRoot, run, bash, flockPath = termuxPaths().flock, now = Date.now(), notify = defaultNotify) {
   if (typeof run !== 'string' || typeof bash !== 'string') throw new TypeError('wrapper contents must be strings');
   const wid = wrapperIdentity(run, bash);
   const dir = path.join(shellRoot, wid);
@@ -100,7 +100,7 @@ function ensureShellWrappersLocked(shellRoot, run, bash, flockPath = termuxPaths
     }
     repairWrappersLocked(shellRoot, run, bash);
     return { wid, dir, run: path.join(dir, 'run'), bash: path.join(dir, 'bash') };
-  });
+  }, { onWait: () => notify('[claude-termux] Another claude process is updating the shared shell wrapper; waiting for it to finish...') });
 }
 
 function assertWrapperContent(file, expectedSha256) {
@@ -283,10 +283,10 @@ function repairWrappersLocked(shellRoot, run, bash) {
   return replaced ? 'replaced' : 'ok';
 }
 
-function repairRuntime({ versionDir, shellRoot, runTemplate, bashTemplate, flockPath = termuxPaths().flock, now = Date.now() } = {}) {
+function repairRuntime({ versionDir, shellRoot, runTemplate, bashTemplate, flockPath = termuxPaths().flock, now = Date.now(), notify = defaultNotify } = {}) {
   void now;
-  const generations = withFlock(path.join(versionDir, 'prepare.lock'), flockPath, () => repairGenerationsLocked(versionDir, flockPath));
-  const wrappers = withFlock(path.join(path.dirname(shellRoot), 'shell.lock'), flockPath, () => repairWrappersLocked(shellRoot, runTemplate, bashTemplate));
+  const generations = withFlock(path.join(versionDir, 'prepare.lock'), flockPath, () => repairGenerationsLocked(versionDir, flockPath), { onWait: () => notify('[claude-termux] Another claude process is preparing the runtime; waiting for it to finish...') });
+  const wrappers = withFlock(path.join(path.dirname(shellRoot), 'shell.lock'), flockPath, () => repairWrappersLocked(shellRoot, runTemplate, bashTemplate), { onWait: () => notify('[claude-termux] Another claude process is updating the shared shell wrapper; waiting for it to finish...') });
   return { removedGenerations: generations.removed, skippedGenerations: generations.skipped, wrappers };
 }
 
@@ -298,14 +298,14 @@ function recordGcStamp(versionDir, now) {
 }
 
 function gcGenerations(options) {
-  const { versionDir, flockPath = termuxPaths().flock, now = Date.now() } = options || {};
+  const { versionDir, flockPath = termuxPaths().flock, now = Date.now(), notify = defaultNotify } = options || {};
   if (typeof versionDir !== 'string' || !path.isAbsolute(versionDir)) throw new TypeError('versionDir must be an absolute path');
   fs.mkdirSync(versionDir, { recursive: true });
   return withFlock(path.join(versionDir, 'prepare.lock'), flockPath, () => {
     const result = collectLocked(versionDir, flockPath, now);
     recordGcStamp(versionDir, now);
     return result;
-  });
+  }, { onWait: () => notify('[claude-termux] Another claude process is preparing the runtime; waiting for it to finish...') });
 }
 
 function maybeDailyGc(options) {

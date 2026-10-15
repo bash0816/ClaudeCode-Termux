@@ -153,3 +153,123 @@ test('a stalled npm lookup stops cold launch-prep with a timeout message instead
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+const RUNTIME_PATH = path.resolve(__dirname, 'patchelf-runtime.js');
+const NOTIFY_PREPARE = '[claude-termux] Another claude process is preparing the runtime; waiting for it to finish...';
+const NOTIFY_SHELL = '[claude-termux] Another claude process is updating the shared shell wrapper; waiting for it to finish...';
+const CHILD_PRELUDE = "const fs=require('fs');const r=require(process.argv[1]);" +
+  "const notify=(m)=>fs.writeSync(1,'NOTIFY:'+m+'\\n');";
+const GC_SCRIPT = CHILD_PRELUDE +
+  "const res=r.gcGenerations({versionDir:process.argv[2],flockPath:process.argv[3],notify});" +
+  "fs.writeSync(1,'DONE '+JSON.stringify(res)+'\\n');";
+const REPAIR_SCRIPT = CHILD_PRELUDE +
+  "const res=r.repairRuntime({versionDir:process.argv[2],shellRoot:process.argv[3],runTemplate:'run-body',bashTemplate:'bash-body',flockPath:process.argv[4],notify});" +
+  "fs.writeSync(1,'DONE '+JSON.stringify(res)+'\\n');";
+const WRAPPER_SCRIPT = CHILD_PRELUDE +
+  "const res=r.ensureShellWrappersLocked(process.argv[2],'run-body','bash-body',process.argv[3],Date.now(),notify);" +
+  "fs.writeSync(1,'DONE '+JSON.stringify(res)+'\\n');";
+
+function countOf(text, needle) { return text.split(needle).length - 1; }
+
+function spawnHolder(lock) {
+  const holder = spawn(FLOCK, ['-x', lock, SH, '-c', 'echo ready; read x'], { stdio: ['pipe', 'pipe', 'pipe'] });
+  const state = { proc: holder, out: '', exited: once(holder, 'exit') };
+  holder.stdout.setEncoding('utf8');
+  holder.stdout.on('data', (d) => { state.out += d; });
+  return state;
+}
+
+function spawnChild(script, args) {
+  const child = spawn(process.execPath, ['-e', script, ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
+  const state = { proc: child, out: '', err: '', exited: once(child, 'exit') };
+  child.stdout.setEncoding('utf8');
+  child.stdout.on('data', (d) => { state.out += d; });
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', (d) => { state.err += d; });
+  return state;
+}
+
+// Holds `lock` in another process, starts the child, checks it announces the wait once and stays blocked,
+// releases the holder, then checks the child completes.
+async function runWhileLockHeld(lock, script, args) {
+  const holder = spawnHolder(lock);
+  const child = spawnChild(script, args);
+  try {
+    await waitUntil(() => holder.out.includes('ready'));
+    await waitUntil(() => child.out.includes('NOTIFY:') || child.err.length > 0 || child.proc.exitCode !== null);
+    assert.equal(child.proc.exitCode, null, child.err);
+    assert.equal(countOf(child.out, 'NOTIFY:'), 1, child.out);
+    assert.doesNotMatch(child.out, /DONE/, 'child must still be blocked before the holder releases');
+    holder.proc.stdin.end('\n');
+    await holder.exited;
+    const [code] = await child.exited;
+    assert.equal(code, 0, child.err);
+    assert.equal(countOf(child.out, 'NOTIFY:'), 1, child.out);
+    assert.equal(countOf(child.out, 'DONE '), 1, child.out);
+    return child.out;
+  } finally {
+    if (holder.proc.exitCode === null && holder.proc.signalCode === null) holder.proc.kill('SIGKILL');
+    if (child.proc.exitCode === null && child.proc.signalCode === null) child.proc.kill('SIGKILL');
+  }
+}
+
+test('gcGenerations announces the prepare.lock wait once while another process holds it, then completes after release', { skip: SKIP, timeout: 30000 }, async () => {
+  const dir = tempDir();
+  try {
+    const versionDir = path.join(dir, 'version');
+    fs.mkdirSync(versionDir, { recursive: true });
+    const lock = path.join(versionDir, 'prepare.lock');
+    fs.writeFileSync(lock, '');
+    const out = await runWhileLockHeld(lock, GC_SCRIPT, [RUNTIME_PATH, versionDir, FLOCK]);
+    assert.equal(countOf(out, `NOTIFY:${NOTIFY_PREPARE}`), 1, out);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('repairRuntime announces the prepare.lock wait once while another process holds it, then completes after release', { skip: SKIP, timeout: 30000 }, async () => {
+  const dir = tempDir();
+  try {
+    const versionDir = path.join(dir, 'version');
+    const shellRoot = path.join(dir, 'shell');
+    fs.mkdirSync(versionDir, { recursive: true });
+    const lock = path.join(versionDir, 'prepare.lock');
+    fs.writeFileSync(lock, '');
+    const out = await runWhileLockHeld(lock, REPAIR_SCRIPT, [RUNTIME_PATH, versionDir, shellRoot, FLOCK]);
+    assert.equal(countOf(out, `NOTIFY:${NOTIFY_PREPARE}`), 1, out);
+    assert.equal(countOf(out, `NOTIFY:${NOTIFY_SHELL}`), 0, out);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('ensureShellWrappersLocked announces the shell.lock wait once while another process holds it, then completes after release', { skip: SKIP, timeout: 30000 }, async () => {
+  const dir = tempDir();
+  try {
+    const shellRoot = path.join(dir, 'shell');
+    const lock = path.join(path.dirname(shellRoot), 'shell.lock');
+    fs.writeFileSync(lock, '');
+    const out = await runWhileLockHeld(lock, WRAPPER_SCRIPT, [RUNTIME_PATH, shellRoot, FLOCK]);
+    assert.equal(countOf(out, `NOTIFY:${NOTIFY_SHELL}`), 1, out);
+    const res = JSON.parse(/^DONE (.*)$/m.exec(out)[1]);
+    assert.ok(fs.existsSync(res.run), out);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('repair and gc paths never announce a wait when their locks are free', { skip: SKIP, timeout: 30000 }, () => {
+  const dir = tempDir();
+  try {
+    const versionDir = path.join(dir, 'version');
+    const shellRoot = path.join(dir, 'shell');
+    const notes = [];
+    const notify = (m) => notes.push(m);
+    r.gcGenerations({ versionDir, flockPath: FLOCK, notify });
+    r.repairRuntime({ versionDir, shellRoot, runTemplate: 'run-body', bashTemplate: 'bash-body', flockPath: FLOCK, notify });
+    r.ensureShellWrappersLocked(shellRoot, 'run-body', 'bash-body', FLOCK, Date.now(), notify);
+    assert.deepEqual(notes, []);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
