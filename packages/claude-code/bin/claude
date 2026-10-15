@@ -56,6 +56,8 @@ if [ "$LAUNCH_MODE" = "patchelf" ] && [ "${1:-}" != "update" ]; then
     if "$FLOCK" -E 73 -s -n 8; then flock_status=0; else flock_status=$?; fi
     if [ "$flock_status" -ne 0 ]; then command exec 8<&-; if [ "$flock_status" -eq 73 ]; then attempt=$((attempt + 1)); continue; fi; echo "flock failed (status $flock_status); patchelf mode requires Termux sh/dash with fd inheritance and util-linux flock" >&2; exit 1; fi
     if [ ! "$GEN/.inuse" -ef /proc/self/fd/8 ] || [ ! -f "$GEN/READY" ]; then command exec 8<&-; attempt=$((attempt + 1)); continue; fi
+    LAST_USED="$(dirname -- "$GEN")/.last-used"
+    if [ ! -e "$LAST_USED" ] || [ -n "$(find "$LAST_USED" -mmin +59 2>/dev/null)" ]; then touch "$LAST_USED" 2>/dev/null || true; fi
     if [ "${CLAUDE_CODE_SHELL+x}" = x ]; then exec env -u LD_PRELOAD -u LD_LIBRARY_PATH DISABLE_UPDATES=1 "$PATCHED" "$@"; else exec env -u LD_PRELOAD -u LD_LIBRARY_PATH DISABLE_UPDATES=1 CLAUDE_CODE_SHELL="$SHELL_WRAP" "$PATCHED" "$@"; fi
   done
   echo "patchelf launch failed after 3 generation retries; native was not executed" >&2; exit 1
