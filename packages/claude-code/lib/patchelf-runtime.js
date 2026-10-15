@@ -257,12 +257,23 @@ function launchPrep(options) {
 }
 
 // Build the payload only; prepareGeneration owns publication and READY.
+// sourcePath は監査済み sha256（sourceSha256）と一致した場合だけ再利用する。ファイルは読むだけで変更しない。
+function trustedSource(sourcePath, sourceSha256) {
+  try {
+    return Boolean(sourcePath) && fs.existsSync(sourcePath) && /^[a-f0-9]{64}$/.test(sourceSha256 || '') && sha256File(sourcePath) === sourceSha256;
+  } catch {
+    return false;
+  }
+}
+
 function populateGeneration(options) {
-  const { tempDir, sourcePath, tarballUrl, tarballSha256, tarballIntegrity, patchelfPath, readelfPath, glibcLib, loaderPath, shellRoot, runTemplate, bashTemplate, notify = defaultNotify } = options || {};
+  const { tempDir, sourcePath, sourceSha256, tarballUrl, tarballSha256, tarballIntegrity, patchelfPath, readelfPath, glibcLib, loaderPath, shellRoot, runTemplate, bashTemplate, notify = defaultNotify } = options || {};
   if (typeof tempDir !== 'string' || !path.isAbsolute(tempDir)) throw new TypeError('tempDir must be absolute');
   const source = path.join(tempDir, 'source', 'claude'); fs.mkdirSync(path.dirname(source), { recursive: true });
-  if (sourcePath && fs.existsSync(sourcePath)) fs.copyFileSync(sourcePath, source);
+  const reuseSource = trustedSource(sourcePath, sourceSha256);
+  if (reuseSource) fs.copyFileSync(sourcePath, source);
   else {
+    if (sourcePath && fs.existsSync(sourcePath)) notify('[claude-termux] Existing native binary could not be verified; downloading a fresh copy...');
     if (!tarballUrl) throw new Error('native source binary and tarball URL are unavailable');
     const archive = path.join(tempDir, 'native.tgz');
     notify('[claude-termux] Downloading...');

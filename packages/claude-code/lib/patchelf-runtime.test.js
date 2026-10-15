@@ -391,8 +391,22 @@ async function waitForPidsGone(pids, label, timeoutMs = 5000) {
   await waitFor(() => pids.every(pid => !processExists(pid)), label, timeoutMs);
 }
 
+function makeMiniCli(root) {
+  const realPkgDir=path.resolve(__dirname,'..'),pkgDir=path.join(root,'pkg'),libDir=path.join(pkgDir,'lib'),configDir=path.join(pkgDir,'config');
+  fs.mkdirSync(libDir,{recursive:true});fs.mkdirSync(configDir,{recursive:true});
+  fs.copyFileSync(path.join(realPkgDir,'package.json'),path.join(pkgDir,'package.json'));
+  const version=JSON.parse(fs.readFileSync(path.join(realPkgDir,'package.json'),'utf8')).version;
+  const config=JSON.parse(fs.readFileSync(path.join(realPkgDir,'config/claude-native-audited-versions.json'),'utf8'));
+  if(!config.versions||!config.versions[version]) throw new Error(`audited config has no entry for ${version}`);
+  config.versions[version].source_sha256=hash('native');
+  fs.writeFileSync(path.join(configDir,'claude-native-audited-versions.json'),JSON.stringify(config,null,2));
+  fs.copyFileSync(path.resolve(__dirname,'patchelf-runtime-cli.js'),path.join(libDir,'patchelf-runtime-cli.js'));
+  fs.copyFileSync(path.resolve(__dirname,'patchelf-runtime.js'),path.join(libDir,'patchelf-runtime.js'));
+  return path.join(libDir,'patchelf-runtime-cli.js');
+}
+
 function makeCliFixture() {
-  const root=tempDir(),cli=path.resolve(__dirname,'patchelf-runtime-cli.js'),realSh='/data/data/com.termux/files/usr/bin/sh',realFlock='/data/data/com.termux/files/usr/bin/flock',prefix=path.join(root,'prefix'),cache=path.join(root,'cache'),glibc=path.join(root,'glibc');
+  const root=tempDir(),cli=makeMiniCli(root),realSh='/data/data/com.termux/files/usr/bin/sh',realFlock='/data/data/com.termux/files/usr/bin/flock',prefix=path.join(root,'prefix'),cache=path.join(root,'cache'),glibc=path.join(root,'glibc');
   fs.mkdirSync(path.join(prefix,'bin'),{recursive:true});fs.mkdirSync(path.join(prefix,'lib'),{recursive:true});fs.mkdirSync(glibc);
   fs.symlinkSync(realFlock,path.join(prefix,'bin','flock'));fs.symlinkSync(realSh,path.join(prefix,'bin','sh'));
   fs.writeFileSync(path.join(prefix,'bin','bash'),`#!/system/bin/sh\nexit 0\n`,{mode:0o755});fs.writeFileSync(path.join(prefix,'lib','libtermux-exec-ld-preload.so'),'preload');
@@ -544,7 +558,7 @@ test('READY-less generation is abandoned and a fresh READY generation becomes cu
 
 test('real CLI cold launch-prep, corrupt READY recovery, lock-free warm/verify and glibc replacement', async () => {
   const root=tempDir(),prefix=path.join(root,'prefix'),cache=path.join(root,'cache'),glibc=path.join(root,'glibc'),source=path.join(root,'native');
-  const cli=path.resolve(__dirname,'patchelf-runtime-cli.js'),realSh='/data/data/com.termux/files/usr/bin/sh',realFlock='/data/data/com.termux/files/usr/bin/flock';
+  const cli=makeMiniCli(root),realSh='/data/data/com.termux/files/usr/bin/sh',realFlock='/data/data/com.termux/files/usr/bin/flock';
   try {
     fs.mkdirSync(path.join(prefix,'bin'),{recursive:true});fs.mkdirSync(path.join(prefix,'lib'),{recursive:true});fs.mkdirSync(glibc,{recursive:true});
     fs.symlinkSync(realFlock,path.join(prefix,'bin','flock'));fs.symlinkSync(realSh,path.join(prefix,'bin','sh'));
@@ -555,7 +569,7 @@ test('real CLI cold launch-prep, corrupt READY recovery, lock-free warm/verify a
     fs.writeFileSync(path.join(glibc,'libc-alt.so'),'replacement libc');fs.unlinkSync(path.join(glibc,'libc.so.6'));fs.symlinkSync(path.join(glibc,'libc-alt.so'),path.join(glibc,'libc.so.6'));
     const patchelf=path.join(prefix,'bin','patchelf'),readelf=path.join(prefix,'bin','readelf'),npm=path.join(prefix,'bin','npm');
     for(const file of [patchelf,readelf,npm]) fs.writeFileSync(file,`#!${realSh}\nexit 0\n`,{mode:0o755});
-    fs.writeFileSync(npm,`#!${realSh}\nprintf '%s\\n' 'https://example.invalid/native.tgz'\n`,{mode:0o755});fs.writeFileSync(source,'native fixture');
+    fs.writeFileSync(npm,`#!${realSh}\nprintf '%s\\n' 'https://example.invalid/native.tgz'\n`,{mode:0o755});fs.writeFileSync(source,'native');
     const env={...process.env,PREFIX:prefix,HOME:path.join(root,'home'),TMPDIR:path.join(root,'tmp'),CLAUDE_TERMUX_PACKAGE_CACHE:cache,CLAUDE_TERMUX_GLIBC_LIB:glibc,CLAUDE_TERMUX_PATCHELF:patchelf,CLAUDE_TERMUX_READELF:readelf,CLAUDE_TERMUX_NPM:npm,CLAUDE_TERMUX_NATIVE_BIN:source};fs.mkdirSync(env.HOME);fs.mkdirSync(env.TMPDIR);
     const invoke=command=>spawnSync(process.execPath,[cli,command],{encoding:'utf8',env});
     const first=invoke('launch-prep');assert.equal(first.status,0,first.stderr);const firstRows=first.stdout.trim().split('\n');assert.equal(firstRows.length,3);const ready1=JSON.parse(fs.readFileSync(path.join(firstRows[0],'READY'),'utf8'));
