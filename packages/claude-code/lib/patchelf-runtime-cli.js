@@ -21,7 +21,7 @@ function main(argv=process.argv.slice(2)) {
  const command=argv[0], version=process.env.CLAUDE_TERMUX_CLAUDE_VERSION||pkg.version, item=config.versions[version];
  const tp=r.termuxPaths(process.env.PREFIX), root=process.env.CLAUDE_TERMUX_PACKAGE_CACHE||path.join(os.homedir(),'.claude-termux-native-package');
  const versionDir=path.join(root,'patchelf',version), shellRoot=path.join(root,'patchelf','shell');
- if(command==='gc'||command==='--termux-gc'){ const result=r.gcGenerations({versionDir,flockPath:tp.flock}); process.stderr.write(JSON.stringify(result,null,2)+'\n'); return; }
+ if(command==='gc'||command==='--termux-gc'){ const result={...r.gcGenerations({versionDir,flockPath:tp.flock}), versions:r.gcVersions({patchRoot:path.join(root,'patchelf'),currentVersion:version,flockPath:tp.flock})}; process.stderr.write(JSON.stringify(result,null,2)+'\n'); return; }
  if(!item?.native_spec||!item.tarball_sha256||!item.tarball_integrity) throw new Error(`Audited patchelf identity is unavailable for ${version}`);
  const runtimeFiles=['glibc/lib/libc.so.6','glibc/lib/libm.so.6'];
  const tools={patchelf:process.env.CLAUDE_TERMUX_PATCHELF||tp.patchelf,readelf:process.env.CLAUDE_TERMUX_READELF||tp.readelf};

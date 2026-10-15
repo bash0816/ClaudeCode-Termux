@@ -556,8 +556,55 @@ function checkFreeSpace({ dir, required = PREPARE_REQUIRED_FREE_BYTES, statfs = 
   }
 }
 
+function gcVersions(options) {
+  const { patchRoot, currentVersion, flockPath = termuxPaths().flock, now = Date.now(), maxAgeDays = 7 } = options || {};
+  if (typeof patchRoot !== 'string' || !path.isAbsolute(patchRoot)) throw new TypeError('patchRoot must be an absolute path');
+  if (typeof currentVersion !== 'string' || currentVersion.length === 0) throw new TypeError('currentVersion must be a non-empty string');
+  const removedVersions = [];
+  const skipped = [];
+  if (!fs.existsSync(patchRoot)) return { removedVersions, skipped };
+  const maxAgeMs = maxAgeDays * 86400000;
+  for (const entry of fs.readdirSync(patchRoot, { withFileTypes: true })) {
+    const version = entry.name;
+    if (!entry.isDirectory() || version === 'shell' || version.startsWith('gen-') || version.startsWith('.')) continue;
+    if (version === currentVersion) { skipped.push({ version, reason: 'current' }); continue; }
+    const versionDir = path.join(patchRoot, version);
+    let lastUsed;
+    try { lastUsed = fs.statSync(path.join(versionDir, '.last-used')); } catch { skipped.push({ version, reason: 'no-last-used' }); continue; }
+    if (now - lastUsed.mtimeMs <= maxAgeMs) { skipped.push({ version, reason: 'recent' }); continue; }
+    const held = [];
+    try {
+      const genNames = fs.readdirSync(versionDir, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name.startsWith('gen-')).map((e) => e.name);
+      let locked = false;
+      const lockFd = tryInuseExclusive(path.join(versionDir, 'prepare.lock'), flockPath);
+      if (lockFd === null) locked = true; else held.push(lockFd);
+      for (const gen of genNames) {
+        if (locked) break;
+        const inuse = path.join(versionDir, gen, '.inuse');
+        let stat = null;
+        try { stat = fs.lstatSync(inuse); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+        if (stat && !stat.isFile()) { locked = true; break; }
+        const fd = tryInuseExclusive(inuse, flockPath);
+        if (fd === null) { locked = true; break; } else held.push(fd);
+      }
+      if (locked) { skipped.push({ version, reason: 'locked' }); continue; }
+      const targets = [...genNames];
+      try { if (fs.lstatSync(path.join(versionDir, 'current')).isSymbolicLink()) targets.push('current'); } catch {}
+      targets.push('.last-used');
+      for (const name of targets) {
+        const trash = path.join(versionDir, `.trash-${name}-${crypto.randomBytes(6).toString('hex')}`);
+        fs.renameSync(path.join(versionDir, name), trash);
+        fs.rmSync(trash, { recursive: true, force: true });
+      }
+      removedVersions.push(version);
+    } finally { for (const fd of held) { try { fs.closeSync(fd); } catch {} } }
+  }
+  return { removedVersions, skipped };
+}
+
 module.exports = {
   gcGenerations,
+  gcVersions,
   checkDependencies,
   checkFreeSpace,
   PREPARE_PEAK_BYTES,
