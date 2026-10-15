@@ -190,6 +190,81 @@ function collectLocked(versionDir, flockPath, now = Date.now()) {
   return { current, removed };
 }
 
+function repairGenerationsLocked(versionDir, flockPath) {
+  const removed = [];
+  const skipped = [];
+  for (const entry of fs.readdirSync(versionDir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !entry.name.startsWith('gen-')) continue;
+    const target = path.join(versionDir, entry.name);
+    let hasReady = false;
+    try { fs.lstatSync(path.join(target, 'READY')); hasReady = true; } catch (error) {
+      if (error.code !== 'ENOENT') hasReady = true;
+    }
+    if (hasReady) continue;
+    const inuse = path.join(target, '.inuse');
+    let inuseStat = null;
+    try { inuseStat = fs.lstatSync(inuse); } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+    let fd = null;
+    if (inuseStat !== null && inuseStat.isFile() && !inuseStat.isSymbolicLink()) {
+      fd = tryInuseExclusive(inuse, flockPath);
+      if (fd === null) { skipped.push({ name: entry.name, reason: 'locked' }); continue; }
+    }
+    try {
+      const trash = path.join(versionDir, `.trash-${entry.name}-${crypto.randomBytes(6).toString('hex')}`);
+      fs.renameSync(target, trash);
+      if (readCurrentName(versionDir) === entry.name) fs.unlinkSync(path.join(versionDir, 'current'));
+      fs.rmSync(trash, { recursive: true, force: true });
+      removed.push(entry.name);
+    } finally {
+      if (fd !== null) fs.closeSync(fd);
+    }
+  }
+  return { removed, skipped };
+}
+
+function replaceWrapperFile(dir, file, contents) {
+  const temporary = path.join(dir, `.tmp-${process.pid}-${crypto.randomBytes(8).toString('hex')}`);
+  try {
+    writeExclusive(temporary, contents);
+    fs.chmodSync(temporary, 0o755);
+    fs.renameSync(temporary, file);
+  } catch (error) {
+    try { fs.rmSync(temporary, { force: true }); } catch {}
+    throw error;
+  }
+}
+
+function repairWrappersLocked(shellRoot, run, bash) {
+  const wid = wrapperIdentity(run, bash);
+  const dir = path.join(shellRoot, wid);
+  if (!fs.existsSync(dir)) {
+    ensureShellWrappers(shellRoot, run, bash);
+    return 'recreated';
+  }
+  const expected = [
+    [path.join(dir, 'run'), sha256Text(run), run],
+    [path.join(dir, 'bash'), sha256Text(bash), bash],
+  ];
+  let replaced = false;
+  for (const [file, want, contents] of expected) {
+    let actual = null;
+    try { actual = sha256File(file); } catch {}
+    if (actual === want) continue;
+    replaceWrapperFile(dir, file, contents);
+    replaced = true;
+  }
+  return replaced ? 'replaced' : 'ok';
+}
+
+function repairRuntime({ versionDir, shellRoot, runTemplate, bashTemplate, flockPath = termuxPaths().flock, now = Date.now() } = {}) {
+  void now;
+  const generations = withFlock(path.join(versionDir, 'prepare.lock'), flockPath, () => repairGenerationsLocked(versionDir, flockPath));
+  const wrappers = withFlock(path.join(path.dirname(shellRoot), 'shell.lock'), flockPath, () => repairWrappersLocked(shellRoot, runTemplate, bashTemplate));
+  return { removedGenerations: generations.removed, skippedGenerations: generations.skipped, wrappers };
+}
+
 function recordGcStamp(versionDir, now) {
   const stamp = path.join(versionDir, '.gc-stamp');
   const temp = `${stamp}.tmp-${crypto.randomBytes(6).toString('hex')}`;
@@ -627,6 +702,7 @@ function gcVersions(options) {
 module.exports = {
   gcGenerations,
   gcVersions,
+  repairRuntime,
   checkDependencies,
   checkFreeSpace,
   PREPARE_PEAK_BYTES,

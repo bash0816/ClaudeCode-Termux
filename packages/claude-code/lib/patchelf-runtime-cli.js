@@ -33,6 +33,7 @@ function main(argv=process.argv.slice(2)) {
  const wrapperBash=`#!${runShell}\nunset LD_LIBRARY_PATH\nexport LD_PRELOAD='${preload}'\nexec '${bash}' "$@"\n`;
  const wid=r.wrapperIdentity(wrapperRun,wrapperBash);
  const widDir=path.join(shellRoot,wid);
+ if(command==='repair'||command==='--termux-repair'){ const result=r.repairRuntime({versionDir,shellRoot,runTemplate:wrapperRun,bashTemplate:wrapperBash,flockPath:tp.flock}); process.stderr.write(JSON.stringify(result,null,2)+'\n'); return; }
  const wrappers=fs.existsSync(widDir)?r.ensureShellWrappers(shellRoot,wrapperRun,wrapperBash):r.ensureShellWrappersLocked(shellRoot,wrapperRun,wrapperBash,tp.flock);
  const wrapperFiles={wrapperRun:wrappers.run,wrapperBash:wrappers.bash};
  const fingerprintPaths=[['patched','patched/claude'],['patchelf',tools.patchelf],['readelf',tools.readelf],['glibcLoader',path.join(glibcLib,'ld-linux-aarch64.so.1')],...inventory.flatMap((x,i)=>[[`glibc${i}`,x.realpath],[`glibcLink${i}`,path.join(glibcLib,x.soname)]])];

@@ -34,6 +34,7 @@ if [ "$LAUNCH_MODE" = "patchelf" ] && [ "${1:-}" != "update" ]; then
     --termux-hook-env-path) exec "$NODE" "$CLI" hook-path ;;
     --termux-verify) exec "$NODE" "$CLI" verify ;;
     --termux-gc) exec "$NODE" "$CLI" gc ;;
+    --termux-repair) exec "$NODE" "$CLI" repair ;;
   esac
   FLOCK="${PREFIX:-/data/data/com.termux/files/usr}/bin/flock"
   attempt=1
