@@ -143,6 +143,19 @@ force-enable するには `env` ブロックを使う必要があります：
 > **お知らせ / Notice (2026-09-21)**: 2.1.276 は、特定の条件で起動しない問題があったため取り下げ、修正版 **2.1.276-1** を `latest` として公開しました。2.1.276 をお使いの場合は `npm install -g @bash0816/claude-code@latest` で更新してください。
 > Version 2.1.276 was withdrawn because it could fail to start under certain conditions. The fixed release **2.1.276-1** is now `latest`. If you are on 2.1.276, update with `npm install -g @bash0816/claude-code@latest`.
 
+## patchelf 起動方式 / patchelf launch mode
+
+`patchelf` 方式は既定では無効です。利用する場合は `CLAUDE_TERMUX_LAUNCH_MODE=patchelf` を設定して起動してください。`claude --termux-verify` は準備済みファイルの整合性を確認し、`claude --termux-gc` は不要になった実行世代を回収します。hook の環境設定に使うパスは `claude --termux-hook-env-path` で取得できます。
+
+### 既知の制約
+
+- 内容の完全な確認は準備時と `claude --termux-verify` 実行時に行います。起動時の再利用判定はファイル情報に基づくため、同一カーネル時刻粒度内に行われた同一 inode・同サイズの変更と時刻の復元は検出を保証しません。
+- glibc のライブラリ本体は Termux のパッケージ管理下にあります。glibc の更新や削除による起動中プロセスへの影響は、その更新処理の挙動に依存します。
+- 起動には Termux の `sh`（dash）が必要です。Android の `/system/bin/sh`（mksh）からの起動はサポートしません。
+- 実行世代の保護対象は claude プロセス本体です。子プロセスや native 側が独自に起動するプロセスへの保護の引き継ぎは保証しません。
+- hook 設定には `claude --termux-hook-env-path` が返すパスを指定してください。hook 用パスは保存済み設定から後で使われる場合があるため、自動回収しません。公開済み `shell/<wid>` も自動削除しません。破損した wid を手動削除する前に、保存済み hook と既存セッションへの影響を確認してください。
+- cold 準備は `patchelf/<version>/prepare.lock` と `patchelf/shell.lock` の kernel flock で排他します。`flock` がない場合は `pkg install util-linux` が必要です。古い一時ディレクトリは次回ロック取得時に回収します。
+
 ## Policy / 方針
 
 - Only audited versions in `config/claude-native-audited-versions.json` can run.
