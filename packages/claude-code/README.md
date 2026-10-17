@@ -143,19 +143,6 @@ force-enable するには `env` ブロックを使う必要があります：
 > **お知らせ / Notice (2026-09-21)**: 2.1.276 は、特定の条件で起動しない問題があったため取り下げ、修正版 **2.1.276-1** を `latest` として公開しました。2.1.276 をお使いの場合は `npm install -g @bash0816/claude-code@latest` で更新してください。
 > Version 2.1.276 was withdrawn because it could fail to start under certain conditions. The fixed release **2.1.276-1** is now `latest`. If you are on 2.1.276, update with `npm install -g @bash0816/claude-code@latest`.
 
-## Policy / 方針
-
-- Only audited versions in `config/claude-native-audited-versions.json` can run.
-- `config/claude-native-audited-versions.json` にある監査済み version だけを実行できます。
-- See `config/claude-native-audited-versions.json` for the full list of included versions.
-- 含まれるバージョンの全リストは `config/claude-native-audited-versions.json` を参照してください。
-- The metadata file is the source of truth for the currently audited set.
-- 現在の監査済み version 集合の source of truth は metadata file です。
-- Native artifacts are cached under `${HOME}/.claude-termux-native-package`.
-- native artifact は `${HOME}/.claude-termux-native-package` に cache します。
-- If native preparation fails, the command exits with an error.
-- native preparation に失敗した場合、command は error で終了します。
-
 ## patchelf 起動方式 / patchelf launch mode
 
 `patchelf` 方式は既定では無効です。利用する場合は `CLAUDE_TERMUX_LAUNCH_MODE=patchelf` を設定して起動してください。`claude --termux-verify` は準備済みファイルの整合性を確認し、`claude --termux-gc` は不要になった実行世代を回収します。hook の環境設定に使うパスは `claude --termux-hook-env-path` で取得できます。
@@ -168,3 +155,16 @@ force-enable するには `env` ブロックを使う必要があります：
 - 実行世代の保護対象は claude プロセス本体です。子プロセスや native 側が独自に起動するプロセスへの保護の引き継ぎは保証しません。
 - hook 設定には `claude --termux-hook-env-path` が返すパスを指定してください。hook 用パスは保存済み設定から後で使われる場合があるため、自動回収しません。公開済み `shell/<wid>` も自動削除しません。破損した wid を手動削除する前に、保存済み hook と既存セッションへの影響を確認してください。
 - cold 準備は `patchelf/<version>/prepare.lock` と `patchelf/shell.lock` の kernel flock で排他します。`flock` がない場合は `pkg install util-linux` が必要です。古い一時ディレクトリは次回ロック取得時に回収します。
+
+## Policy / 方針
+
+- Only audited versions in `config/claude-native-audited-versions.json` can run.
+- `config/claude-native-audited-versions.json` にある監査済み version だけを実行できます。
+- See `config/claude-native-audited-versions.json` for the full list of included versions.
+- 含まれるバージョンの全リストは `config/claude-native-audited-versions.json` を参照してください。
+- The metadata file is the source of truth for the currently audited set.
+- 現在の監査済み version 集合の source of truth は metadata file です。
+- Native artifacts are cached under `${HOME}/.claude-termux-native-package`.
+- native artifact は `${HOME}/.claude-termux-native-package` に cache します。
+- If native preparation fails, the command exits with an error.
+- native preparation に失敗した場合、command は error で終了します。
