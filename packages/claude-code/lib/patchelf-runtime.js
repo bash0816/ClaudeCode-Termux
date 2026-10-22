@@ -1,0 +1,812 @@
+'use strict';
+
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+
+const SCHEMA = 2;
+const FINGERPRINT_FIELDS = Object.freeze(['realpath', 'dev', 'ino', 'size', 'mtimeNs', 'ctimeNs']);
+
+function fingerprint(filePath) {
+  const realpath = fs.realpathSync(filePath);
+  const stat = fs.statSync(filePath, { bigint: true });
+  return {
+    realpath,
+    dev: stat.dev.toString(10),
+    ino: stat.ino.toString(10),
+    size: stat.size.toString(10),
+    mtimeNs: stat.mtimeNs.toString(10),
+    ctimeNs: stat.ctimeNs.toString(10),
+  };
+}
+
+function fingerprintsEqual(left, right) {
+  return FINGERPRINT_FIELDS.every(field => left?.[field] === right?.[field]);
+}
+
+function createIdentity(value) {
+  return crypto.createHash('sha256').update(JSON.stringify(canonicalize(value))).digest('hex');
+}
+
+function canonicalize(value) {
+  if (Array.isArray(value)) {
+    const normalized = value.map(canonicalize).sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+    return normalized.filter((item, index) => index === 0 || JSON.stringify(item) !== JSON.stringify(normalized[index - 1]));
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.keys(value).sort().map(key => [key, canonicalize(value[key])]));
+  }
+  return value;
+}
+
+function generationName(identity, nonce) {
+  if (!/^[a-f0-9]{64}$/.test(identity)) throw new Error('identity must be a lowercase SHA-256 hex digest');
+  if (typeof nonce !== 'string' || nonce.length === 0 || nonce.includes('/')) throw new Error('nonce must be a non-empty path component');
+  return `gen-${identity.slice(0, 16)}-${nonce}`;
+}
+
+function wrapperIdentity(run, bash) {
+  const digest = crypto.createHash('sha256').update(run).update('\0').update(bash).digest('hex');
+  return digest.slice(0, 32);
+}
+
+function ensureShellWrappers(shellRoot, run, bash) {
+  if (typeof run !== 'string' || typeof bash !== 'string') throw new TypeError('wrapper contents must be strings');
+  const wid = wrapperIdentity(run, bash);
+  const dir = path.join(shellRoot, wid);
+  const runPath = path.join(dir, 'run');
+  const bashPath = path.join(dir, 'bash');
+  const expected = { run: sha256Text(run), bash: sha256Text(bash) };
+  fs.mkdirSync(shellRoot, { recursive: true });
+
+  if (fs.existsSync(dir)) {
+    assertWrapperContent(runPath, expected.run);
+    assertWrapperContent(bashPath, expected.bash);
+    return { wid, dir, run: runPath, bash: bashPath };
+  }
+
+  const temporary = path.join(shellRoot, `.tmp-${process.pid}-${crypto.randomBytes(8).toString('hex')}`);
+  fs.mkdirSync(temporary);
+  try {
+    writeExclusive(path.join(temporary, 'run'), run);
+    writeExclusive(path.join(temporary, 'bash'), bash);
+    try {
+      fs.renameSync(temporary, dir);
+    } catch (error) {
+      if (error.code !== 'EEXIST' && error.code !== 'ENOTEMPTY') throw error;
+      fs.rmSync(temporary, { recursive: true, force: true });
+      assertWrapperContent(runPath, expected.run);
+      assertWrapperContent(bashPath, expected.bash);
+    }
+  } catch (error) {
+    fs.rmSync(temporary, { recursive: true, force: true });
+    throw error;
+  }
+  return { wid, dir, run: runPath, bash: bashPath };
+}
+
+
+function ensureShellWrappersLocked(shellRoot, run, bash, flockPath = termuxPaths().flock, now = Date.now(), notify = defaultNotify) {
+  if (typeof run !== 'string' || typeof bash !== 'string') throw new TypeError('wrapper contents must be strings');
+  const wid = wrapperIdentity(run, bash);
+  const dir = path.join(shellRoot, wid);
+  return withFlock(path.join(path.dirname(shellRoot), 'shell.lock'), flockPath, () => {
+    fs.mkdirSync(shellRoot, { recursive: true });
+    for (const entry of fs.readdirSync(shellRoot, { withFileTypes: true })) {
+      if (!entry.name.startsWith('.tmp-')) continue;
+      const target = path.join(shellRoot, entry.name);
+      try { if (now - fs.statSync(target).mtimeMs > 86400000) fs.rmSync(target, { recursive: true, force: true }); } catch {}
+    }
+    repairWrappersLocked(shellRoot, run, bash);
+    return { wid, dir, run: path.join(dir, 'run'), bash: path.join(dir, 'bash') };
+  }, { onWait: () => notify('[claude-termux] Another claude process is updating the shared shell wrapper; waiting for it to finish...') });
+}
+
+function assertWrapperContent(file, expectedSha256) {
+  let actual;
+  try { actual = sha256File(file); } catch (cause) {
+    throw new Error(`existing wrapper is missing or unreadable: ${file}; repair manually by removing its wid directory only after confirming no saved hook or session uses it`, { cause });
+  }
+  if (actual !== expectedSha256) throw new Error(`existing wrapper content mismatch: ${file}; repair manually by removing its wid directory only after confirming no saved hook or session uses it`);
+}
+
+function sha256Text(value) {
+  return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+function sha256File(file) {
+  return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+}
+
+function statFingerprint(file, link = false) {
+  const stat = (link ? fs.lstatSync(file, { bigint: true }) : fs.statSync(file, { bigint: true }));
+  return { realpath: fs.realpathSync(file), dev: stat.dev.toString(), ino: stat.ino.toString(), size: stat.size.toString(), mtimeNs: stat.mtimeNs.toString(), ctimeNs: stat.ctimeNs.toString() };
+}
+
+function verifyGeneration(options) {
+  const { generationPath, ready: suppliedReady, files = {}, wrappers = [] } = options || {};
+  if (typeof generationPath !== 'string' || !path.isAbsolute(generationPath)) throw new TypeError('generationPath must be an absolute path');
+  const entries = [...Object.entries(files), ...wrappers.map(item => [item.key, item.path])];
+  const ready = suppliedReady || parseReady(fs.readFileSync(path.join(generationPath, 'READY'), 'utf8'), { generationPath, requiredSha256: entries.map(([key]) => key) });
+  const checked = [];
+  for (const [key, file] of entries) {
+    const expected = ready.sha256?.[key];
+    if (typeof expected !== 'string' || !/^[a-f0-9]{64}$/.test(expected)) throw new Error(`READY is missing sha256 for ${key}`);
+    if (sha256File(file) !== expected) throw new Error(`sha256 mismatch for ${key}: ${file}`);
+    checked.push(key);
+  }
+  const run = wrappers.find(item => item.key === 'wrapperRun');
+  const bash = wrappers.find(item => item.key === 'wrapperBash');
+  if (run && bash && wrapperIdentity(fs.readFileSync(run.path, 'utf8'), fs.readFileSync(bash.path, 'utf8')) !== ready.wid) throw new Error('wrapper identity mismatch');
+  return { ok: true, checked };
+}
+
+function readCurrentName(versionDir) {
+  try {
+    const name = fs.readlinkSync(path.join(versionDir, 'current'));
+    return !path.isAbsolute(name) && !name.includes('/') && name.startsWith('gen-') ? name : null;
+  } catch { return null; }
+}
+
+function tryInuseExclusive(file, flockPath) {
+  let fd;
+  try {
+    fd = fs.openSync(file, 'a');
+    const result = spawnSync(flockPath, ['-E', '73', '-x', '-n', '3'], { stdio: ['ignore', 'ignore', 'pipe', fd], encoding: 'utf8' });
+    if (result.error) throw result.error;
+    if (result.status === 73) { fs.closeSync(fd); return null; }
+    if (result.status !== 0) throw new Error(`flock lock acquisition failed (status ${result.status}): ${(result.stderr || '').trim()}`);
+    return fd;
+  } catch (error) {
+    if (fd !== undefined) { try { fs.closeSync(fd); } catch {} }
+    throw error;
+  }
+}
+
+function collectLocked(versionDir, flockPath, now = Date.now()) {
+  const current = readCurrentName(versionDir);
+  const removed = [];
+  for (const entry of fs.readdirSync(versionDir, { withFileTypes: true })) {
+    const target = path.join(versionDir, entry.name);
+    if (entry.name.startsWith('.trash-')) { fs.rmSync(target, { recursive: true, force: true }); removed.push(entry.name); continue; }
+    if (entry.name.startsWith('.tmp-') || entry.name.startsWith('.current-tmp-')) {
+      let age;
+      try { age = now - fs.statSync(target).mtimeMs; } catch { continue; }
+      if (age > 86400000) { fs.rmSync(target, { recursive: true, force: true }); removed.push(entry.name); }
+      continue;
+    }
+    if (!entry.isDirectory() || !entry.name.startsWith('gen-') || entry.name === current) continue;
+    const inuse = path.join(target, '.inuse');
+    if (!fs.existsSync(inuse) || fs.lstatSync(inuse).isSymbolicLink() || !fs.lstatSync(inuse).isFile()) {
+      const trash = path.join(versionDir, `.trash-${entry.name}-${crypto.randomBytes(6).toString('hex')}`);
+      fs.renameSync(target, trash); fs.rmSync(trash, { recursive: true, force: true }); removed.push(entry.name); continue;
+    }
+    const fd = tryInuseExclusive(inuse, flockPath);
+    if (fd === null) continue;
+    try {
+      const trash = path.join(versionDir, `.trash-${entry.name}-${crypto.randomBytes(6).toString('hex')}`);
+      fs.renameSync(target, trash);
+      fs.rmSync(trash, { recursive: true, force: true });
+      removed.push(entry.name);
+    } finally { fs.closeSync(fd); }
+  }
+  return { current, removed };
+}
+
+function repairGenerationsLocked(versionDir, flockPath) {
+  const removed = [];
+  const skipped = [];
+  for (const entry of fs.readdirSync(versionDir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !entry.name.startsWith('gen-')) continue;
+    const target = path.join(versionDir, entry.name);
+    let hasReady = false;
+    try { fs.lstatSync(path.join(target, 'READY')); hasReady = true; } catch (error) {
+      if (error.code !== 'ENOENT') hasReady = true;
+    }
+    if (hasReady) continue;
+    const inuse = path.join(target, '.inuse');
+    let inuseStat = null;
+    try { inuseStat = fs.lstatSync(inuse); } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+    let fd = null;
+    if (inuseStat !== null && inuseStat.isFile() && !inuseStat.isSymbolicLink()) {
+      fd = tryInuseExclusive(inuse, flockPath);
+      if (fd === null) { skipped.push({ name: entry.name, reason: 'locked' }); continue; }
+    }
+    try {
+      const trash = path.join(versionDir, `.trash-${entry.name}-${crypto.randomBytes(6).toString('hex')}`);
+      fs.renameSync(target, trash);
+      if (readCurrentName(versionDir) === entry.name) fs.unlinkSync(path.join(versionDir, 'current'));
+      fs.rmSync(trash, { recursive: true, force: true });
+      removed.push(entry.name);
+    } finally {
+      if (fd !== null) fs.closeSync(fd);
+    }
+  }
+  return { removed, skipped };
+}
+
+function replaceWrapperFile(dir, file, contents) {
+  const temporary = path.join(dir, `.tmp-${process.pid}-${crypto.randomBytes(8).toString('hex')}`);
+  try {
+    writeExclusive(temporary, contents);
+    fs.chmodSync(temporary, 0o755);
+    fs.renameSync(temporary, file);
+  } catch (error) {
+    try { fs.rmSync(temporary, { force: true }); } catch {}
+    throw error;
+  }
+}
+
+function wrapperFileOk(file, want) {
+  try {
+    const stat = fs.lstatSync(file);
+    return stat.isFile() && (stat.mode & 0o100) !== 0 && sha256File(file) === want;
+  } catch {
+    return false;
+  }
+}
+
+function wrappersIntact(shellRoot, run, bash) {
+  try {
+    const dir = path.join(shellRoot, wrapperIdentity(run, bash));
+    return wrapperFileOk(path.join(dir, 'run'), sha256Text(run)) && wrapperFileOk(path.join(dir, 'bash'), sha256Text(bash));
+  } catch {
+    return false;
+  }
+}
+
+function repairWrappersLocked(shellRoot, run, bash) {
+  const wid = wrapperIdentity(run, bash);
+  const dir = path.join(shellRoot, wid);
+  if (!fs.existsSync(dir)) {
+    try {
+      ensureShellWrappers(shellRoot, run, bash);
+      return 'recreated';
+    } catch (error) {
+      // A concurrent unlocked writer may have created the wid directory after the check; repair its files below.
+      if (!fs.existsSync(dir)) throw error;
+    }
+  }
+  const expected = [
+    [path.join(dir, 'run'), sha256Text(run), run],
+    [path.join(dir, 'bash'), sha256Text(bash), bash],
+  ];
+  let replaced = false;
+  for (const [file, want, contents] of expected) {
+    if (wrapperFileOk(file, want)) continue;
+    replaceWrapperFile(dir, file, contents);
+    replaced = true;
+  }
+  return replaced ? 'replaced' : 'ok';
+}
+
+function repairRuntime({ versionDir, shellRoot, runTemplate, bashTemplate, flockPath = termuxPaths().flock, now = Date.now(), notify = defaultNotify } = {}) {
+  void now;
+  const generations = withFlock(path.join(versionDir, 'prepare.lock'), flockPath, () => repairGenerationsLocked(versionDir, flockPath), { onWait: () => notify('[claude-termux] Another claude process is preparing the runtime; waiting for it to finish...') });
+  const wrappers = withFlock(path.join(path.dirname(shellRoot), 'shell.lock'), flockPath, () => repairWrappersLocked(shellRoot, runTemplate, bashTemplate), { onWait: () => notify('[claude-termux] Another claude process is updating the shared shell wrapper; waiting for it to finish...') });
+  return { removedGenerations: generations.removed, skippedGenerations: generations.skipped, wrappers };
+}
+
+function recordGcStamp(versionDir, now) {
+  const stamp = path.join(versionDir, '.gc-stamp');
+  const temp = `${stamp}.tmp-${crypto.randomBytes(6).toString('hex')}`;
+  fs.writeFileSync(temp, `${now}\n`, { flag: 'wx' });
+  fs.renameSync(temp, stamp);
+}
+
+function gcGenerations(options) {
+  const { versionDir, flockPath = termuxPaths().flock, now = Date.now(), notify = defaultNotify } = options || {};
+  if (typeof versionDir !== 'string' || !path.isAbsolute(versionDir)) throw new TypeError('versionDir must be an absolute path');
+  fs.mkdirSync(versionDir, { recursive: true });
+  return withFlock(path.join(versionDir, 'prepare.lock'), flockPath, () => {
+    const result = collectLocked(versionDir, flockPath, now);
+    recordGcStamp(versionDir, now);
+    return result;
+  }, { onWait: () => notify('[claude-termux] Another claude process is preparing the runtime; waiting for it to finish...') });
+}
+
+function maybeDailyGc(options) {
+  const { versionDir, flockPath = termuxPaths().flock, now = Date.now() } = options || {};
+  const stamp = path.join(versionDir, '.gc-stamp');
+  let age = Infinity;
+  try { age = now - fs.statSync(stamp).mtimeMs; } catch {}
+  if (age <= 86400000) return { ran: false, reason: 'fresh-stamp' };
+  fs.mkdirSync(versionDir, { recursive: true });
+  let fd;
+  try {
+    fd = fs.openSync(path.join(versionDir, 'prepare.lock'), 'a');
+    const acquired = spawnSync(flockPath, ['-E', '73', '-x', '-n', '3'], { stdio: ['ignore', 'ignore', 'pipe', fd], encoding: 'utf8' });
+    if (acquired.error) throw acquired.error;
+    if (acquired.status === 73) return { ran: false, reason: 'lock-busy' };
+    if (acquired.status !== 0) throw new Error(`flock lock acquisition failed (status ${acquired.status}): ${(acquired.stderr || '').trim()}`);
+    const result = collectLocked(versionDir, flockPath, now);
+    const temp = `${stamp}.tmp-${crypto.randomBytes(6).toString('hex')}`;
+    fs.writeFileSync(temp, `${now}\n`, { flag: 'wx' });
+    fs.renameSync(temp, stamp);
+    return { ran: true, ...result };
+  } finally { if (fd !== undefined) fs.closeSync(fd); }
+}
+
+function fingerprintTarget(generationPath, relative) { return path.isAbsolute(relative) ? relative : path.join(generationPath, relative); }
+function fingerprintFor(key, file) { return statFingerprint(file, key.startsWith('glibcLink')); }
+
+function warmGeneration(options) {
+  const { generationPath, ready: suppliedReady, fingerprintPaths = [], wrapperFiles = {}, versionDir, flockPath } = options || {};
+  const ready = suppliedReady || parseReady(fs.readFileSync(path.join(generationPath, 'READY'), 'utf8'));
+  validateReady(ready, { generationPath, fingerprintPaths, requiredSha256: ['patched', 'patchelf', 'readelf', ...ready.glibcPaths.map((_, i) => `glibc${i}`), 'wrapperRun', 'wrapperBash'] });
+  if (versionDir) { try { maybeDailyGc({ versionDir, ...(flockPath ? { flockPath } : {}) }); } catch (error) { process.stderr.write(`warning: patchelf daily GC failed: ${error.message}\n`); } }
+  for (const [key, relative] of fingerprintPaths) {
+    if (!fingerprintsEqual(ready.fingerprints?.[key], fingerprintFor(key, fingerprintTarget(generationPath, relative)))) return { reusable: false, reason: `fingerprint:${key}` };
+  }
+  for (const [key, file] of Object.entries(wrapperFiles)) {
+    if (ready.sha256?.[key] !== sha256File(file)) return { reusable: false, reason: `sha256:${key}` };
+  }
+  return { reusable: true, ready };
+}
+
+function launchPrep(options) {
+  const { generationPath, patchedPath, shellWrap } = options || {};
+  if (![generationPath, patchedPath, shellWrap].every(value => typeof value === 'string' && path.isAbsolute(value))) throw new TypeError('generationPath, patchedPath and shellWrap must be absolute paths');
+  const gen = path.resolve(generationPath);
+  const rel = path.relative(gen, path.resolve(patchedPath));
+  if (!rel || rel.startsWith(`..${path.sep}`) || rel === '..' || path.isAbsolute(rel)) throw new Error('GEN and PATCHED must belong to the same generation');
+  return { GEN: gen, PATCHED: path.resolve(patchedPath), SHELL_WRAP: path.resolve(shellWrap) };
+}
+
+// Build the payload only; prepareGeneration owns publication and READY.
+// sourcePath は監査済み sha256（sourceSha256）と一致した場合だけ再利用する。ファイルは読むだけで変更しない。
+function trustedSource(sourcePath, sourceSha256) {
+  try {
+    return Boolean(sourcePath) && fs.existsSync(sourcePath) && /^[a-f0-9]{64}$/.test(sourceSha256 || '') && sha256File(sourcePath) === sourceSha256;
+  } catch {
+    return false;
+  }
+}
+
+// コピー後の dest を再ハッシュして監査済み sha256 と照合する。不一致・例外時は dest を消して false を返す。
+function copyTrustedSource(sourcePath, dest, sourceSha256, { copy = fs.copyFileSync } = {}) {
+  if (!trustedSource(sourcePath, sourceSha256)) return false;
+  try {
+    copy(sourcePath, dest);
+    if (sha256File(dest) === sourceSha256) return true;
+  } catch {}
+  try { fs.rmSync(dest, { force: true }); } catch {}
+  return false;
+}
+
+function populateGeneration(options) {
+  const { tempDir, sourcePath, sourceSha256, tarballUrl, tarballSha256, tarballIntegrity, patchelfPath, readelfPath, glibcLib, loaderPath, shellRoot, runTemplate, bashTemplate, notify = defaultNotify } = options || {};
+  if (typeof tempDir !== 'string' || !path.isAbsolute(tempDir)) throw new TypeError('tempDir must be absolute');
+  const source = path.join(tempDir, 'source', 'claude'); fs.mkdirSync(path.dirname(source), { recursive: true });
+  if (copyTrustedSource(sourcePath, source, sourceSha256)) { /* copied and re-verified */ }
+  else {
+    if (sourcePath && fs.existsSync(sourcePath)) notify('[claude-termux] Existing native binary could not be verified; downloading a fresh copy...');
+    if (!tarballUrl) throw new Error('native source binary and tarball URL are unavailable');
+    const archive = path.join(tempDir, 'native.tgz');
+    notify('[claude-termux] Downloading...');
+    // curl's own progress bar goes to the inherited stderr; the tarball itself still goes to --output.
+    runChecked(options.curlPath || 'curl', ['--fail', '--location', '--progress-bar', '--retry', process.env.CLAUDE_TERMUX_FETCH_RETRIES || '4', '--connect-timeout', process.env.CLAUDE_TERMUX_FETCH_CONNECT_TIMEOUT || '20', '--max-time', process.env.CLAUDE_TERMUX_FETCH_MAX_TIME || '300', '--output', archive, '--', tarballUrl], { inheritStderr: true });
+    notify('[claude-termux] Verifying download...');
+    if (tarballSha256 && sha256File(archive) !== tarballSha256) throw new Error('native tarball sha256 mismatch');
+    if (tarballIntegrity && `sha512-${crypto.createHash('sha512').update(fs.readFileSync(archive)).digest('base64')}` !== tarballIntegrity) throw new Error('native tarball integrity mismatch');
+    const extract = path.join(tempDir, '.extract'); fs.mkdirSync(extract);
+    notify('[claude-termux] Extracting...');
+    runChecked(options.tarPath || 'tar', ['-xzf', archive, '-C', extract]);
+    const found = findNamed(extract, 'claude').find(file => { try { return fs.statSync(file).isFile(); } catch { return false; } });
+    if (!found) throw new Error('native tarball does not contain claude');
+    fs.copyFileSync(found, source);
+  }
+  fs.chmodSync(source, 0o755);
+  const patched = path.join(tempDir, 'patched', 'claude'); fs.mkdirSync(path.dirname(patched), { recursive: true }); fs.copyFileSync(source, patched); fs.chmodSync(patched, 0o755);
+  notify('[claude-termux] Patching...');
+  runChecked(patchelfPath, ['--set-interpreter', loaderPath, patched]);
+  notify('[claude-termux] Verifying...');
+  const needed = verifyPatchedElf({ readelfPath, patchedPath: patched, loaderPath });
+  const allGlibcSonames = fs.readdirSync(glibcLib).filter(name => /^[A-Za-z0-9_.+-]+\.so(?:\.[A-Za-z0-9_.+-]+)*$/.test(name));
+  const sonames = [...new Set([...needed, ...allGlibcSonames, ...NEEDED_ALLOWLIST])];
+  const glibcPaths = [];
+  for (const soname of sonames) {
+    if (!/^[A-Za-z0-9_.+-]+\.so(?:\.[A-Za-z0-9_.+-]+)*$/.test(soname)) continue;
+    try { const real = fs.realpathSync(path.join(glibcLib, soname)); if (!fs.statSync(real).isFile()) throw new Error(); glibcPaths.push(real); }
+    catch (error) { if (needed.includes(soname)) throw new Error(`required glibc library is missing: ${soname}`, { cause: error }); }
+  }
+  const wrappers = ensureShellWrappers(shellRoot, runTemplate, bashTemplate);
+  const wrapperHashes = { wrapperRun: sha256File(wrappers.run), wrapperBash: sha256File(wrappers.bash) };
+  const glibcHashes = Object.fromEntries(glibcPaths.map((file, index) => [`glibc${index}`, sha256File(file)]));
+  return { source, patched, wrappers, wid: wrappers.wid, needed, glibcPaths, readyFields: { needed, glibcPaths, sha256: { ...wrapperHashes, ...glibcHashes } } };
+}
+function findNamed(root, name) {
+  const out = [];
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) { const file = path.join(root, entry.name); if (entry.isDirectory()) out.push(...findNamed(file, name)); else if (entry.name === name) out.push(file); }
+  return out;
+}
+function runChecked(command, args, options = {}) {
+  // inheritStderr lets the child's own progress output reach the terminal; stderr is then not captured.
+  const result = spawnSync(command, args, { encoding: 'utf8', stdio: options.inheritStderr ? ['pipe', 'pipe', 'inherit'] : 'pipe' });
+  if (result.error || result.status !== 0) throw new Error(`${command} ${args.join(' ')} failed: ${result.error?.message || result.stderr || result.status}`);
+  return result.stdout || '';
+}
+// glibc sonames a patched claude may depend on; any NEEDED entry outside this list fails verification.
+const NEEDED_ALLOWLIST = Object.freeze(['libc.so.6', 'libm.so.6', 'libpthread.so.0', 'libdl.so.2', 'librt.so.1', 'ld-linux-aarch64.so.1', 'libresolv.so.2', 'libutil.so.1', 'libnss_dns.so.2', 'libnss_files.so.2', 'libgcc_s.so.1', 'libstdc++.so.6']);
+function verifyPatchedElf({ readelfPath, patchedPath, loaderPath, run = runChecked }) {
+  const header = run(readelfPath, ['-h', patchedPath]);
+  const field = name => { const match = header.match(new RegExp(`^\\s*${name}:\\s+(.+?)\\s*$`, 'm')); return match ? match[1] : null; };
+  const elfClass = field('Class');
+  const data = field('Data');
+  const machine = field('Machine');
+  const type = field('Type');
+  if (elfClass === null || data === null || machine === null || type === null) throw new Error(`patched ELF header is missing or unparseable (Class=${elfClass} Data=${data} Machine=${machine} Type=${type})`);
+  if (elfClass !== 'ELF64') throw new Error(`patched ELF class is ${elfClass}, expected ELF64`);
+  if (data !== "2's complement, little endian") throw new Error(`patched ELF data encoding is ${data}, expected little endian`);
+  if (machine !== 'AArch64') throw new Error(`patched ELF machine is ${machine}, expected AArch64`);
+  if (!/^(EXEC|DYN)(?:\s|$)/.test(type)) throw new Error(`patched ELF type is ${type}, expected EXEC or DYN`);
+  const interpreters = [...run(readelfPath, ['-l', patchedPath]).matchAll(/\[Requesting program interpreter: ([^\]]+)\]/g)].map(match => match[1]);
+  if (interpreters.length !== 1) throw new Error(`patched ELF must have exactly one program interpreter line, found ${interpreters.length}`);
+  if (interpreters[0] !== loaderPath) throw new Error(`patched ELF interpreter is ${interpreters[0]}, expected ${loaderPath}`);
+  const needed = [...run(readelfPath, ['-d', patchedPath]).matchAll(/Shared library: \[([^\]]+)\]/g)].map(match => match[1]);
+  const disallowed = needed.filter(name => !NEEDED_ALLOWLIST.includes(name));
+  if (disallowed.length > 0) throw new Error(`patched ELF needs libraries outside the allowlist: ${disallowed.join(', ')}`);
+  return needed;
+}
+
+function hookPath(wrappers) {
+  if (!wrappers || typeof wrappers.run !== 'string' || !path.isAbsolute(wrappers.run)) throw new TypeError('wrappers.run must be an absolute path');
+  return wrappers.run;
+}
+
+function writeExclusive(file, contents) {
+  const fd = fs.openSync(file, 'wx', 0o755);
+  try { fs.writeFileSync(fd, contents, 'utf8'); } finally { fs.closeSync(fd); }
+}
+
+function createReady(identity, fields = {}) {
+  if (typeof identity !== 'string' || !/^[a-f0-9]{64}$/.test(identity)) throw new Error('identity must be a lowercase SHA-256 hex digest');
+  const wid = fields.wid || '00000000000000000000000000000000';
+  const ready = { fingerprintPaths: [], fingerprints: {}, glibcPaths: [], glibcLinks: [], wid, wrappers: { wid, run: `${wid}/run`, bash: `${wid}/bash` }, sha256: {}, ...fields, schema: SCHEMA, identity };
+  ready.wid ||= wid; ready.fingerprintPaths ||= []; ready.fingerprints ||= {}; ready.glibcPaths ||= []; ready.glibcLinks ||= []; ready.sha256 ||= {}; ready.wrappers ||= { wid: ready.wid, run: `${ready.wid}/run`, bash: `${ready.wid}/bash` }; ready.wrappers.wid ||= ready.wid; ready.wrappers.run ||= `${ready.wid}/run`; ready.wrappers.bash ||= `${ready.wid}/bash`;
+  return ready;
+}
+
+function serializeReady(ready) {
+  validateReady(ready);
+  return `${JSON.stringify(ready, null, 2)}\n`;
+}
+
+function parseReady(contents, options) {
+  const ready = JSON.parse(contents);
+  validateReady(ready, options);
+  return ready;
+}
+
+function validateReady(ready, options = {}) {
+  if (!ready || typeof ready !== 'object' || Array.isArray(ready) || ready.schema !== SCHEMA || typeof ready.identity !== 'string' || !/^[a-f0-9]{64}$/.test(ready.identity)) throw new Error('invalid READY schema or identity');
+  if (!Array.isArray(ready.fingerprintPaths) || !ready.fingerprints || typeof ready.fingerprints !== 'object' || !Array.isArray(ready.glibcPaths) || !Array.isArray(ready.glibcLinks) || typeof ready.wid !== 'string' || !/^[a-f0-9]{32}$/.test(ready.wid) || !ready.wrappers || ready.wrappers.wid !== ready.wid) throw new Error('READY is missing required runtime fields');
+  if (!ready.sha256 || typeof ready.sha256 !== 'object' || !Array.isArray(ready.fingerprintPaths)) throw new Error('READY is missing sha256 or fingerprint path fields');
+  for (const [key] of ready.fingerprintPaths) if (!ready.fingerprints[key] || !FINGERPRINT_FIELDS.every(field => typeof ready.fingerprints[key][field] === 'string')) throw new Error(`READY is missing fingerprint ${key}`);
+  for (const key of options.requiredSha256 || []) if (typeof ready.sha256[key] !== 'string' || !/^[a-f0-9]{64}$/.test(ready.sha256[key])) throw new Error(`READY is missing sha256 for ${key}`);
+  for (const [key, target] of options.fingerprintPaths || []) if (!ready.fingerprintPaths.some(([k, t]) => k === key && t === target)) throw new Error(`READY is missing fingerprint target ${key}`);
+  if (options.generationPath) {
+    const base = path.basename(options.generationPath);
+    if (!/^gen-[a-f0-9]{16}-[A-Za-z0-9-]+$/.test(base) || !base.startsWith(`gen-${ready.identity.slice(0, 16)}-`)) throw new Error('invalid generation directory name or identity');
+    const inuse = path.join(options.generationPath, '.inuse');
+    const inuseStat = fs.lstatSync(inuse); if (!inuseStat.isFile() || inuseStat.isSymbolicLink()) throw new Error('generation .inuse must be a regular file');
+    for (const value of [ready.wrappers.run, ready.wrappers.bash]) {
+      if (typeof value !== 'string' || value !== `${ready.wid}/${value.endsWith('/run') ? 'run' : 'bash'}`) throw new Error('READY wrapper path is outside its wid directory');
+    }
+  }
+}
+
+
+function withFlock(lockPath, flockPath, operation, options) {
+  if (typeof operation !== 'function') throw new TypeError('operation must be a function');
+  const onWait = options && typeof options.onWait === 'function' ? options.onWait : null;
+  let fd;
+  try {
+    fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+    fd = fs.openSync(lockPath, 'a');
+    let acquired = false;
+    if (onWait) {
+      // Probe without blocking; exit 73 means another process holds the lock, so announce the wait before blocking.
+      const probe = spawnSync(flockPath, ['-E', '73', '-x', '-n', '3'], { stdio: ['ignore', 'ignore', 'pipe', fd], encoding: 'utf8' });
+      if (probe.error) throw probe.error;
+      if (probe.status === 0) acquired = true;
+      else if (probe.status === 73) onWait();
+      else throw new Error(`flock lock acquisition failed (status ${probe.status}): ${(probe.stderr || '').trim()}`);
+    }
+    if (!acquired) {
+      const result = spawnSync(flockPath, ['-E', '73', '-x', '3'], { stdio: ['ignore', 'ignore', 'pipe', fd], encoding: 'utf8' });
+      if (result.error) throw result.error;
+      if (result.status !== 0) throw new Error(`flock lock acquisition failed (status ${result.status}): ${(result.stderr || '').trim()}`);
+    }
+    return operation();
+  } catch (cause) {
+    if (cause.code === 'ENOENT' || cause.code === 'EACCES' || cause.code === 'ENOLCK' || /ENOLCK|No locks available/i.test(cause.message || '')) {
+      throw new Error('Kernel flock is unavailable; install it with: pkg install util-linux', { cause });
+    }
+    throw cause;
+  } finally {
+    if (fd !== undefined) fs.closeSync(fd);
+  }
+}
+
+function prepareGeneration(options) {
+  const { versionDir, identity, flockPath = termuxPaths().flock, populate, fingerprintPaths = [], sha256Paths = {}, wrapperFiles = {}, readyFields = {}, nonce = makeNonce, isReusable: isReusablePred, version, notify = defaultNotify } = options || {};
+  if (typeof versionDir !== 'string' || !path.isAbsolute(versionDir)) throw new TypeError('versionDir must be an absolute path');
+  if (typeof flockPath !== 'string' || !path.isAbsolute(flockPath)) throw new TypeError('flockPath must be an absolute path');
+  if (typeof populate !== 'function') throw new TypeError('populate(tempDir) must be a function');
+  if (typeof identity !== 'string' || !/^[a-f0-9]{64}$/.test(identity)) throw new Error('identity must be a lowercase SHA-256 hex digest');
+  fs.mkdirSync(versionDir, { recursive: true });
+  return withFlock(path.join(versionDir, 'prepare.lock'), flockPath, () => {
+    const externalBefore = Object.fromEntries(Object.entries(sha256Paths).filter(([, value]) => path.isAbsolute(value)).map(([key, file]) => [key, sha256File(file)]));
+    const requiredSha256 = [...new Set([...Object.keys(sha256Paths), ...Object.keys(wrapperFiles)])];
+    const reusable = inspectCurrent(path.join(versionDir, 'current'), identity, fingerprintPaths, wrapperFiles, requiredSha256, isReusablePred);
+    if (reusable) {
+      try { collectLocked(versionDir, flockPath); recordGcStamp(versionDir, Date.now()); } catch (error) { process.stderr.write(`warning: patchelf GC failed: ${error.message}\n`); }
+      return { ...reusable, reused: true };
+    }
+    // Announced once, only after the existing generation has been ruled out; a warm start prints nothing.
+    notify(`[claude-termux] Preparing Claude Code ${version} for Termux (first run only). Download ~${Math.ceil(PREPARE_DOWNLOAD_BYTES / MIB)} MiB, extract ~${Math.ceil(PREPARE_EXTRACTED_BYTES / MIB)} MiB; needs about ${Math.ceil(PREPARE_REQUIRED_FREE_BYTES / MIB)} MiB free temporarily and keeps ~${Math.ceil(PREPARE_KEPT_BYTES / MIB)} MiB afterwards.`);
+    let collision;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const temp = path.join(versionDir, `.tmp-${process.pid}-${crypto.randomBytes(8).toString('hex')}`);
+      fs.mkdirSync(temp);
+      let finalPath;
+      let renamed = false;
+      try {
+        fs.writeFileSync(path.join(temp, '.inuse'), '', { flag: 'wx', mode: 0o600 });
+        const payload = populate(temp, { notify }) || {};
+        const name = generationName(identity, nonce());
+        finalPath = path.join(versionDir, name);
+        fs.renameSync(temp, finalPath);
+        renamed = true;
+        const fingerprints = Object.fromEntries(fingerprintPaths.map(([key, relative]) => [key, fingerprintFor(key, fingerprintTarget(finalPath, relative))]));
+        const hashes = Object.fromEntries(Object.entries(sha256Paths).map(([key, relative]) => [key, sha256File(path.isAbsolute(relative) ? relative : path.join(finalPath, relative))]));
+        for (const [key, before] of Object.entries(externalBefore)) if (hashes[key] !== before) throw new Error(`external input changed during generation: ${key}`);
+        const ready = createReady(identity, { ...readyFields, ...(payload.readyFields || {}), fingerprints, fingerprintPaths, wid: readyFields.wid || payload.wid, wrappers: readyFields.wrappers || payload.readyFields?.wrappers, glibcPaths: readyFields.glibcPaths || payload.readyFields?.glibcPaths, glibcLinks: readyFields.glibcLinks || payload.readyFields?.glibcLinks, sha256: { ...(payload.sha256 || {}), ...(payload.readyFields?.sha256 || {}), ...(readyFields.sha256 || {}), ...hashes } });
+        validateReady(ready, { generationPath: finalPath, fingerprintPaths, requiredSha256 });
+        const readyTemp = path.join(finalPath, '.READY-tmp');
+        writeExclusive(readyTemp, serializeReady(ready));
+        fs.renameSync(readyTemp, path.join(finalPath, 'READY'));
+        const currentTemp = path.join(versionDir, `.current-tmp-${crypto.randomBytes(8).toString('hex')}`);
+        fs.symlinkSync(name, currentTemp);
+        fs.renameSync(currentTemp, path.join(versionDir, 'current'));
+        // Download leftovers are removed only after READY and current are published; source/ and patched/ are kept.
+        for (const leftover of ['native.tgz', '.extract']) {
+          try { fs.rmSync(path.join(finalPath, leftover), { recursive: true, force: true }); } catch (error) { process.stderr.write(`warning: could not remove download leftover ${leftover}: ${error.message}\n`); }
+        }
+        notify('[claude-termux] Done.');
+        try { collectLocked(versionDir, flockPath); recordGcStamp(versionDir, Date.now()); } catch (error) { process.stderr.write(`warning: patchelf GC failed: ${error.message}\n`); }
+        return { generation: name, generationPath: finalPath, ready, reused: false };
+      } catch (error) {
+        if (!renamed) fs.rmSync(temp, { recursive: true, force: true });
+        if (error.code === 'EEXIST' || error.code === 'ENOTEMPTY') { collision = error; continue; }
+        throw error;
+      }
+    }
+    throw new Error('generation name collided three times; refusing to replace an existing generation', { cause: collision });
+  }, { onWait: () => notify('[claude-termux] Another claude process is preparing the runtime; waiting for it to finish...') });
+}
+
+function inspectCurrent(current, identity, fingerprintPaths, wrapperFiles = {}, requiredSha256 = [], isReusable) {
+  try {
+    const name = fs.readlinkSync(current);
+    if (path.isAbsolute(name) || name.includes('/') || !name.startsWith('gen-')) return null;
+    const generationPath = path.join(path.dirname(current), name);
+    const ready = parseReady(fs.readFileSync(path.join(generationPath, 'READY'), 'utf8'));
+    validateReady(ready, { generationPath, fingerprintPaths, requiredSha256: [...requiredSha256, ...ready.glibcPaths.map((_, i) => `glibc${i}`)] });
+    if (ready.identity !== identity) return null;
+    for (const [key, relative] of fingerprintPaths) {
+      if (!fingerprintsEqual(ready.fingerprints?.[key], fingerprintFor(key, fingerprintTarget(generationPath, relative)))) return null;
+    }
+    for (const [key, file] of Object.entries(wrapperFiles)) {
+      if (ready.sha256?.[key] !== sha256File(file)) return null;
+    }
+    if (isReusable && !isReusable(generationPath, ready)) return null;
+    return { generation: name, generationPath, ready };
+  } catch { return null; }
+}
+
+const GLIBC_LOADER_HINT = 'Install the glibc runtime: pkg install glibc-repo && pkg update && pkg install glibc';
+
+function verifyGlibcLoader(loaderPath, { run = spawnSync } = {}) {
+  const fail = reason => { throw new Error(`glibc loader is not usable: ${reason}。 ${GLIBC_LOADER_HINT}`); };
+  let real;
+  try { real = fs.realpathSync(loaderPath); } catch { fail(`missing (${loaderPath})`); }
+  if (!fs.statSync(real).isFile()) fail(`missing (not a regular file: ${loaderPath})`);
+  const header = Buffer.alloc(20);
+  const fd = fs.openSync(real, 'r');
+  let bytesRead;
+  try { bytesRead = fs.readSync(fd, header, 0, 20, 0); } finally { fs.closeSync(fd); }
+  const isElf64Le = bytesRead === 20 && header[0] === 0x7f && header[1] === 0x45 && header[2] === 0x4c && header[3] === 0x46 && header[4] === 2 && header[5] === 1;
+  if (!isElf64Le || header.readUInt16LE(18) !== 183) fail('not an ELF64 little-endian AArch64 binary');
+  const result = run(loaderPath, ['--version'], { encoding: 'utf8', timeout: 5000 });
+  if (result.error) fail(`--version failed (${result.error.message})`);
+  if (result.signal) fail(`--version failed (signal ${result.signal})`);
+  if (result.status !== 0) fail(`--version failed (exit code ${result.status})`);
+  return { path: loaderPath, realpath: real };
+}
+
+function termuxPaths(prefix = process.env.PREFIX) {
+  if (typeof prefix !== 'string' || !path.isAbsolute(prefix)) throw new Error('PREFIX must be an absolute path');
+  return { prefix, flock: path.join(prefix, 'bin', 'flock'), patchelf: path.join(prefix, 'bin', 'patchelf'), readelf: path.join(prefix, 'bin', 'readelf'), glibc: path.join(prefix, 'glibc'), bash: path.join(prefix, 'bin', 'bash'), sh: path.join(prefix, 'bin', 'sh'), preload: path.join(prefix, 'lib', 'libtermux-exec-ld-preload.so') };
+}
+
+const DEPENDENCY_PACKAGES = [
+  ['flock', 'util-linux'],
+  ['patchelf', 'patchelf'],
+  ['readelf', 'llvm'],
+  ['sh', 'dash'],
+  ['preload', 'termux-exec'],
+  ['bash', 'bash'],
+  ['glibc', 'glibc'],
+];
+const GLIBC_INSTALL_STEPS = ['pkg install glibc-repo', 'pkg update', 'pkg install glibc'];
+
+// resolved: CLI-resolved paths. glibcLoader is the glibc dynamic loader path.
+// exists is injectable for tests; only existence is checked, nothing is installed.
+function checkDependencies(resolved, { exists = fs.existsSync } = {}) {
+  const paths = { flock: resolved.flock, patchelf: resolved.patchelf, readelf: resolved.readelf, sh: resolved.sh, preload: resolved.preload, bash: resolved.bash, glibc: resolved.glibcLoader };
+  return DEPENDENCY_PACKAGES.filter(([id]) => !exists(paths[id])).map(([id, pkgName]) => ({ id, package: pkgName, path: paths[id] }));
+}
+
+function dependencyGuidance(missing) {
+  if (!missing.length) return '';
+  const lines = [`Missing: ${missing.map(m => `${m.id} (package: ${m.package}) at ${m.path}`).join(', ')}`];
+  if (missing.some(m => m.id === 'glibc')) lines.push(...GLIBC_INSTALL_STEPS);
+  const others = [...new Set(missing.filter(m => m.id !== 'glibc').map(m => m.package))];
+  if (others.length) lines.push(`pkg install ${others.join(' ')}`);
+  return lines.join('\n');
+}
+
+function makeNonce() { return `${Date.now()}-${process.pid}-${crypto.randomBytes(6).toString('hex')}`; }
+
+// Measured peak disk use of first-time preparation for claude 2.1.296 (tgz + extracted ELF + source + patched).
+const PREPARE_PEAK_BYTES = 884556501;
+const PREPARE_REQUIRED_FREE_BYTES = Math.ceil(PREPARE_PEAK_BYTES * 1.1);
+const MIB = 1024 * 1024;
+// Measured sizes for claude 2.1.296; used only for the first-run announcement, not for the free-space check.
+// Native tgz 115122331 B (about 110 MiB), extracted ELF 256434168 B (about 245 MiB), kept after preparation 513000408 B (about 490 MiB).
+const PREPARE_DOWNLOAD_BYTES = 115122331;
+const PREPARE_EXTRACTED_BYTES = 256434168;
+const PREPARE_KEPT_BYTES = 513000408;
+// Progress and stage lines go to stderr only; stdout is reserved for the launch-prep output.
+function defaultNotify(message) { process.stderr.write(message + '\n'); }
+
+// Walks up from dir to the nearest existing ancestor and checks bavail * bsize against required.
+// statfs is injectable for tests; if it is unavailable or throws, a warning is printed and the check is skipped.
+function checkFreeSpace({ dir, required = PREPARE_REQUIRED_FREE_BYTES, statfs = fs.statfsSync } = {}) {
+  let available;
+  try {
+    if (typeof statfs !== 'function') throw new Error('fs.statfsSync is unavailable');
+    let target = path.resolve(dir);
+    while (!fs.existsSync(target)) {
+      const parent = path.dirname(target);
+      if (parent === target) break;
+      target = parent;
+    }
+    const stats = statfs(target);
+    available = Number(stats.bavail) * Number(stats.bsize);
+  } catch (error) {
+    process.stderr.write(`warning: could not check free disk space (${error.message}); continuing\n`);
+    return;
+  }
+  if (available < required) {
+    const needMiB = Math.ceil(required / MIB);
+    const availableMiB = Math.floor(available / MIB);
+    throw new Error(`Not enough free disk space to prepare claude: need about ${needMiB} MiB free (peak during first-time preparation), available ${availableMiB} MiB at ${dir}. Free up space and run again.`);
+  }
+}
+
+// 環境変数などの文字列を必要空き容量（バイト）として解釈する。正の10進整数以外は fallback を返す。
+function parseRequiredFreeBytes(value, fallback) {
+  if (typeof value === 'string' && /^[0-9]+$/.test(value) && Number(value) > 0 && Number.isFinite(Number(value))) return Number(value);
+  return fallback;
+}
+
+function gcVersions(options) {
+  const { patchRoot, currentVersion, flockPath = termuxPaths().flock, now = Date.now(), maxAgeDays = 7, onStage } = options || {};
+  if (typeof patchRoot !== 'string' || !path.isAbsolute(patchRoot)) throw new TypeError('patchRoot must be an absolute path');
+  if (typeof currentVersion !== 'string' || currentVersion.length === 0) throw new TypeError('currentVersion must be a non-empty string');
+  const removedVersions = [];
+  const skipped = [];
+  if (!fs.existsSync(patchRoot)) return { removedVersions, skipped };
+  const maxAgeMs = maxAgeDays * 86400000;
+  // .last-used の mtime を返す（無ければ null）。ロック取得の前後で読み直すため関数にする。
+  const readLastUsedMtime = (versionDir) => { try { return fs.statSync(path.join(versionDir, '.last-used')).mtimeMs; } catch { return null; } };
+  // gen- で始まるディレクトリ名を昇順で返す。
+  const listGenerations = (versionDir) => fs.readdirSync(versionDir, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name.startsWith('gen-')).map((e) => e.name).sort();
+  for (const entry of fs.readdirSync(patchRoot, { withFileTypes: true })) {
+    const version = entry.name;
+    if (!entry.isDirectory() || version === 'shell' || version.startsWith('gen-') || version.startsWith('.')) continue;
+    if (version === currentVersion) { skipped.push({ version, reason: 'current' }); continue; }
+    const versionDir = path.join(patchRoot, version);
+    // (a) 早期スキップ（最適化のみ。回収の判断はロック取得後の再確認で行う）
+    const earlyMtime = readLastUsedMtime(versionDir);
+    if (earlyMtime === null) { skipped.push({ version, reason: 'no-last-used' }); continue; }
+    if (now - earlyMtime <= maxAgeMs) { skipped.push({ version, reason: 'recent' }); continue; }
+    const held = [];
+    try {
+      // (b) prepare.lock を非ブロック排他で取得。取れなければ locked
+      const lockFd = tryInuseExclusive(path.join(versionDir, 'prepare.lock'), flockPath);
+      if (lockFd === null) { skipped.push({ version, reason: 'locked' }); continue; }
+      held.push(lockFd);
+      if (onStage) onStage('locked', { version });
+      // (c) ロック取得後に .last-used を読み直す
+      const mtimeAfterLock = readLastUsedMtime(versionDir);
+      if (mtimeAfterLock === null) { skipped.push({ version, reason: 'no-last-used' }); continue; }
+      if (now - mtimeAfterLock <= maxAgeMs) { skipped.push({ version, reason: 'recent' }); continue; }
+      // (d) ロック取得後に世代一覧を読む
+      const genNames = listGenerations(versionDir);
+      // (e) 全世代の .inuse を非ブロック排他で取得。取れなければ locked
+      let locked = false;
+      for (const gen of genNames) {
+        const inuse = path.join(versionDir, gen, '.inuse');
+        let stat = null;
+        try { stat = fs.lstatSync(inuse); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+        if (stat && !stat.isFile()) { locked = true; break; }
+        const fd = tryInuseExclusive(inuse, flockPath);
+        if (fd === null) { locked = true; break; } else held.push(fd);
+      }
+      if (locked) { skipped.push({ version, reason: 'locked' }); continue; }
+      if (onStage) onStage('inuse-locked', { version });
+      // (f) 全 .inuse の排他取得後に .last-used を再読込し、世代一覧を再列挙して (d) と比較する
+      const mtimeBeforeRemove = readLastUsedMtime(versionDir);
+      if (mtimeBeforeRemove === null) { skipped.push({ version, reason: 'no-last-used' }); continue; }
+      if (now - mtimeBeforeRemove <= maxAgeMs) { skipped.push({ version, reason: 'recent' }); continue; }
+      const genNamesAfter = listGenerations(versionDir);
+      if (genNamesAfter.length !== genNames.length || genNamesAfter.some((name, i) => name !== genNames[i])) { skipped.push({ version, reason: 'changed' }); continue; }
+      // (g) ここまで全部通った場合のみ回収する
+      const targets = [...genNames];
+      try { if (fs.lstatSync(path.join(versionDir, 'current')).isSymbolicLink()) targets.push('current'); } catch {}
+      targets.push('.last-used');
+      for (const name of targets) {
+        const trash = path.join(versionDir, `.trash-${name}-${crypto.randomBytes(6).toString('hex')}`);
+        fs.renameSync(path.join(versionDir, name), trash);
+        fs.rmSync(trash, { recursive: true, force: true });
+      }
+      removedVersions.push(version);
+    } finally { for (const fd of held) { try { fs.closeSync(fd); } catch {} } }
+  }
+  return { removedVersions, skipped };
+}
+
+module.exports = {
+  gcGenerations,
+  gcVersions,
+  repairRuntime,
+  checkDependencies,
+  checkFreeSpace,
+  parseRequiredFreeBytes,
+  copyTrustedSource,
+  PREPARE_PEAK_BYTES,
+  PREPARE_REQUIRED_FREE_BYTES,
+  dependencyGuidance,
+  hookPath,
+  launchPrep,
+  maybeDailyGc,
+  FINGERPRINT_FIELDS,
+  SCHEMA,
+  createIdentity,
+  createReady,
+  ensureShellWrappers,
+  ensureShellWrappersLocked,
+  wrappersIntact,
+  fingerprint,
+  fingerprintsEqual,
+  generationName,
+  parseReady,
+  prepareGeneration,
+  populateGeneration,
+  serializeReady,
+  termuxPaths,
+  validateReady,
+  verifyGeneration,
+  verifyGlibcLoader,
+  verifyPatchedElf,
+  warmGeneration,
+  wrapperIdentity,
+  withFlock,
+};
