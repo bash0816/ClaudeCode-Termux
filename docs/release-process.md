@@ -338,7 +338,7 @@ gh workflow list -R bash0816/ClaudeCode-Termux --all
 - JSON として構文が正しい。
 - `status` が次のいずれか: `ok` / `waiting_unverified` / `waiting_unpublished` / `drift` / `meta_drift` / `waiting_too_long` / `infra_error`。
 - `event` が、対象 run の `event`（`gh run list` の `event`）と一致する。
-- `checked_at` が ISO 日時で、対象 run の `createdAt` から大きくずれていない。
+- `checked_at` が ISO 日時で、対象 run の `createdAt` から ±2 時間以内である（超えたら異常）。
 - `status` が `waiting_unverified` または `waiting_unpublished` の場合、`waiting_hours` が 168 以下。`waiting_too_long` の場合は、`waiting_hours` が 168 を超えている。
 
 異常条件:
