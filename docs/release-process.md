@@ -273,3 +273,70 @@ npm install -g @bash0816/claude-code@<previous_stable_version>
 ```
 config/claude-termux-release-manifest.json
 ```
+
+## stable の運用
+
+### 用語
+
+- **npm の dist-tag `stable`**: 公式 stable（upstream の stable）に合わせる対象。`npm install -g @bash0816/claude-code` が取得する版。
+- **manifest の `previous_stable_version`**: 1 つ前の latest。ロールバック先。dist-tag `stable` とは別物。
+
+### ずれ検知（stable-drift-check）が失敗したときの手順
+
+`stable-drift-check` ワークフロー（毎日 03:41 UTC。secrets を使わず、npm へは書き込まない）が失敗したら、次の順に対応する。
+
+1. run の summary に出ているコマンドを実行する**前に**、手元で `node scripts/stable-drift-check.js` を再実行し、目標版を再確認する。
+2. `gh workflow run npm-package.yml -R bash0816/ClaudeCode-Termux --ref main -f retag_stable=<目標版>` を実行する。
+3. `npm-publish` 環境の承認を、ユーザー本人が行う（承認は AI や他のエージェントが行わない）。
+4. `npm view @bash0816/claude-code dist-tags.stable` で dist-tag の実測値を確認する。
+5. `node scripts/sync-stable-pinned.js <版>` を実行する。
+6. PR を作成し、レビューを経てマージする。
+
+### STATUS の意味
+
+| STATUS | 終了コード | 意味 |
+|---|---|---|
+| `ok` | 0 | 自前の dist-tag `stable` が検証済みの目標版と一致し、メタ情報も一致している。 |
+| `waiting_unverified` | 0 | 公式 stable に検証済みの候補がまだない。待機中。 |
+| `waiting_unpublished` | 0 | 候補は決まっているが、自前パッケージに未公開。待機中。 |
+| `drift` | 1 | 自前の dist-tag `stable` が検証済み目標版と一致しない。上記の手順で修正する。 |
+| `meta_drift` | 1 | `stable_pinned_version` が自前の stable と一致しない（root または packages 側）。 |
+| `waiting_too_long` | 1 | 待機が上限 168 時間を超えた。候補の検証・公開状況を確認する。 |
+| `infra_error` | 3 | 基盤エラー（取得失敗など）。ずれの判定はできていない。 |
+
+### 停止手段
+
+```sh
+gh workflow disable stable-drift-check.yml -R bash0816/ClaudeCode-Termux
+```
+
+### 監視（STEP 0）
+
+定期的に次を確認する。いずれかが異常なら調査する。
+
+```sh
+# schedule の鮮度: 最新の完了 run が 36 時間以内で success であること
+gh run list -R bash0816/ClaudeCode-Termux --workflow stable-drift-check.yml --event schedule --branch main --limit 5 --json databaseId,status,conclusion,event,createdAt
+
+# 全イベントの最新結果
+gh run list -R bash0816/ClaudeCode-Termux --workflow stable-drift-check.yml --limit 5
+
+# workflow が active であること（state が active）
+gh workflow list -R bash0816/ClaudeCode-Termux --all
+
+# drift-status artifact の取得（空のディレクトリを指定する）
+gh run download <id> -n drift-status -D <空ディレクトリ> -R bash0816/ClaudeCode-Termux
+```
+
+取得した JSON の `status`、`event`、`checked_at` を検証する。
+
+異常条件:
+
+- 最新の完了 run が 36 時間を超えて古い、または success でない。
+- 最新 run が未完了のまま残っている。
+- workflow の state が active でない。
+- 確認コマンドの実行が失敗した。
+
+### 導入時の確認（1 回）
+
+`npm-publish` 環境に承認ゲート（required reviewers）が設定されていることを、ずれ検知の導入時に 1 回確認する。
