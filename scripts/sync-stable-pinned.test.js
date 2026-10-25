@@ -6,6 +6,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const cp = require('child_process');
+const sync = require('./sync-stable-pinned.js');
 
 const SCRIPT = path.join(__dirname, 'sync-stable-pinned.js');
 const MANIFEST_RELS = [
@@ -166,6 +167,143 @@ test('missing stable_pinned_version in one file exits 1 and writes nothing', () 
     assert.equal(readManifest(root, MANIFEST_RELS[0]), serialize(BASE));
     assert.equal(readManifest(root, MANIFEST_RELS[1]), serialize(broken));
     assert.equal(markerExists(root), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// Helpers for the in-process tests (a) to (d).
+function listManifestDir(root, rel) {
+  return fs.readdirSync(path.dirname(path.join(root, rel))).sort();
+}
+
+function assertNoTempFiles(root) {
+  for (const rel of MANIFEST_RELS) {
+    assert.deepEqual(listManifestDir(root, rel), ['claude-termux-release-manifest.json'], rel);
+  }
+}
+
+// Runs syncStablePinned in-process against a temp root. --skip-readme keeps the readme script from spawning.
+function runInProcess(root, fsApi) {
+  const previous = process.env.STABLE_SYNC_ROOT;
+  process.env.STABLE_SYNC_ROOT = root;
+  try {
+    return sync.syncStablePinned(['2.1.309', '--skip-readme'], { fs: fsApi });
+  } finally {
+    if (previous === undefined) {
+      delete process.env.STABLE_SYNC_ROOT;
+    } else {
+      process.env.STABLE_SYNC_ROOT = previous;
+    }
+  }
+}
+
+// The CLI exits 1 for any error that has no exitCode, so an in-process error without exitCode maps to exit 1.
+function captureFailure(fn) {
+  let thrown;
+  try {
+    fn();
+  } catch (error) {
+    thrown = error;
+  }
+  assert.ok(thrown instanceof Error, 'expected syncStablePinned to throw');
+  assert.equal(thrown.exitCode, undefined, 'a non-usage failure must map to exit 1');
+  return thrown;
+}
+
+test('(a) prepare-phase failure leaves both manifests unchanged and no temp files', () => {
+  const root = makeTempRoot();
+  try {
+    const before = MANIFEST_RELS.map(rel => readManifest(root, rel));
+    const file2 = path.join(root, MANIFEST_RELS[1]);
+    const failingFs = {
+      ...fs,
+      writeFileSync(target, data, options) {
+        if (String(target).startsWith(file2 + '.tmp-')) {
+          throw new Error('injected prepare failure');
+        }
+        return fs.writeFileSync(target, data, options);
+      },
+    };
+    const error = captureFailure(() => runInProcess(root, failingFs));
+    assert.match(error.message, /injected prepare failure/);
+    MANIFEST_RELS.forEach((rel, i) => {
+      assert.equal(readManifest(root, rel), before[i], rel);
+    });
+    assertNoTempFiles(root);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('(b) commit-phase failure rolls file1 back and leaves no temp files', () => {
+  const root = makeTempRoot();
+  try {
+    const before = MANIFEST_RELS.map(rel => readManifest(root, rel));
+    let renameCalls = 0;
+    const failingFs = {
+      ...fs,
+      renameSync(from, to) {
+        renameCalls += 1;
+        if (renameCalls === 2) {
+          throw new Error('injected rename failure');
+        }
+        return fs.renameSync(from, to);
+      },
+    };
+    const error = captureFailure(() => runInProcess(root, failingFs));
+    assert.match(error.message, /injected rename failure/);
+    MANIFEST_RELS.forEach((rel, i) => {
+      assert.equal(readManifest(root, rel), before[i], rel);
+    });
+    assertNoTempFiles(root);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('(c) when rollback also fails the error says 戻しに失敗 and names the file', () => {
+  const root = makeTempRoot();
+  try {
+    const before = readManifest(root, MANIFEST_RELS[1]);
+    const file1 = path.join(root, MANIFEST_RELS[0]);
+    let renameCalls = 0;
+    let rollbackArmed = false;
+    const failingFs = {
+      ...fs,
+      renameSync(from, to) {
+        renameCalls += 1;
+        if (renameCalls === 2) {
+          rollbackArmed = true;
+          throw new Error('injected rename failure');
+        }
+        return fs.renameSync(from, to);
+      },
+      writeFileSync(target, data, options) {
+        if (rollbackArmed) {
+          throw new Error('injected rollback write failure');
+        }
+        return fs.writeFileSync(target, data, options);
+      },
+    };
+    const error = captureFailure(() => runInProcess(root, failingFs));
+    assert.match(error.message, /戻しに失敗/);
+    assert.ok(error.message.includes(file1), `message should name ${file1}: ${error.message}`);
+    // file1 kept the new content because its rollback failed, and file2 was never renamed.
+    assert.equal(readManifest(root, MANIFEST_RELS[0]), serialize({ ...BASE, stable_pinned_version: '2.1.309' }));
+    assert.equal(readManifest(root, MANIFEST_RELS[1]), before);
+    assertNoTempFiles(root);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('(d) on success no temp files remain in either manifest directory', () => {
+  const root = makeTempRoot();
+  try {
+    const result = runSync(root, ['2.1.309', '--skip-readme']);
+    assert.equal(result.status, 0, result.stderr);
+    assertNoTempFiles(root);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

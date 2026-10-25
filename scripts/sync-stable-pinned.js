@@ -66,8 +66,10 @@ function assertOnlyPinnedKeyChanged(before, after, file) {
 }
 
 // Computes the new content without writing anything.
-function planUpdate(file, version) {
-  const current = JSON.parse(fs.readFileSync(file, 'utf8'));
+// `original` keeps the exact text that was read, so it can be restored later.
+function planUpdate(file, version, fsApi) {
+  const original = fsApi.readFileSync(file, 'utf8');
+  const current = JSON.parse(original);
   if (!Object.prototype.hasOwnProperty.call(current, MANIFEST_KEY)) {
     throw new Error(`sync-stable-pinned: ${MANIFEST_KEY} is missing in ${file}`);
   }
@@ -76,7 +78,7 @@ function planUpdate(file, version) {
   }
   const next = { ...current, [MANIFEST_KEY]: version };
   assertOnlyPinnedKeyChanged(current, next, file);
-  return { file, changed: true, content: serialize(next) };
+  return { file, changed: true, original, content: serialize(next) };
 }
 
 function runReadmeScript(root) {
@@ -94,16 +96,119 @@ function runReadmeScript(root) {
   }
 }
 
-function main(argv) {
+// Temp file for one manifest. It sits in the same directory so that rename stays on one filesystem.
+function tempPathFor(file) {
+  return path.join(path.dirname(file), `${path.basename(file)}.tmp-${process.pid}`);
+}
+
+// Removes a temp file this run created. A file that is already gone is fine.
+// Any other failure is collected so that the caller can report it.
+function removeTemp(fsApi, tmp, leftovers) {
+  try {
+    fsApi.unlinkSync(tmp);
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      leftovers.push(`${tmp} (${error.message})`);
+    }
+  }
+}
+
+function withLeftovers(message, leftovers) {
+  if (leftovers.length === 0) {
+    return message;
+  }
+  return `${message}\n一時ファイルを削除できませんでした: ${leftovers.join(', ')}`;
+}
+
+// Phase 1: write every new content to a temp file next to its manifest.
+// The manifests themselves are not touched in this phase.
+function prepareTemps(changed, fsApi) {
+  const created = [];
+  const leftovers = [];
+  for (const plan of changed) {
+    plan.tmp = tempPathFor(plan.file);
+    try {
+      fsApi.writeFileSync(plan.tmp, plan.content, { flag: 'wx' });
+    } catch (error) {
+      // An EEXIST file was not created by this run, so it is left alone.
+      if (error.code !== 'EEXIST') {
+        created.push(plan.tmp); // may be partially written
+      }
+      for (const tmp of created) {
+        removeTemp(fsApi, tmp, leftovers);
+      }
+      throw new Error(withLeftovers(
+        `sync-stable-pinned: 一時ファイルの作成に失敗したため、manifest は変更していません: ${error.message}`,
+        leftovers,
+      ));
+    }
+    created.push(plan.tmp);
+  }
+}
+
+// Phase 2: rename each temp file over its manifest, in order.
+function commitTemps(changed, fsApi) {
+  for (let i = 0; i < changed.length; i++) {
+    try {
+      fsApi.renameSync(changed[i].tmp, changed[i].file);
+    } catch (error) {
+      throw rollbackAfterFailure(changed, i, fsApi, error);
+    }
+  }
+}
+
+// Called when renaming changed[failedIndex] failed. Restores the manifests renamed before it,
+// removes the remaining temp files, and returns the error to throw.
+function rollbackAfterFailure(changed, failedIndex, fsApi, cause) {
+  const leftovers = [];
+  const states = new Array(changed.length);
+  const restoreFailed = [];
+
+  for (let j = failedIndex - 1; j >= 0; j--) {
+    const plan = changed[j];
+    try {
+      // The temp name was consumed by the earlier rename, so it is free to reuse.
+      fsApi.writeFileSync(plan.tmp, plan.original, { flag: 'wx' });
+      fsApi.renameSync(plan.tmp, plan.file);
+      states[j] = '元の内容に戻しました';
+    } catch (restoreError) {
+      if (restoreError.code !== 'EEXIST') {
+        removeTemp(fsApi, plan.tmp, leftovers);
+      }
+      restoreFailed.push(plan.file);
+      states[j] = '新しい内容のまま（戻しに失敗）';
+    }
+  }
+
+  for (let k = failedIndex; k < changed.length; k++) {
+    removeTemp(fsApi, changed[k].tmp, leftovers);
+    states[k] = '変更していません';
+  }
+
+  const summary = changed.map((plan, index) => `${plan.file}: ${states[index]}`).join('; ');
+  if (restoreFailed.length === 0) {
+    return new Error(withLeftovers(
+      `sync-stable-pinned: manifest の反映に失敗しました。状態: ${summary}。原因: ${cause.message}`,
+      leftovers,
+    ));
+  }
+  return new Error(withLeftovers(
+    `sync-stable-pinned: manifest の反映に失敗し、元に戻しにも失敗しました（戻しに失敗）。最終状態: ${summary}。戻しに失敗したファイル: ${restoreFailed.join(', ')}。原因: ${cause.message}`,
+    leftovers,
+  ));
+}
+
+function syncStablePinned(argv, { fs: fsApi = fs } = {}) {
   const { version, skipReadme } = parseArgs(argv);
   const root = process.env.STABLE_SYNC_ROOT ? path.resolve(process.env.STABLE_SYNC_ROOT) : repoRoot;
 
   // Plan every file first so that a failure on one file writes nothing.
-  const plans = manifestFiles(root).map(file => planUpdate(file, version));
+  const plans = manifestFiles(root).map(file => planUpdate(file, version, fsApi));
   const changed = plans.filter(plan => plan.changed);
 
-  for (const plan of changed) {
-    fs.writeFileSync(plan.file, plan.content);
+  if (changed.length > 0) {
+    prepareTemps(changed, fsApi);
+    commitTemps(changed, fsApi);
   }
 
   let readme = 'not_needed';
@@ -111,21 +216,26 @@ function main(argv) {
     if (skipReadme) {
       readme = 'skipped';
     } else {
-      runReadmeScript(root);
+      try {
+        runReadmeScript(root);
+      } catch (error) {
+        throw new Error(`sync-stable-pinned: manifest は更新済みです（manifests were already updated）。README の更新に失敗しました: ${error.message}`);
+      }
       readme = 'updated';
     }
   }
 
-  process.stdout.write(JSON.stringify({
+  return {
     version,
     changed_files: changed.map(plan => path.relative(root, plan.file)),
     readme,
-  }, null, 2) + '\n');
+  };
 }
 
 if (require.main === module) {
   try {
-    main(process.argv.slice(2));
+    const result = syncStablePinned(process.argv.slice(2));
+    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
   } catch (error) {
     if (error && error.exitCode) {
       console.error(error.message);
@@ -136,3 +246,5 @@ if (require.main === module) {
     }
   }
 }
+
+module.exports = { syncStablePinned };
