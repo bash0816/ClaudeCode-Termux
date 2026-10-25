@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 'use strict';
 
+// Principle: every manifest is updated by writing a temp file and renaming it over the original (same directory, so rename is atomic per file).
+// Limit: POSIX has no atomic update across two files, so the two renames are separate steps.
+// A single failure rolls back with renames of backup files, so the manifests stay consistent.
+// A double failure (a restore rename fails too) is detected: the error names the leftover backup file,
+// and node scripts/stable-drift-check.js reports it as meta_drift.
+
 const fs = require('fs');
 const path = require('path');
 const cp = require('child_process');
@@ -120,29 +126,42 @@ function withLeftovers(message, leftovers) {
   return `${message}\n一時ファイルを削除できませんでした: ${leftovers.join(', ')}`;
 }
 
-// Phase 1: write every new content to a temp file next to its manifest.
+// Backup file for one manifest. It holds the original text, so that a failed rollback can be undone by hand.
+function backupPathFor(file) {
+  return path.join(path.dirname(file), `${path.basename(file)}.bak-${process.pid}`);
+}
+
+// Phase 1: write the new content to a temp file and the original text to a backup file, for every manifest.
+// Both sit next to their manifest so that rename stays on one filesystem.
 // The manifests themselves are not touched in this phase.
 function prepareTemps(changed, fsApi) {
   const created = [];
   const leftovers = [];
   for (const plan of changed) {
     plan.tmp = tempPathFor(plan.file);
-    try {
-      fsApi.writeFileSync(plan.tmp, plan.content, { flag: 'wx' });
-    } catch (error) {
-      // An EEXIST file was not created by this run, so it is left alone.
-      if (error.code !== 'EEXIST') {
-        created.push(plan.tmp); // may be partially written
+    plan.bak = backupPathFor(plan.file);
+    const writes = [
+      [plan.tmp, plan.content],
+      [plan.bak, plan.original],
+    ];
+    for (const [target, data] of writes) {
+      try {
+        fsApi.writeFileSync(target, data, { flag: 'wx' });
+      } catch (error) {
+        // An EEXIST file was not created by this run, so it is left alone.
+        if (error.code !== 'EEXIST') {
+          created.push(target); // may be partially written
+        }
+        for (const file of created) {
+          removeTemp(fsApi, file, leftovers);
+        }
+        throw new Error(withLeftovers(
+          `sync-stable-pinned: 一時ファイルまたは退避ファイルの作成に失敗したため、manifest は変更していません: ${error.message}`,
+          leftovers,
+        ));
       }
-      for (const tmp of created) {
-        removeTemp(fsApi, tmp, leftovers);
-      }
-      throw new Error(withLeftovers(
-        `sync-stable-pinned: 一時ファイルの作成に失敗したため、manifest は変更していません: ${error.message}`,
-        leftovers,
-      ));
+      created.push(target);
     }
-    created.push(plan.tmp);
   }
 }
 
@@ -157,8 +176,25 @@ function commitTemps(changed, fsApi) {
   }
 }
 
-// Called when renaming changed[failedIndex] failed. Restores the manifests renamed before it,
-// removes the remaining temp files, and returns the error to throw.
+// Called after every rename succeeded. Removes the leftover temp and backup files.
+function discardBackups(changed, fsApi) {
+  const leftovers = [];
+  for (const plan of changed) {
+    removeTemp(fsApi, plan.tmp, leftovers);
+    removeTemp(fsApi, plan.bak, leftovers);
+  }
+  if (leftovers.length > 0) {
+    throw new Error(withLeftovers(
+      'sync-stable-pinned: manifest は更新済みです（manifests were already updated）。退避ファイルを削除できませんでした',
+      leftovers,
+    ));
+  }
+}
+
+// Called when renaming changed[failedIndex] failed.
+// Restores the manifests renamed before it by renaming their backup files back over them (a rename, not a write).
+// Removes the temp and backup files of the rest. If a restore rename fails too (double fault),
+// that backup is kept, and the error says where the original text is.
 function rollbackAfterFailure(changed, failedIndex, fsApi, cause) {
   const leftovers = [];
   const states = new Array(changed.length);
@@ -167,33 +203,34 @@ function rollbackAfterFailure(changed, failedIndex, fsApi, cause) {
   for (let j = failedIndex - 1; j >= 0; j--) {
     const plan = changed[j];
     try {
-      // The temp name was consumed by the earlier rename, so it is free to reuse.
-      fsApi.writeFileSync(plan.tmp, plan.original, { flag: 'wx' });
-      fsApi.renameSync(plan.tmp, plan.file);
-      states[j] = '元の内容に戻しました';
+      fsApi.renameSync(plan.bak, plan.file);
+      states[j] = '更新前の内容に戻しました';
     } catch (restoreError) {
-      if (restoreError.code !== 'EEXIST') {
-        removeTemp(fsApi, plan.tmp, leftovers);
-      }
-      restoreFailed.push(plan.file);
-      states[j] = '新しい内容のまま（戻しに失敗）';
+      restoreFailed.push(plan);
+      states[j] = '更新後の内容のまま（戻しに失敗）';
     }
   }
 
   for (let k = failedIndex; k < changed.length; k++) {
     removeTemp(fsApi, changed[k].tmp, leftovers);
-    states[k] = '変更していません';
+    removeTemp(fsApi, changed[k].bak, leftovers);
+    states[k] = '更新前の内容のまま（未変更）';
   }
 
   const summary = changed.map((plan, index) => `${plan.file}: ${states[index]}`).join('; ');
   if (restoreFailed.length === 0) {
-    return new Error(withLeftovers(
-      `sync-stable-pinned: manifest の反映に失敗しました。状態: ${summary}。原因: ${cause.message}`,
-      leftovers,
-    ));
+    const head = failedIndex === 0
+      ? 'sync-stable-pinned: manifest の反映に失敗したため、manifest は更新していません'
+      : 'sync-stable-pinned: manifest の反映に失敗したため、元に戻しました';
+    return new Error(withLeftovers(`${head}。状態: ${summary}。原因: ${cause.message}`, leftovers));
   }
+  const manualSteps = restoreFailed
+    .map(plan => `退避ファイル ${plan.bak} に元の内容があります（手動で戻す場合: mv "${plan.bak}" "${plan.file}"）`)
+    .join('; ');
   return new Error(withLeftovers(
-    `sync-stable-pinned: manifest の反映に失敗し、元に戻しにも失敗しました（戻しに失敗）。最終状態: ${summary}。戻しに失敗したファイル: ${restoreFailed.join(', ')}。原因: ${cause.message}`,
+    'sync-stable-pinned: manifest の反映に失敗し、戻しに失敗しました（戻しに失敗）。' +
+    `最終状態: ${summary}。不一致が残っています（戻せなかった manifest は更新後、それ以外は更新前の内容）。` +
+    `${manualSteps}。node scripts/stable-drift-check.js が meta_drift として検知します。原因: ${cause.message}`,
     leftovers,
   ));
 }
@@ -209,6 +246,7 @@ function syncStablePinned(argv, { fs: fsApi = fs } = {}) {
   if (changed.length > 0) {
     prepareTemps(changed, fsApi);
     commitTemps(changed, fsApi);
+    discardBackups(changed, fsApi);
   }
 
   let readme = 'not_needed';

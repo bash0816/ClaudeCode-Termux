@@ -262,37 +262,39 @@ test('(b) commit-phase failure rolls file1 back and leaves no temp files', () =>
   }
 });
 
-test('(c) when rollback also fails the error says 戻しに失敗 and names the file', () => {
+test('(c) double fault: a failed restore keeps bak1 with the original text and the error names it', () => {
   const root = makeTempRoot();
   try {
+    const original1 = readManifest(root, MANIFEST_RELS[0]);
     const before = readManifest(root, MANIFEST_RELS[1]);
     const file1 = path.join(root, MANIFEST_RELS[0]);
+    const bak1 = `${file1}.bak-${process.pid}`;
     let renameCalls = 0;
-    let rollbackArmed = false;
     const failingFs = {
       ...fs,
       renameSync(from, to) {
         renameCalls += 1;
+        // Call 1 (tmp1 -> file1) succeeds. Call 2 (tmp2 -> file2) is the commit fault.
+        // Call 3 (bak1 -> file1) is the restore, and it fails too (double fault).
         if (renameCalls === 2) {
-          rollbackArmed = true;
           throw new Error('injected rename failure');
         }
-        return fs.renameSync(from, to);
-      },
-      writeFileSync(target, data, options) {
-        if (rollbackArmed) {
-          throw new Error('injected rollback write failure');
+        if (renameCalls === 3) {
+          throw new Error('injected restore rename failure');
         }
-        return fs.writeFileSync(target, data, options);
+        return fs.renameSync(from, to);
       },
     };
     const error = captureFailure(() => runInProcess(root, failingFs));
     assert.match(error.message, /戻しに失敗/);
-    assert.ok(error.message.includes(file1), `message should name ${file1}: ${error.message}`);
-    // file1 kept the new content because its rollback failed, and file2 was never renamed.
+    assert.ok(error.message.includes(bak1), `message should name ${bak1}: ${error.message}`);
+    // file1 keeps the new content (its restore failed), and file2 keeps the old content (it was never renamed).
     assert.equal(readManifest(root, MANIFEST_RELS[0]), serialize({ ...BASE, stable_pinned_version: '2.1.309' }));
     assert.equal(readManifest(root, MANIFEST_RELS[1]), before);
-    assertNoTempFiles(root);
+    // bak1 is kept and still holds the original text. No other temp or backup file remains.
+    assert.equal(fs.readFileSync(bak1, 'utf8'), original1);
+    assert.deepEqual(listManifestDir(root, MANIFEST_RELS[0]), ['claude-termux-release-manifest.json', path.basename(bak1)]);
+    assert.deepEqual(listManifestDir(root, MANIFEST_RELS[1]), ['claude-termux-release-manifest.json']);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -304,6 +306,78 @@ test('(d) on success no temp files remain in either manifest directory', () => {
     const result = runSync(root, ['2.1.309', '--skip-readme']);
     assert.equal(result.status, 0, result.stderr);
     assertNoTempFiles(root);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('(e) stable-drift-check.js reports meta_drift when the root and packages manifests disagree', () => {
+  const root = makeTempRoot();
+  try {
+    const TARGET = '2.1.400';
+    const OLD = '2.1.399';
+    const NOW = '2026-10-20T00:00:00.000Z';
+    const PUBLISHED = '2026-09-20T00:00:00.000Z';
+    // The root manifest is at the target version and the packages manifest is left at the old version.
+    fs.writeFileSync(path.join(root, MANIFEST_RELS[0]), serialize({ ...BASE, stable_pinned_version: TARGET }));
+    fs.writeFileSync(path.join(root, MANIFEST_RELS[1]), serialize({ ...BASE, stable_pinned_version: OLD }));
+    fs.writeFileSync(
+      path.join(root, 'config', 'claude-native-audited-versions.json'),
+      serialize({ versions: { [TARGET]: { status: 'termux_verified' } } }),
+    );
+
+    const mockPath = path.join(root, 'fake-npm.js');
+    const cfgPath = path.join(root, 'mock-config.json');
+    const logPath = path.join(root, 'mock-calls.log');
+    // Minimal npm mock: it answers only the argv keys listed in the config and exits 97 for any other argv.
+    const mockSource = [
+      '#!/usr/bin/env node',
+      "'use strict';",
+      "const fs = require('fs');",
+      'const args = process.argv.slice(2);',
+      "const key = args.join(' ');",
+      "fs.appendFileSync(process.env.MOCK_LOG, JSON.stringify(args) + '\\n');",
+      "const cfg = JSON.parse(fs.readFileSync(process.env.MOCK_CONFIG, 'utf8'));",
+      'if (!Object.prototype.hasOwnProperty.call(cfg, key)) {',
+      "  process.stderr.write('UNEXPECTED ARGV: ' + key + '\\n');",
+      '  process.exitCode = 97;',
+      '} else {',
+      '  const r = cfg[key];',
+      "  process.stdout.write(r.stdout || '');",
+      "  process.stderr.write(r.stderr || '');",
+      '  process.exitCode = r.status || 0;',
+      '}',
+      '',
+    ].join('\n');
+    const ok = stdout => ({ status: 0, stdout, stderr: '' });
+    const config = {
+      'view @anthropic-ai/claude-code dist-tags.stable': ok(`${TARGET}\n`),
+      'view @bash0816/claude-code dist-tags.stable': ok(`${TARGET}\n`),
+      'view @anthropic-ai/claude-code time --json': ok(JSON.stringify({ [TARGET]: PUBLISHED })),
+      [`view @bash0816/claude-code@${TARGET} version`]: ok(`${TARGET}\n`),
+    };
+    fs.writeFileSync(mockPath, mockSource);
+    fs.chmodSync(mockPath, 0o755);
+    fs.writeFileSync(cfgPath, JSON.stringify(config));
+
+    const env = {
+      ...process.env,
+      NPM_BIN: mockPath,
+      STABLE_CHECK_ROOT: root,
+      STABLE_CHECK_NOW: NOW,
+      MOCK_CONFIG: cfgPath,
+      MOCK_LOG: logPath,
+    };
+    for (const name of ['GITHUB_STEP_SUMMARY', 'GITHUB_EVENT_NAME', 'NODE_TEST_CONTEXT']) {
+      delete env[name];
+    }
+    const r = cp.spawnSync(process.execPath, [path.join(__dirname, 'stable-drift-check.js')], {
+      encoding: 'utf8',
+      env,
+    });
+    const output = `${r.stdout}${r.stderr}`;
+    assert.match(r.stdout, /^STATUS=meta_drift$/m, output);
+    assert.equal(r.status, 1, output);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
