@@ -278,7 +278,7 @@ config/claude-termux-release-manifest.json
 
 ### 用語
 
-- **npm の dist-tag `stable`**: 公式 stable（upstream の stable）に合わせる対象。`npm install -g @bash0816/claude-code` が取得する版。
+- **npm の dist-tag `stable`**: 公式 stable（upstream の stable）に合わせる対象。`npm install -g @bash0816/claude-code@stable` が取得する版。タグを付けない `npm install -g @bash0816/claude-code` は `latest` を取得する。
 - **manifest の `previous_stable_version`**: 1 つ前の latest。ロールバック先。dist-tag `stable` とは別物。
 
 ### ずれ検知（stable-drift-check）が失敗したときの手順
@@ -312,24 +312,27 @@ gh workflow disable stable-drift-check.yml -R bash0816/ClaudeCode-Termux
 
 ### 監視（STEP 0）
 
-定期的に次の順で確認する。いずれかが異常なら調査する。古い成功 run を正常と誤認しないため、この順序を守る。
+定期的に次の順で確認する。いずれかが異常なら調査する。古い成功 run を正常と誤認しないため、この順序を守る。判定は「正常の定義」に照らして行う。
 
 1. **最初に、最新の run（全イベント）が未完了でないことを確認する。** `queued`・`in_progress`・`waiting` のいずれかなら異常として報告する。
-2. 次に、schedule の最新の完了 run の鮮度を確認する。`createdAt` が 36 時間以内で、`conclusion` が `success` であること。
-3. drift-status artifact を取得し、検証する。
+2. 次に、**最新の完了 run（全イベント）を独立に確認する。** 手動実行の失敗が、成功した schedule run に隠れないようにするため。(a) `conclusion` が `success` であること。(b) drift-status を取得して検証する（下記）。(c) `status` が `ok`、または `waiting_unverified` / `waiting_unpublished` で `waiting_hours` が 168 以下であること。
+3. 次に、schedule の最新の完了 run を確認する。`createdAt` が 36 時間以内で、上の (a)〜(c) を満たすこと。
 4. 最後に、`gh workflow list` で workflow の state が `active` であることを確認する。
 
 ```sh
 # 1. 最新の run（全イベント）: status が queued / in_progress / waiting でないこと
 gh run list -R bash0816/ClaudeCode-Termux --workflow stable-drift-check.yml --limit 1 --json databaseId,status,conclusion,event,createdAt
 
-# 2. schedule の最新の完了 run: createdAt が 36 時間以内、conclusion が success
+# 2. 最新の完了 run（全イベント）: conclusion が success であること、drift-status を検証する
+gh run list -R bash0816/ClaudeCode-Termux --workflow stable-drift-check.yml --status completed --limit 1 --json databaseId,status,conclusion,event,createdAt
+
+# 3. schedule の最新の完了 run: createdAt が 36 時間以内、conclusion が success、drift-status を検証する
 gh run list -R bash0816/ClaudeCode-Termux --workflow stable-drift-check.yml --event schedule --branch main --status completed --limit 1 --json databaseId,status,conclusion,event,createdAt
 
-# 3. drift-status artifact: run ごとに新しく作った空のディレクトリへ取得する
+# 4. drift-status artifact: 2 と 3 のそれぞれの run（databaseId が <id>）について、run ごとに新しく作った空のディレクトリへ取得する。2 と 3 が同じ run でも、重複して検証してよい
 gh run download <id> -n drift-status -D <run ごとの空ディレクトリ> -R bash0816/ClaudeCode-Termux
 
-# 4. workflow の state が active であること
+# 5. workflow の state が active であること
 gh workflow list -R bash0816/ClaudeCode-Termux --all
 ```
 
@@ -341,11 +344,25 @@ gh workflow list -R bash0816/ClaudeCode-Termux --all
 - `checked_at` が ISO 日時で、対象 run の `createdAt` から ±2 時間以内である（超えたら異常）。
 - `status` が `waiting_unverified` または `waiting_unpublished` の場合、`waiting_hours` が 168 以下。`waiting_too_long` の場合は、`waiting_hours` が 168 を超えている。
 
-異常条件:
+### 正常の定義
+
+次のすべてを満たすときだけ正常とする。
+
+- 最新の run（全イベント）が `queued`・`in_progress`・`waiting` でない。
+- 最新の完了 run（全イベント）と最新の完了 schedule run の両方について、`conclusion` が `success` で、drift-status の検証を満たし、`status` が `ok`、または `waiting_unverified` / `waiting_unpublished` で `waiting_hours` が 168 以下。
+- 最新の完了 schedule run の `createdAt` が 36 時間以内。
+- workflow の state が `active`。
+- 確認コマンドがすべて成功。
+
+### 異常条件
+
+上の正常の定義を 1 つでも満たさなければ異常とする。特に次は異常として報告する。
 
 - 最新の run（全イベント）が `queued`・`in_progress`・`waiting` のまま残っている。
-- 最新の完了 run（schedule）が 36 時間を超えて古い、または `conclusion` が `success` でない。
+- 最新の完了 run（全イベント）または最新の完了 schedule run の `conclusion` が `success` でない。
+- いずれかの run の `status` が `drift` / `meta_drift` / `waiting_too_long` / `infra_error`。
 - drift-status の検証のいずれかを満たさない。
+- 最新の完了 schedule run が 36 時間を超えて古い。
 - workflow の state が `active` でない。
 - 確認コマンドの実行が失敗した。
 
