@@ -344,6 +344,8 @@ gh workflow list -R bash0816/ClaudeCode-Termux --all
 - `checked_at` が ISO 日時で、対象 run の `createdAt` から ±2 時間以内である（超えたら異常）。
 - `status` が `waiting_unverified` または `waiting_unpublished` の場合、`waiting_hours` が 168 以下。`waiting_too_long` の場合は、`waiting_hours` が 168 を超えている。
 
+確認結果を報告するときは、確認した各 run（全イベントの最新の完了 run と、schedule の最新の完了 run）について、`databaseId`、`conclusion`、drift-status の `status` を必ず含める。`status` が `waiting_*` の場合は、待機理由と `waiting_hours` も含める。両方が同一の run であっても、それぞれ明記する。
+
 ### 正常の定義
 
 次のすべてを満たすときだけ正常とする。
@@ -353,6 +355,8 @@ gh workflow list -R bash0816/ClaudeCode-Termux --all
 - 最新の完了 schedule run の `createdAt` が 36 時間以内。
 - workflow の state が `active`。
 - 確認コマンドがすべて成功。
+
+正常と報告するときは、上記の STEP 0 の報告項目（各 run の `databaseId`・`conclusion`・`status`、必要に応じて待機理由と `waiting_hours`）を添える。
 
 ### 異常条件
 
