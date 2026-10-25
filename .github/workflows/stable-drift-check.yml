@@ -1,0 +1,61 @@
+name: Stable Drift Check
+
+on:
+  schedule:
+    - cron: '41 3 * * *'
+  workflow_dispatch:
+    inputs:
+      simulate:
+        description: 'Simulate a condition for testing'
+        type: choice
+        options:
+          - none
+          - drift
+        default: none
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stable-drift-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '22'
+
+      - name: Run stable drift check
+        env:
+          SIMULATE: ${{ inputs.simulate }}
+        run: |
+          set -euo pipefail
+          SIM=""
+          if [ "$SIMULATE" = "drift" ]; then SIM="--simulate drift"; fi
+          set +e
+          # SIM is intentionally unquoted: it expands to zero or two words.
+          # shellcheck disable=SC2086
+          node scripts/stable-drift-check.js --status-file "$RUNNER_TEMP/drift-status.json" $SIM 2>&1 | tee "$RUNNER_TEMP/drift-check.log"
+          RC=${PIPESTATUS[0]}
+          set -e
+          exit "$RC"
+
+      - name: Upload drift status
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: drift-status
+          path: ${{ runner.temp }}/drift-status.json
+          if-no-files-found: error
+          retention-days: 10
