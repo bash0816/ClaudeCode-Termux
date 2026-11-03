@@ -90,7 +90,7 @@ Only versions registered in the audited metadata can run.
 |---------|--------|
 | `2.1.316` | ✅ **Recommended / 推奨** — latest |
 | `2.1.312` | ✅ rollback version |
-| `2.1.308` | ✅ stable — `@stable` dist-tag |
+| `2.1.309` | ✅ stable — `@stable` dist-tag |
 <!-- SUPPORTED_VERSIONS_TABLE_END -->
 
 ### Fable 5 Model Fix / Fable 5 モデル選択肢修正
@@ -100,10 +100,10 @@ Only versions registered in the audited metadata can run.
 **日本語:** バージョン 2.1.206-1 (候補版) では、Termux 版の `/model` コマンドで Fable 5 モデル選択肢が表示されない不具合を修正しました。原因は起動時に `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` が強制 export されており、upstream の Bootstrap 処理（モデル取得）が抑制されていました。
 
 <!-- UPSTREAM_VERSION_START -->
-Official upstream (`@anthropic-ai/claude-code`): latest `2.1.316` / stable `2.1.308`
+Official upstream (`@anthropic-ai/claude-code`): latest `2.1.316` / stable `2.1.309`
 This repo's latest audited release (release manifest): `2.1.316`
 
-公式 upstream (`@anthropic-ai/claude-code`): latest `2.1.316` / stable `2.1.308`
+公式 upstream (`@anthropic-ai/claude-code`): latest `2.1.316` / stable `2.1.309`
 この repo の latest audited release (release manifest 基準): `2.1.316`
 <!-- UPSTREAM_VERSION_END -->
 
