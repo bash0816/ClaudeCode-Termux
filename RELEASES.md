@@ -1,3 +1,22 @@
+## 2.1.322 — 2026-11-14 ✅ Current audited / 現在の監査済み版
+
+upstream claude-code 2.1.322 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
+
+**Upstream highlights / 主な変更（upstream）**
+
+## What's changed
+
+- Added fast mode on Vertex in the global, us and eu regions, falling back to standard speed if Vertex refuses it
+
+```sh
+npm install -g @bash0816/claude-code@latest
+```
+
+```sh
+npm install -g @bash0816/claude-code@2.1.321
+```
+
+---
 ## 2.1.321 — 2026-11-12 ✅ Current audited / 現在の監査済み版
 
 upstream claude-code 2.1.321 追従。Termux 実機検証済み（全テスト通過 / TUI 起動確認）。
