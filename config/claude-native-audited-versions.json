@@ -3376,6 +3376,35 @@
           "expectedOccurrences": 1
         }
       ]
+    },
+    "2.1.332": {
+      "wrapper_spec": "@anthropic-ai/claude-code@2.1.332",
+      "native_spec": "@anthropic-ai/claude-code-linux-arm64@2.1.332",
+      "entry_format": "esm-chunked",
+      "tarball_integrity": "sha512-BlHNEtK38KBPWU31F4lUSS9sHclCyfWbThT1CErvxxH8+XcljYLZlQwdyXBkTD62rw1TgfE1u1a+quMWS0NSJg==",
+      "tarball_sha256": "171a15f1192f411094f606a6602d11617e20d69984733ded2a79e85d9f5cc236",
+      "status": "offset_discovered",
+      "num_modules": 3914,
+      "byte_count": 235806703,
+      "cycle_hoists": [
+        {
+          "file": "chunk-dj2ncm8s.js",
+          "targetModule": "chunk-qpxfv2ky.js",
+          "expectedOccurrences": 1,
+          "assertProperties": []
+        }
+      ],
+      "cycle_hoists_skipped_assets": [
+        "chart.umd.min.js",
+        "hljsBundle.generated.min.js",
+        "mermaid.min.js"
+      ],
+      "hooks_standalone_patches": [
+        {
+          "file": "chunk-farndx1c.js",
+          "expectedOccurrences": 1
+        }
+      ]
     }
   }
 }
